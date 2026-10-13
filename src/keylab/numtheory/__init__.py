@@ -1,0 +1,1 @@
+"""Small exact number-theory helpers for learning, tests, and toy research."""

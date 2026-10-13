@@ -1,0 +1,21 @@
+format: keylab-logical-agent-workflow
+version: 1
+orchestrator: repository-analyst
+workflow:
+  - repository-analyst
+  - crypto-validator
+  - sat-optimizer
+  - benchmark-auditor
+  - extraction-verifier
+  - test-generator
+  - documentation-agent
+quality_gate:
+  minimum_confidence: 85
+  no_unverified_claims: true
+  require_tests: true
+  benchmark_validation: true
+execution:
+  automatic_patch_application: false
+  note: >-
+    This project convention records intended logical roles. It does not
+    configure Claude Code or another host to launch or orchestrate agents.

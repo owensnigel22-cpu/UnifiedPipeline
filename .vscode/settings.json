@@ -1,0 +1,14 @@
+{
+    "editor.formatOnSave": true,
+    "editor.codeActionsOnSave": {
+        "source.fixAll.ruff": "explicit"
+    },
+    "markdown.styles": [
+        ".vscode/markdown.css"
+    ],
+    "python.analysis.typeCheckingMode": "strict",
+    "python.defaultInterpreterPath": "${workspaceFolder}\\..\\.venv\\Scripts\\python.exe",
+    "[python]": {
+        "editor.defaultFormatter": "charliermarsh.ruff"
+    }
+}

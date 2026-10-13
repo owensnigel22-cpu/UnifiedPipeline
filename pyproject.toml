@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "keylab"
+version = "0.1.0"
+description = "Constrained key recovery and cryptographic research utilities"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["hypothesis>=6.100", "mypy>=1.10", "pytest>=8.0", "ruff>=0.5"]
+dashboard = ["pandas>=2.0", "pandas-stubs>=2.0", "streamlit>=1.40"]
+
+[project.scripts]
+keylab = "keylab.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"

@@ -1,0 +1,163 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Run SAT Solver Tests",
+            "type": "shell",
+            "command": "python",
+            "args": [
+                "-m",
+                "pytest",
+                "tests/test_sha256_cnf.py",
+                "tests/test_ripemd160_cnf.py",
+                "tests/test_parallel_sat.py",
+                "-v"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}",
+                "env": {
+                    "PYTHONPATH": "${workspaceFolder}/src"
+                }
+            },
+            "group": {
+                "kind": "test",
+                "isDefault": true
+            },
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "panel": "shared"
+            }
+        },
+        {
+            "label": "Verify SHA-256 SAT Models (Rounds 16-24)",
+            "type": "shell",
+            "command": "python",
+            "args": [
+                "-m",
+                "keylab.cli",
+                "hash-cnf-selftest",
+                "--hash",
+                "sha256",
+                "--rounds",
+                "16",
+                "18",
+                "20",
+                "22",
+                "24"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}",
+                "env": {
+                    "PYTHONPATH": "${workspaceFolder}/src"
+                }
+            },
+            "group": "test",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "panel": "shared"
+            }
+        },
+        {
+            "label": "Run Full Pytest Suite",
+            "type": "shell",
+            "command": "python",
+            "args": [
+                "-m",
+                "pytest",
+                "-v"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}",
+                "env": {
+                    "PYTHONPATH": "${workspaceFolder}/src"
+                }
+            },
+            "group": "test"
+        },
+        {
+            "label": "Run Ruff",
+            "type": "shell",
+            "command": "python",
+            "args": [
+                "-m",
+                "ruff",
+                "check",
+                "."
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "group": "build"
+        },
+        {
+            "label": "Run Strict Mypy on Dashboard and SAT Diagnostics",
+            "type": "shell",
+            "command": "python",
+            "args": [
+                "-m",
+                "mypy",
+                "--strict",
+                "dashboard",
+                "src/keylab/sat/diagnostics.py"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}",
+                "env": {
+                    "PYTHONPATH": "${workspaceFolder}/src"
+                }
+            },
+            "group": "build"
+        },
+        {
+            "label": "Run SAT Throughput Benchmark",
+            "type": "shell",
+            "command": "python",
+            "args": [
+                "-m",
+                "keylab.cli",
+                "sat-throughput-benchmark",
+                "--hash",
+                "sha256",
+                "--rounds",
+                "15",
+                "--cube-depth",
+                "4",
+                "--workers",
+                "1",
+                "2",
+                "4",
+                "8",
+                "--csv-output",
+                "${workspaceFolder}/benchmark_reports/scaling_results.csv"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}",
+                "env": {
+                    "PYTHONPATH": "${workspaceFolder}/src"
+                }
+            },
+            "group": "test"
+        },
+        {
+            "label": "Launch Benchmark Dashboard",
+            "type": "shell",
+            "command": "python",
+            "args": [
+                "-m",
+                "streamlit",
+                "run",
+                "dashboard/app.py"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}",
+                "env": {
+                    "PYTHONPATH": "${workspaceFolder}/src"
+                }
+            },
+            "isBackground": true,
+            "problemMatcher": []
+        }
+    ]
+}

@@ -1,0 +1,1 @@
+"""Reference hash implementations for research; not a general preimage-attack toolkit."""

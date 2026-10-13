@@ -1,0 +1,1 @@
+"""Educational elliptic-curve arithmetic; not constant-time and not a production wallet backend."""

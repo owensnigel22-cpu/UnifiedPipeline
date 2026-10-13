@@ -1,0 +1,1 @@
+"""Bitcoin-oriented encodings; decoding reveals encoded data, not private keys from hashes."""

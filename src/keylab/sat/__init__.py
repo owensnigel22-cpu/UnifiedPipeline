@@ -1,0 +1,1 @@
+"""SAT tooling for constrained toy/reduced cryptographic research, not unconstrained key inversion."""

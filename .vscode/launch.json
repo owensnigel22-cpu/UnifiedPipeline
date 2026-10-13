@@ -1,0 +1,245 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Keylab Self-Tests",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "keylab.cli",
+            "args": ["selftest"],
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}/src"
+            },
+            "console": "integratedTerminal",
+            "justMyCode": true
+        },
+        {
+            "name": "SAT Solver Smoke Tests",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "keylab.cli",
+            "args": ["sat-selftest"],
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}/src"
+            },
+            "console": "integratedTerminal",
+            "justMyCode": true
+        },
+        {
+            "name": "SHA-256 CNF Benchmark (Rounds 14-16)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "keylab.cli",
+            "args": [
+                "sha256-cnf-benchmark",
+                "--start-round",
+                "14",
+                "--end-round",
+                "16"
+            ],
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}/src"
+            },
+            "console": "integratedTerminal",
+            "justMyCode": true
+        },
+        {
+            "name": "SHA-256 Length Extension Demo",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "keylab.cli",
+            "args": [
+                "sha256-length-extension",
+                "--tag",
+                "33dd93031495b1e73b345ef5b7f494146d6c361908b4f2ad9cf7bbd35cffaa26",
+                "--message",
+                "6d657373616765",
+                "--secret-length",
+                "6",
+                "--suffix",
+                "2661646d696e3d74727565"
+            ],
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}/src"
+            },
+            "console": "integratedTerminal",
+            "justMyCode": true
+        },
+        {
+            "name": "Generate 16-Round SHA-256 CNF",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "keylab.cli",
+            "args": [
+                "sha256-cnf",
+                "--mode",
+                "hash",
+                "--target",
+                "0000000000000000000000000000000000000000000000000000000000000000",
+                "--rounds",
+                "16",
+                "--message-length",
+                "3",
+                "--output",
+                "${workspaceFolder}/sha256_16r.cnf"
+            ],
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}/src"
+            },
+            "console": "integratedTerminal",
+            "justMyCode": true
+        },
+        {
+            "name": "Generate 16-Step RIPEMD-160 CNF",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "keylab.cli",
+            "args": [
+                "ripemd160-cnf",
+                "--target",
+                "0000000000000000000000000000000000000000",
+                "--steps",
+                "16",
+                "--message-length",
+                "3",
+                "--output",
+                "${workspaceFolder}/ripemd160_16s.cnf"
+            ],
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}/src"
+            },
+            "console": "integratedTerminal",
+            "justMyCode": true
+        },
+        {
+            "name": "Pytest: RSA and Reduced-Round Verification",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "tests/test_rsa.py",
+                "tests/test_ripemd160_cnf.py",
+                "-v"
+            ],
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}/src"
+            },
+            "console": "integratedTerminal",
+            "justMyCode": true
+        },
+        {
+            "name": "SHA-256 CNF Cube-and-Conquer (14 Rounds, Depth 4)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "keylab.cli",
+            "args": [
+                "sha256-cnf",
+                "--mode",
+                "hash",
+                "--target",
+                "0000000000000000000000000000000000000000000000000000000000000000",
+                "--rounds",
+                "14",
+                "--message-length",
+                "3",
+                "--output",
+                "${workspaceFolder}/sha256_14r_cube.cnf",
+                "--solver",
+                "kissat",
+                "--cube-depth",
+                "4",
+                "--parallel-workers",
+                "4"
+            ],
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}/src"
+            },
+            "console": "integratedTerminal",
+            "justMyCode": true
+        },
+        {
+            "name": "Benchmark: Multi-Core Scaling (1 vs 2 vs 4 vs 8 Workers)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "keylab.sat.benchmark_throughput",
+            "args": [
+                "--hash",
+                "sha256",
+                "--rounds",
+                "15",
+                "--cube-depth",
+                "4",
+                "--workers",
+                "1",
+                "2",
+                "4",
+                "8",
+                "--csv-output",
+                "${workspaceFolder}/scaling_results.csv"
+            ],
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}/src"
+            },
+            "console": "integratedTerminal",
+            "justMyCode": true
+        },
+        {
+            "name": "SHA-256 Known-Input SAT Verification (Rounds 16, 18, 20, 22, 24)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "keylab.cli",
+            "args": [
+                "hash-cnf-selftest",
+                "--hash",
+                "sha256",
+                "--rounds",
+                "16",
+                "18",
+                "20",
+                "22",
+                "24"
+            ],
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}/src"
+            },
+            "console": "integratedTerminal",
+            "justMyCode": true
+        },
+        {
+            "name": "Profile SAT Throughput",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "cProfile",
+            "args": [
+                "-o",
+                "${workspaceFolder}/sat-throughput.prof",
+                "-m",
+                "keylab.cli",
+                "sat-throughput-benchmark",
+                "--rounds",
+                "15",
+                "--cube-depth",
+                "2",
+                "--workers",
+                "1",
+                "2"
+            ],
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}/src"
+            },
+            "console": "integratedTerminal",
+            "justMyCode": true
+        }
+    ]
+}
