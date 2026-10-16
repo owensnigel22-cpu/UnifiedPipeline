@@ -117,3 +117,21 @@ def test_mq_cnf_cli_rejects_malformed_json_schema(tmp_path) -> None:
         main(["mq-cnf", "--equations", str(equation_path)])
 
     assert exc_info.value.code == 2
+
+from keylab.sat.cnf import CNF
+
+
+def test_dimacs_pure_cnf() -> None:
+    cnf = CNF()
+
+    a = cnf.fresh_var()
+    b = cnf.fresh_var()
+
+    xor_ab = cnf.xor(a, b)
+
+    cnf.add_clause(xor_ab)
+
+    dimacs = cnf.to_dimacs()
+
+    assert dimacs.startswith("p cnf ")
+    assert "\nx " not in dimacs
