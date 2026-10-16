@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from functools import lru_cache
+from importlib.util import find_spec
 
 P = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEFFFFFC2F
 N = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141
@@ -99,10 +100,8 @@ def _scalar_mult_generator(scalar: int) -> Point:
     return _to_affine(result)
 
 
-def scalar_mult(scalar: int, point: Point = G) -> Point:
-    """Compute scalar times an affine point; variable-time reference operation."""
-    if scalar < 0:
-        raise ValueError("scalar must be non-negative")
+def _scalar_mult_python(scalar: int, point: Point) -> Point:
+    """Compute scalar times an affine point using the readable Python implementation."""
     if point is None or scalar == 0:
         return None
     if not is_on_curve(point):
@@ -117,6 +116,85 @@ def scalar_mult(scalar: int, point: Point = G) -> Point:
         addend = point_double(addend)
         scalar >>= 1
     return _to_affine(result)
+
+
+def _scalar_mult_coincurve(scalar: int, point: Point) -> Point:
+    """Use libsecp256k1 through coincurve for fast secp256k1 multiplication."""
+    from coincurve import PrivateKey, PublicKey
+
+    scalar_bytes = scalar.to_bytes(32, "big")
+    if point == G:
+        public_key = PrivateKey(scalar_bytes).public_key
+    else:
+        assert point is not None
+        public_key = PublicKey.from_point(*point).multiply(scalar_bytes)
+    encoded = public_key.format(compressed=False)
+    return int.from_bytes(encoded[1:33], "big"), int.from_bytes(encoded[33:65], "big")
+
+
+@lru_cache(maxsize=1)
+def _fastecdsa_curve():
+    from fastecdsa.curve import Curve
+
+    return Curve("secp256k1", P, 0, 7, N, G[0], G[1])
+
+
+def _scalar_mult_fastecdsa(scalar: int, point: Point) -> Point:
+    from fastecdsa.point import Point as FastPoint
+
+    assert point is not None
+    result = scalar * FastPoint(point[0], point[1], _fastecdsa_curve())
+    return int(result.x), int(result.y)
+
+
+def scalar_mult(
+    scalar: int,
+    point: Point = G,
+    *,
+    backend: str = "auto",
+) -> Point:
+    """Multiply a point, preferring installed native backends and retaining Python fallback.
+
+    ``backend`` may be ``auto``, ``python``, ``coincurve``, or ``fastecdsa``.
+    The Python implementation is retained as the reference path. For secret-key
+    operations, prefer a reviewed native library such as libsecp256k1.
+    """
+    if scalar < 0:
+        raise ValueError("scalar must be non-negative")
+    if backend not in {"auto", "python", "coincurve", "fastecdsa"}:
+        raise ValueError("backend must be auto, python, coincurve, or fastecdsa")
+    if point is None or scalar == 0:
+        return None
+    if not is_on_curve(point):
+        raise ValueError("point is not on secp256k1")
+    scalar %= N
+    if scalar == 0:
+        return None
+
+    if backend == "auto":
+        for name, operation in (
+            ("coincurve", _scalar_mult_coincurve),
+            ("fastecdsa", _scalar_mult_fastecdsa),
+        ):
+            if find_spec(name) is not None:
+                try:
+                    return operation(scalar, point)
+                except (ImportError, OSError):
+                    continue
+        return _scalar_mult_python(scalar, point)
+    if backend == "coincurve":
+        try:
+            return _scalar_mult_coincurve(scalar, point)
+        except ImportError as exc:
+            raise ImportError(
+                "install Keylab's coincurve extra: pip install 'keylab[secp256k1]'"
+            ) from exc
+    if backend == "fastecdsa":
+        try:
+            return _scalar_mult_fastecdsa(scalar, point)
+        except ImportError as exc:
+            raise ImportError("install Keylab's fastecdsa extra: pip install 'keylab[ecc-alt]'") from exc
+    return _scalar_mult_python(scalar, point)
 
 
 def compress_pubkey(point: Point) -> bytes:

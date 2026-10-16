@@ -12,6 +12,7 @@ from pathlib import Path
 from subprocess import run
 from typing import TextIO
 
+from keylab.backends import backend_info
 from keylab.encoding.address import address_to_target_hash
 from keylab.encoding.wif import decode as decode_wif
 from keylab.encoding.wif import encode as encode_wif
@@ -37,6 +38,7 @@ from keylab.hashes.sha256_cnf import (
 from keylab.numtheory.core import euler_check, extended_gcd, fermat_check, totient
 from keylab.numtheory.rsa import batch_gcd, hastad_broadcast, rsa_exponentiation_roundtrip
 from keylab.sat.anf import MQCNFEncoder
+from keylab.sat.backends import solve_cnf
 from keylab.sat.diagnostics import write_formula_diagnostics
 from keylab.sat.parallel import solve_parallel_cubes
 from keylab.sat.solver import SOLVER_CANDIDATES, find_solver, run_solver
@@ -1148,9 +1150,89 @@ def _mq_cnf(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
     return 0
 
 
+def _backend_status() -> int:
+    """Print installed optional backends and SAT dispatch candidates."""
+    from keylab.sat.backends import available_backends
+
+    print(json.dumps({"backends": backend_info(), "sat_dispatch_order": available_backends()}, sort_keys=True))
+    return 0
+
+
+def _sat_solve(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
+    """Read DIMACS CNF and solve it through the selected native SAT binding."""
+    try:
+        text = Path(args.input).read_text(encoding="ascii")
+    except OSError as exc:
+        parser.error(f"could not read DIMACS input: {exc}")
+
+    variable_count = None
+    expected_clauses = None
+    tokens: list[int] = []
+    for line in text.splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("c"):
+            continue
+        if stripped.startswith("p "):
+            header = stripped.split()
+            if len(header) != 4 or header[1] != "cnf":
+                parser.error("DIMACS header must have the form 'p cnf VARIABLES CLAUSES'")
+            try:
+                variable_count, expected_clauses = int(header[2]), int(header[3])
+            except ValueError:
+                parser.error("DIMACS header counts must be integers")
+            continue
+        try:
+            tokens.extend(int(token) for token in stripped.split())
+        except ValueError:
+            parser.error("DIMACS clause data must contain integer literals")
+    if variable_count is None or expected_clauses is None:
+        parser.error("DIMACS input must contain a problem header")
+    if variable_count < 0 or expected_clauses < 0:
+        parser.error("DIMACS header counts must be nonnegative")
+    if tokens and tokens[-1] != 0:
+        parser.error("DIMACS input ends with an unterminated clause")
+
+    clauses: list[list[int]] = []
+    current: list[int] = []
+    for literal in tokens:
+        if literal == 0:
+            clauses.append(current)
+            current = []
+        else:
+            if abs(literal) > variable_count:
+                parser.error("DIMACS clause references a variable outside the declared range")
+            current.append(literal)
+    if len(clauses) != expected_clauses:
+        parser.error("DIMACS clause count does not match the header")
+
+    try:
+        result = solve_cnf(clauses, backend=args.backend, solver_name=args.solver_name)
+    except (RuntimeError, ValueError, ImportError) as exc:
+        parser.error(str(exc))
+    print(
+        json.dumps(
+            {
+                "status": result.status,
+                "backend": result.backend,
+                "elapsed_seconds": result.elapsed_seconds,
+                "assignments": result.assignments,
+            },
+            sort_keys=True,
+        )
+    )
+    return 0 if result.status != "UNKNOWN" else 1
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="keylab", description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
+    commands.add_parser("backends", help="list installed optional crypto, math, and SAT backends")
+    sat_solve = commands.add_parser("sat-solve", help="solve a DIMACS file with an in-process native backend")
+    sat_solve.add_argument("--input", required=True, help="DIMACS CNF input file")
+    sat_solve.add_argument(
+        "--backend", choices=("auto", "pysat", "cryptosat", "pycosat"), default="auto"
+    )
+    sat_solve.add_argument("--solver-name", default="cadical195", help="PySAT solver name")
     commands.add_parser("selftest", help="run reference, arithmetic, WIF, and length-extension checks")
     solver_selftest = commands.add_parser(
         "sat-selftest",
@@ -1528,6 +1610,10 @@ def main(argv: list[str] | None = None) -> int:
     """Run the CLI without doing network activity or unconstrained key searches."""
     parser = build_parser()
     args = parser.parse_args(argv)
+    if args.command == "backends":
+        return _backend_status()
+    if args.command == "sat-solve":
+        return _sat_solve(args, parser)
     if args.command == "selftest":
         return _selftest()
     if args.command == "sat-selftest":

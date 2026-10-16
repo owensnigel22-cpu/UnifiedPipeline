@@ -6,6 +6,8 @@ from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
 from math import gcd, isqrt
 
+from keylab.backends import integer_nth_root, modular_pow
+
 _UINT64_LIMIT = 1 << 64
 _MILLER_RABIN_BASES_64 = (2, 325, 9375, 28178, 450775, 9780504, 1795265022)
 
@@ -60,8 +62,8 @@ def rsa_exponentiation_roundtrip(
     if not 0 <= message < modulus:
         raise ValueError("message must be between 0 and modulus - 1")
 
-    ciphertext = pow(message, public_exponent, modulus)
-    recovered_message = pow(ciphertext, private_exponent, modulus)
+    ciphertext = modular_pow(message, public_exponent, modulus)
+    recovered_message = modular_pow(ciphertext, private_exponent, modulus)
     return RSAExponentiationResult(message, ciphertext, recovered_message)
 
 
@@ -89,18 +91,8 @@ def batch_gcd(moduli: Iterable[int]) -> tuple[SharedFactorFinding, ...]:
 
 def _integer_nth_root(value: int, exponent: int) -> int | None:
     """Return the exact nonnegative integer root, or None when it is not exact."""
-    low = 0
-    high = 1 << ((value.bit_length() + exponent - 1) // exponent)
-    while low <= high:
-        middle = (low + high) // 2
-        candidate = middle**exponent
-        if candidate == value:
-            return middle
-        if candidate < value:
-            low = middle + 1
-        else:
-            high = middle - 1
-    return None
+    root, exact = integer_nth_root(value, exponent)
+    return root if exact else None
 
 
 def hastad_broadcast(
@@ -145,7 +137,7 @@ def hastad_broadcast(
 
     message = _integer_nth_root(combined_ciphertext, public_exponent)
     if message is None or any(
-        pow(message, public_exponent, modulus) != ciphertext
+        modular_pow(message, public_exponent, modulus) != ciphertext
         for ciphertext, modulus in zip(cipher_values, modulus_values)
     ):
         raise ValueError("CRT result is not an exact, verified integer power")

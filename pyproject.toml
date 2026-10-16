@@ -16,9 +16,28 @@ dependencies = [
 [project.optional-dependencies]
 dev = ["hypothesis>=6.100", "mypy>=1.10", "pytest>=8.0", "ruff>=0.5"]
 dashboard = ["pandas>=2.0", "pandas-stubs>=2.0", "streamlit>=1.40"]
+crypto = ["cryptography>=44.0"]
+crypto-alt = ["pycryptodome>=3.23"]
+secp256k1 = ["coincurve>=19.0.1,<20.0"]
+ecc-alt = ["fastecdsa>=3.0"]
+number-theory = ["gmpy2>=2.2"]
+sat-native = ["python-sat>=1.8.dev20", "pycosat>=0.6.6"]
+sat-certified = ["cdclkit>=0.1.3"]
+performance = ["cryptography>=44.0", "coincurve>=19.0.1,<20.0", "gmpy2>=2.2", "python-sat>=1.8.dev20"]
+all-backends = [
+    "cryptography>=44.0",
+    "pycryptodome>=3.23",
+    "coincurve>=19.0.1,<20.0",
+    "fastecdsa>=3.0",
+    "gmpy2>=2.2",
+    "python-sat>=1.8.dev20",
+    "pycosat>=0.6.6",
+    "cdclkit>=0.1.3",
+]
 
 [project.scripts]
 keylab = "keylab.cli:main"
+keylab-advanced = "keylab.advanced_suite:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

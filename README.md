@@ -321,3 +321,89 @@ patch application.
   obstruction.
 - Cryptographic code in this project is for education and research workflows;
   use well-reviewed libraries and standardized protocols for real security.
+
+## Advanced demonstration suite
+
+The modular `keylab` CLI and library remain the primary project interface. The
+v17 trace and demonstration suite is also available as an installable command:
+
+```powershell
+keylab-advanced --help
+```
+
+Examples:
+
+```powershell
+keylab-advanced --pubkey-advance <PUBLIC_KEY_HEX> --steps 100
+keylab-advanced --walkback-trace <ADDRESS_OR_PUBLIC_KEY>
+keylab-advanced --sha256-backward-ledger <64_HEX_DIGEST>
+keylab-advanced --sat-cnf <DIMACS_FILE>
+keylab-advanced --rsa-demo
+```
+
+The advanced command retains the script's public-point walkback/tracing,
+SHA-256 conditional backward ledger, SAT/CNF input, secp256k1 experiments,
+and RSA demonstrations. Existing package functionality remains available
+through `keylab` and its library modules.
+
+## Optional accelerated backends
+
+### Calling the RSA API from PowerShell
+
+Run Python source through the virtual-environment interpreter. PowerShell itself
+does not understand Python's `from` and `assert` statements:
+
+```powershell
+@'
+from keylab.crypto import generate_rsa_keypair, rsa_oaep_encrypt, rsa_oaep_decrypt
+
+keys = generate_rsa_keypair()
+message = b"hello from Keylab"
+ciphertext = rsa_oaep_encrypt(keys.public_key_pem, message)
+assert rsa_oaep_decrypt(keys.private_key_pem, ciphertext) == message
+print("RSA encryption round-trip passed")
+'@ | .\.venv\Scripts\python.exe -
+```
+
+Install the RSA implementation first from the `UnifiedPipeline` directory with
+`python -m pip install -e ".\keylab[crypto]"`.
+
+Install the recommended native-backed set from the `keylab` project directory:
+
+```powershell
+python -m pip install -e ".[performance]"
+```
+
+The extras stay optional so the pure-Python reference paths and existing
+install remain usable. Keylab selects Coincurve for secp256k1 multiplication
+when present, then `fastecdsa`, then its reference implementation. Large RSA
+modular powers and integer roots use `gmpy2` when installed. The secure RSA API
+in `keylab.crypto` uses `cryptography` with OAEP-SHA256 and PSS-SHA256; install
+`keylab[crypto-alt]` to use PyCryptodome as an alternative backend. Coincurve
+is pinned to 19.0.1 for broad Python 3.14 Windows wheel availability: 20.0.0
+has no Python 3.14 wheel and its source build currently errors on scikit-build
+configuration.
+
+Install the other comparison and research packages with:
+
+```powershell
+python -m pip install -e ".[all-backends]"
+```
+
+This includes PySAT, PycoSAT, and CDCLKit. For a certified CDCLKit command-line
+run, use `python -m cdclkit solve formula.cnf --self-check --check-model`.
+Native solver availability depends on the selected package and platform.
+
+Use `keylab backends` to see what is installed. To solve a DIMACS file through
+an in-process binding, run:
+
+```powershell
+keylab sat-solve --input formula.cnf --backend auto
+```
+
+Automatic SAT dispatch prefers PySAT, then the existing CryptoMiniSat binding,
+then PycoSAT. PySAT's solver can be selected with `--solver-name` (for example,
+`cadical195`). The built-in SAT/CNF encoders and external solver support remain
+available for benchmarking and reproducible research. Actual performance
+depends on the workload, Python build, native wheels, and machine; benchmark
+results should be measured locally rather than assumed from another system.
