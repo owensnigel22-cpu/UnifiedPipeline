@@ -49,6 +49,12 @@ import math
 import secrets
 import time
 
+from keylab.numtheory.core import (
+    mod_inverse_builtin,
+    mod_inverse_egcd,
+    mod_inverse_fermat,
+)
+
 # =============================================================================
 # secp256k1 Constants & Core Elliptic Curve Operations
 # =============================================================================
@@ -251,21 +257,11 @@ def field_inv(n: int, p: int = SECP256K1_P) -> int:
     n %= p
     if n == 0:
         raise ValueError("zero has no multiplicative inverse")
-    return pow(n, p - 2, p)
+    return mod_inverse_fermat(n, p)
 
 def eea_mod_inv(a: int, m: int = SECP256K1_P) -> int:
-    """Fast single modular inverse via Extended Euclidean Algorithm (~2.5x faster than Fermat)."""
-    if m <= 0:
-        raise ValueError("Modulus m must be positive")
-    old_r, r = a % m, m
-    old_s, s = 1, 0
-    while r != 0:
-        quotient = old_r // r
-        old_r, r = r, old_r - quotient * r
-        old_s, s = s, old_s - quotient * s
-    if old_r > 1:
-        raise ValueError(f"Multiplicative inverse does not exist: gcd({a}, {m}) = {old_r} != 1")
-    return old_s % m
+    """Compatibility wrapper for the iterative Extended Euclidean inverse."""
+    return mod_inverse_egcd(a, m)
 
 def batch_inv(vals: list[int], p: int = SECP256K1_P) -> list[int]:
     """
@@ -279,7 +275,7 @@ def batch_inv(vals: list[int], p: int = SECP256K1_P) -> list[int]:
         v_non_zero = v if v != 0 else 1
         prod.append((prod[-1] * v_non_zero) % p)
     
-    inv = pow(prod[-1], p - 2, p)
+    inv = mod_inverse_builtin(prod[-1], p)
     res = []
     for i in range(len(vals) - 1, -1, -1):
         v_non_zero = vals[i] if vals[i] != 0 else 1
@@ -289,7 +285,7 @@ def batch_inv(vals: list[int], p: int = SECP256K1_P) -> list[int]:
 
 def scalar_inv(d: int, n: int = SECP256K1_N) -> int:
     """Scalar multiplicative inverse d^(-1) mod N via Fermat's Little Theorem."""
-    return pow(d, n - 2, n)
+    return mod_inverse_fermat(d, n)
 
 def point_negate(pt: tuple[int, int]) -> tuple[int, int]:
     """Group additive inverse -P = (x, P - y mod P)."""
@@ -518,16 +514,24 @@ def scalar_multiplication_trace(k: int, pt: tuple[int, int] = SECP256K1_G) -> di
     return {"scalar": k, "bit_length": k.bit_length(), "hamming_weight": k.bit_count(),
             "result": jacobian_to_affine(result), "steps": rows}
 
-def modular_inverse_report(value: int, modulus: int) -> dict[str, int]:
-    """Compute an inverse when gcd(value, modulus)=1 and report the gcd."""
+def modular_inverse_report(value: int, modulus: int, method: str = "builtin") -> dict[str, int | str]:
+    """Compute a modular inverse with the selected method and report its check."""
     if modulus <= 1:
         raise ValueError("modulus must be greater than 1")
     gcd_value = math.gcd(value, modulus)
     if gcd_value != 1:
         raise ValueError(f"inverse does not exist: gcd(value, modulus) = {gcd_value}")
-    inverse = pow(value, -1, modulus)
+    methods = {
+        "builtin": mod_inverse_builtin,
+        "egcd": mod_inverse_egcd,
+        "fermat": mod_inverse_fermat,
+    }
+    try:
+        inverse = methods[method](value, modulus)
+    except KeyError as exc:
+        raise ValueError("method must be builtin, egcd, or fermat") from exc
     return {"value": value, "modulus": modulus, "gcd": gcd_value, "inverse": inverse,
-            "check": (value * inverse) % modulus}
+            "check": (value * inverse) % modulus, "method": method}
 
 def curve_add_geometry(p1: tuple[int, int], p2: tuple[int, int]) -> dict[str, object]:
     """Return the secant/tangent line and elliptic-curve sum of two points."""
@@ -545,9 +549,9 @@ def curve_add_geometry(p1: tuple[int, int], p2: tuple[int, int]) -> dict[str, ob
     if p1 == p2:
         if y1 == 0:
             return {"slope": None, "third_intersection": (x1, 0), "sum": (0, 0)}
-        slope = (3 * x1 * x1 * pow(2 * y1, -1, SECP256K1_P)) % SECP256K1_P
+        slope = (3 * x1 * x1 * mod_inverse_builtin(2 * y1, SECP256K1_P)) % SECP256K1_P
     else:
-        slope = ((y2 - y1) * pow((x2 - x1) % SECP256K1_P, -1, SECP256K1_P)) % SECP256K1_P
+        slope = ((y2 - y1) * mod_inverse_builtin(x2 - x1, SECP256K1_P)) % SECP256K1_P
     x3 = (slope * slope - x1 - x2) % SECP256K1_P
     y_line = (slope * (x3 - x1) + y1) % SECP256K1_P
     third = (x3, y_line)
@@ -1355,7 +1359,7 @@ def rsa_generate_keypair(bits: int = 2048, exponent: int = 65537) -> dict[str, i
             continue
         lam = math.lcm(p - 1, q - 1)
         if math.gcd(exponent, lam) == 1:
-            d = pow(exponent, -1, lam)
+            d = mod_inverse_builtin(exponent, lam)
             return {"n": n, "e": exponent, "d": d, "p": p, "q": q}
 
 def rsa_key_info(n: int, e: int, d: int | None = None, p: int | None = None, q: int | None = None) -> dict[str, object]:
@@ -1518,6 +1522,7 @@ def main():
     parser.add_argument("--walkback-trace", type=str, metavar='ADDRESS_OR_KEY', help="Parse an address/public key and report what can be known from it")
     parser.add_argument("--benchmark-mult", action="store_true", help="Benchmark generic NAF vs fixed-base multiplication and batch inversions")
     parser.add_argument("--mod-inv", nargs=2, type=lambda value: int(value, 0), metavar=('VALUE', 'MODULUS'), help="Compute VALUE inverse modulo MODULUS (decimal or 0x-prefixed)")
+    parser.add_argument("--mod-inv-method", choices=("builtin", "egcd", "fermat"), default="builtin", help="Inverse algorithm; Fermat requires a prime modulus")
     parser.add_argument("--mult-neg-g", type=lambda value: int(value, 0), metavar='SCALAR', help="Compute the group inverse -(SCALAR * G)")
     parser.add_argument("--trace-scalar", "--russian-mult", dest="trace_scalar", type=lambda value: int(value, 0), metavar='SCALAR', help="Trace left-to-right double-and-add scalar multiplication of G")
     parser.add_argument("--decompress-y", type=lambda value: int(value, 0), metavar='X', help="Lift x to the even-y secp256k1 point")
@@ -1560,6 +1565,8 @@ def main():
 
     if args.steps != 10 and not args.pubkey_advance:
         parser.error("--steps requires --pubkey-advance")
+    if args.mod_inv_method != "builtin" and not args.mod_inv:
+        parser.error("--mod-inv-method requires --mod-inv")
     rsa_actions = (args.rsa_keygen is not None, args.rsa_demo is not None, args.rsa_info, args.rsa_encrypt is not None, args.rsa_decrypt is not None, args.rsa_sign is not None, args.rsa_verify is not None)
     if sum(rsa_actions) > 1:
         parser.error("choose one RSA operation per invocation")
@@ -1596,8 +1603,8 @@ def main():
     try:
         if args.mod_inv:
             value, modulus = args.mod_inv
-            inv = modular_inverse_report(value, modulus)
-            print(f"\n[Modular Inverse] {inv['value']}^(-1) mod {inv['modulus']} = {inv['inverse']} (check={inv['check']})")
+            inv = modular_inverse_report(value, modulus, args.mod_inv_method)
+            print(f"\n[Modular Inverse: {inv['method']}] {inv['value']}^(-1) mod {inv['modulus']} = {inv['inverse']} (check={inv['check']})")
         if args.mult_neg_g is not None:
             scalar = args.mult_neg_g
             point = scalar_mult_g_fast(scalar)
