@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from keylab.encoding.base58 import check_decode, check_encode
 from keylab.ec.secp256k1 import N
+from keylab.encoding.base58 import check_decode, check_encode
 
 _VERSIONS = {"mainnet": 0x80, "testnet": 0xEF}
 _NETWORKS = {version: network for network, version in _VERSIONS.items()}
