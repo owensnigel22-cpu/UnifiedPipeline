@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
+import hashlib
+import hmac
 from functools import lru_cache
 from importlib.util import find_spec
+
+from keylab.numtheory.core import mod_inverse_builtin
 
 P = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEFFFFFC2F
 N = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141
@@ -24,6 +28,64 @@ def is_on_curve(point: Point) -> bool:
     )
 
 
+def point_negate_affine(point: Point) -> Point:
+    """Negate an affine secp256k1 point; infinity is represented by ``None``."""
+    if point is None:
+        return None
+    if not is_on_curve(point):
+        raise ValueError("point is not on secp256k1")
+    return point[0], (-point[1]) % P
+
+
+def point_add_affine(left: Point, right: Point) -> Point:
+    """Add affine secp256k1 points, returning ``None`` for the point at infinity.
+
+    This readable affine implementation is intended for geometry and learning.
+    Repeated operations should use the Jacobian-backed :func:`scalar_mult` API.
+    """
+    for point in (left, right):
+        if point is not None and not is_on_curve(point):
+            raise ValueError("point is not on secp256k1")
+    if left is None:
+        return right
+    if right is None:
+        return left
+
+    x1, y1 = left
+    x2, y2 = right
+    if x1 == x2 and (y1 + y2) % P == 0:
+        return None
+    if left == right:
+        slope = (3 * x1 * x1 * mod_inverse_builtin(2 * y1, P)) % P
+    else:
+        slope = ((y2 - y1) * mod_inverse_builtin(x2 - x1, P)) % P
+    x3 = (slope * slope - x1 - x2) % P
+    y3 = (slope * (x1 - x3) - y1) % P
+    return x3, y3
+
+
+def point_add_geometry(left: Point, right: Point) -> dict[str, object]:
+    """Explain affine secant/tangent addition, including its third intersection.
+
+    The third intersection is the reflection of the group sum across the
+    x-axis. For a vertical line it is the point at infinity (``None``).
+    """
+    total = point_add_affine(left, right)
+    if left is None or right is None:
+        return {"slope": None, "third_intersection": None, "sum": total}
+    x1, y1 = left
+    x2, y2 = right
+    if x1 == x2 and (y1 + y2) % P == 0:
+        return {"slope": None, "third_intersection": None, "sum": None}
+    if left == right:
+        slope = (3 * x1 * x1 * mod_inverse_builtin(2 * y1, P)) % P
+    else:
+        slope = ((y2 - y1) * mod_inverse_builtin(x2 - x1, P)) % P
+    assert total is not None
+    third_intersection = point_negate_affine(total)
+    return {"slope": slope, "third_intersection": third_intersection, "sum": total}
+
+
 def _to_jacobian(point: Point) -> Jacobian:
     return _INFINITY if point is None else (point[0], point[1], 1)
 
@@ -32,7 +94,7 @@ def _to_affine(point: Jacobian) -> Point:
     x, y, z = point
     if z % P == 0:
         return None
-    inverse = pow(z, P - 2, P)
+    inverse = mod_inverse_builtin(z, P)
     inverse2 = inverse * inverse % P
     return x * inverse2 % P, y * inverse2 * inverse % P
 
@@ -195,6 +257,76 @@ def scalar_mult(
         except ImportError as exc:
             raise ImportError("install Keylab's fastecdsa extra: pip install 'keylab[ecc-alt]'") from exc
     return _scalar_mult_python(scalar, point)
+
+
+def public_key_from_private_scalar(private_scalar: int, *, backend: str = "auto") -> tuple[int, int]:
+    """Derive secp256k1 public key ``Q = d*G`` for a valid private scalar ``d``."""
+    if type(private_scalar) is not int or not 1 <= private_scalar < N:
+        raise ValueError("private scalar must be an integer in [1, N-1]")
+    point = scalar_mult(private_scalar, G, backend=backend)
+    if point is None or not is_on_curve(point):
+        raise ArithmeticError("public-key multiplication returned an invalid point")
+    return point
+
+
+def _rfc6979_nonce(private_scalar: int, digest: bytes) -> int:
+    """Generate the deterministic ECDSA nonce from RFC 6979 using HMAC-SHA-256."""
+    octets = private_scalar.to_bytes(32, "big")
+    reduced_digest = (int.from_bytes(digest, "big") % N).to_bytes(32, "big")
+    value = b"\x01" * 32
+    key = b"\x00" * 32
+    key = hmac.new(key, value + b"\x00" + octets + reduced_digest, hashlib.sha256).digest()
+    value = hmac.new(key, value, hashlib.sha256).digest()
+    key = hmac.new(key, value + b"\x01" + octets + reduced_digest, hashlib.sha256).digest()
+    value = hmac.new(key, value, hashlib.sha256).digest()
+    while True:
+        value = hmac.new(key, value, hashlib.sha256).digest()
+        candidate = int.from_bytes(value, "big")
+        if 1 <= candidate < N:
+            return candidate
+        key = hmac.new(key, value + b"\x00", hashlib.sha256).digest()
+        value = hmac.new(key, value, hashlib.sha256).digest()
+
+
+def ecdsa_sign_digest(
+    digest: bytes, private_scalar: int, *, backend: str = "auto"
+) -> tuple[int, int]:
+    """Create a deterministic, low-S ECDSA signature over one 32-byte digest.
+
+    This readable Python signer is for learning and validation. Use a reviewed
+    constant-time native implementation for production secret-key signing.
+    """
+    if len(digest) != 32:
+        raise ValueError("digest must be exactly 32 bytes")
+    if type(private_scalar) is not int or not 1 <= private_scalar < N:
+        raise ValueError("private scalar must be an integer in [1, N-1]")
+    z = int.from_bytes(digest, "big")
+    nonce = _rfc6979_nonce(private_scalar, digest)
+    nonce_point = scalar_mult(nonce, G, backend=backend)
+    if nonce_point is None:
+        raise ArithmeticError("ECDSA nonce multiplication returned infinity")
+    r = nonce_point[0] % N
+    s = (pow(nonce, -1, N) * (z + r * private_scalar)) % N
+    if not r or not s:
+        raise ArithmeticError("RFC 6979 produced a degenerate ECDSA signature")
+    return r, min(s, N - s)
+
+
+def ecdsa_verify_digest(digest: bytes, signature: tuple[int, int], public_key: Point) -> bool:
+    """Verify a raw ``(r, s)`` ECDSA signature over a 32-byte digest."""
+    if len(digest) != 32 or public_key is None or not is_on_curve(public_key):
+        return False
+    if len(signature) != 2:
+        return False
+    r, s = signature
+    if type(r) is not int or type(s) is not int or not (1 <= r < N and 1 <= s < N):
+        return False
+    z = int.from_bytes(digest, "big")
+    inverse_s = pow(s, -1, N)
+    left = scalar_mult((z * inverse_s) % N, G)
+    right = scalar_mult((r * inverse_s) % N, public_key)
+    total = point_add_affine(left, right)
+    return total is not None and total[0] % N == r
 
 
 def compress_pubkey(point: Point) -> bytes:

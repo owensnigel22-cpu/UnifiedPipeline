@@ -85,6 +85,21 @@ public-key derivation. Arbitrary-point multiplication keeps the double-and-add
 path. This Python implementation is variable-time and is not suitable for
 production ECDSA signing or secret-key operations.
 
+For affine secp256k1 demonstrations, `keylab.ec` exports
+`point_add_affine`, `point_negate_affine`, and `point_add_geometry`. These
+validate curve points, represent the point at infinity as `None`, and expose
+the secant/tangent slope and third line intersection. Use the Jacobian-backed
+`scalar_mult` for repeated operations. The v9 attachment's SHA-256 ledger also
+contained hard-coded intermediate words unrelated to the provided digest;
+Keylab's existing backward ledger instead derives conditional values from its
+inputs and can reverse a supplied, known final compression block.
+
+`public_key_from_private_scalar(d)` derives and curve-checks `Q = d*G` for
+`1 <= d < n`. `ecdsa_sign_digest` uses RFC 6979 HMAC-SHA-256 nonces and
+canonical low-S signatures; `ecdsa_verify_digest` checks raw `(r, s)` pairs.
+These are reference Python routines for correctness work, not constant-time
+production signing. Prefer libsecp256k1/coincurve for secret-key operations.
+
 ## 3. Partial assignments and undetermined circuit state
 
 A SAT solver's complete model assigns values to every variable in that model.
@@ -143,6 +158,31 @@ The export can be loaded in a debugger or processed as JSON. `Tri.UNKNOWN` is
 reported for a node only when its value can vary over the completions of the
 current partial assignment.
 
+## Optional LLM-planned SHA-256 SAT partitions
+
+Install the optional API client and set your API key in the environment:
+
+```powershell
+python -m pip install -e ".[llm]"
+$env:OPENAI_API_KEY = "..."
+keylab sha256-agent-solve --target <64-hex-digest> --message-length 1 `
+  --rounds 15 --solver kissat --cube-depth 4 --parallel-workers 4
+```
+
+Two independent LLM roles propose message-input bit indices for the SAT cube
+partition. Keylab validates the suggestions, fills gaps deterministically, and
+searches the complete partition with the local SAT solver, stopping early if
+it finds a candidate. The API receives only model
+dimensions and bit-index bounds; the target digest, CNF, fixed-bit values, and
+candidate input are not sent. The LLM plan is a heuristic, not evidence of a
+speedup. The cube partition remains exhaustive over all assignments to the
+selected split bits, and a recovered candidate is checked locally. LLMs and
+SAT solvers do not make full-round SHA-256 preimage recovery practically
+feasible; use reduced-round models for bounded experiments. API usage may be
+billed by the provider.
+Use a target generated with the same round count. For `--rounds` below 64,
+this is Keylab's reduced-round SHA-256 experiment, not standard full SHA-256.
+
 ## 5. Local Markdown preview style
 
 The VS Code Markdown preview uses [the workspace stylesheet](.vscode/markdown.css).
@@ -162,6 +202,25 @@ the `a` recurrence reaches the boundary at round 59, where
 that relation. See the `sha256-backward-ledger` command for the equations and
 its stated assumptions. This is a numeric boundary analysis, not preimage
 recovery.
+
+When the exact 64-byte compression block is known, the reusable
+`sha256_reverse_compress` API and `keylab sha256-reverse-compress` command
+reverse all selected rounds from the feed-forward output state. The operation
+checks the block with a forward recomputation first and emits the intermediate
+working states. This strengthens round-by-round validation; it cannot reverse
+an unknown message block from a digest alone.
+
+To get the precise working state after round 32, pass the exact padded block
+to `sha256-backward-ledger` with `--block` and `--reverse-to-round 32`. The
+exact block makes the schedule known, and the tool first recomputes the
+supplied digest before returning that boundary state. To prepend any complete
+512-bit block to a suffix and check the full SHA-256 feed-forward, run:
+
+```powershell
+keylab sha256-forward-feed --prefix-block <128-hex-chars> --suffix <hex>
+```
+
+Its internal compression result is compared with `hashlib.sha256`.
 
 Cube-and-conquer in the current SHA-256 CLI assigns selected free **input
 bits**. The generated schedule words remain constrained by the CNF model;
@@ -345,6 +404,20 @@ The advanced command retains the script's public-point walkback/tracing,
 SHA-256 conditional backward ledger, SAT/CNF input, secp256k1 experiments,
 and RSA demonstrations. Existing package functionality remains available
 through `keylab` and its library modules.
+
+### Modular inverses in RSA and ECC
+
+The number-theory API exposes `mod_inverse_builtin`, `mod_inverse_egcd`, and
+`mod_inverse_fermat`. The RSA key generator and RSA analysis helpers use the
+built-in inverse for the exponent modulo the RSA totient; secp256k1 affine
+conversion and the advanced point-addition trace use it for field inverses.
+Fermat's method is only appropriate when the modulus is known prime.
+
+```powershell
+keylab-advanced --mod-inv 3 40
+keylab-advanced --mod-inv 3 40 --mod-inv-method egcd
+keylab-advanced --mod-inv 3 7 --mod-inv-method fermat
+```
 
 ## Optional accelerated backends
 

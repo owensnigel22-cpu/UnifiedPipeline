@@ -10,11 +10,119 @@ from keylab.hashes.reduced import (
     invert_choice_words,
     invert_majority_word,
     sha256_backward_trace,
+    sha256_forward_feed,
     sha256_reduced,
     sha256_reduced_stream,
+    sha256_reverse_compress,
     sha256_schedule_dependencies,
     sha256_schedule_words,
 )
+
+
+@pytest.mark.parametrize("rounds", [1, 8, 64])
+def test_sha256_known_block_reverse_trace_recovers_each_boundary(rounds: int) -> None:
+    block = bytes(range(64))
+    output = _sha_compress(block, (0x6A09E667, 0xBB67AE85, 0x3C6EF372, 0xA54FF53A,
+                                   0x510E527F, 0x9B05688C, 0x1F83D9AB, 0x5BE0CD19), rounds)
+    trace = sha256_reverse_compress(output, block, rounds=rounds)
+    assert trace.rounds == rounds
+    assert len(trace.working_states) == rounds + 1
+    assert trace.working_states[0] == trace.initial_state
+    assert tuple((value - initial) & 0xFFFFFFFF for value, initial in zip(output, trace.initial_state)) == (
+        trace.working_states[-1]
+    )
+
+
+def test_sha256_known_block_reverse_trace_rejects_wrong_block_or_output() -> None:
+    block = bytes(range(64))
+    output = _sha_compress(block, (0x6A09E667, 0xBB67AE85, 0x3C6EF372, 0xA54FF53A,
+                                   0x510E527F, 0x9B05688C, 0x1F83D9AB, 0x5BE0CD19), 8)
+    with pytest.raises(ValueError, match="do not compress"):
+        sha256_reverse_compress(output, bytes(reversed(block)), rounds=8)
+    with pytest.raises(ValueError, match="do not compress"):
+        sha256_reverse_compress((*output[:-1], output[-1] ^ 1), block, rounds=8)
+
+
+def test_sha256_reverse_compress_cli_emits_verified_state_trace(capsys) -> None:
+    block = bytes(range(64))
+    initial = (0x6A09E667, 0xBB67AE85, 0x3C6EF372, 0xA54FF53A,
+               0x510E527F, 0x9B05688C, 0x1F83D9AB, 0x5BE0CD19)
+    output = _sha_compress(block, initial, rounds=8)
+    initial_hex = b"".join(word.to_bytes(4, "big") for word in initial).hex()
+    output_hex = b"".join(word.to_bytes(4, "big") for word in output).hex()
+    assert main(
+        [
+            "sha256-reverse-compress",
+            "--output-state",
+            output_hex,
+            "--block",
+            block.hex(),
+            "--rounds",
+            "8",
+            "--initial-state",
+            initial_hex,
+        ]
+    ) == 0
+    result = json.loads(capsys.readouterr().out)
+    assert result["initial_state_verified"] is True
+    assert len(result["working_states"]) == 9
+    assert result["working_states"][0] == [f"{word:08x}" for word in initial]
+
+
+@pytest.mark.parametrize("suffix", [b"", b"short suffix", bytes(range(100))])
+def test_sha256_forward_feed_prepends_one_512_bit_block(suffix: bytes) -> None:
+    prefix_block = bytes(range(64))
+    trace = sha256_forward_feed(prefix_block, suffix)
+    assert trace.verified_against_hashlib is True
+    assert trace.digest == hashlib.sha256(prefix_block + suffix).digest()
+    assert all(len(block) == 64 for block in trace.padded_suffix_blocks)
+
+
+def test_sha256_forward_feed_cli_checks_expected_digest(capsys) -> None:
+    prefix_block = bytes(range(64))
+    suffix = b"appended bytes"
+    expected = hashlib.sha256(prefix_block + suffix).hexdigest()
+    assert main(
+        [
+            "sha256-forward-feed",
+            "--prefix-block",
+            prefix_block.hex(),
+            "--suffix",
+            suffix.hex(),
+            "--target",
+            expected,
+        ]
+    ) == 0
+    result = json.loads(capsys.readouterr().out)
+    assert result["prefix_block_bits"] == 512
+    assert result["forward_feed_verified_against_hashlib"] is True
+    assert result["target_matches"] is True
+
+
+def test_sha256_backward_ledger_can_reverse_known_block_to_round_32(capsys) -> None:
+    message = b"abc"
+    block = message + b"\x80" + b"\0" * (56 - len(message) - 1) + (len(message) * 8).to_bytes(8, "big")
+    target = hashlib.sha256(message).digest()
+    assert main(
+        [
+            "sha256-backward-ledger",
+            "--target",
+            target.hex(),
+            "--message-length",
+            str(len(message)),
+            "--known-message",
+            message.hex(),
+            "--block",
+            block.hex(),
+            "--reverse-to-round",
+            "32",
+        ]
+    ) == 0
+    result = json.loads(capsys.readouterr().out)
+    boundary = result["known_block_round_boundary"]
+    assert boundary["forward_feed_verified"] is True
+    assert boundary["state_after_round"] == 32
+    assert len(boundary["state_words"]) == 8
 
 
 @pytest.mark.parametrize("unknown_index", [0, 1, 2])

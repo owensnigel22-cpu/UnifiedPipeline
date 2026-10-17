@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
-from concurrent.futures import ProcessPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from itertools import product
 
@@ -145,9 +145,11 @@ def solve_parallel_cubes(
 ) -> ParallelCubeResult:
     """Solve a CNF under all selected cubes using independent solver processes.
 
-    Each worker runs an external SAT solver in a process pool. A SAT cube ends
-    the search early; otherwise the aggregate is UNKNOWN if any cube timed out
-    or returned UNKNOWN, and UNSAT only if every cube proved UNSAT.
+    Worker threads supervise independent external SAT solver processes. This
+    avoids Python process-pool startup and named-pipe overhead while retaining
+    concurrent solver execution. A SAT cube ends the search early; otherwise
+    the aggregate is UNKNOWN if any cube timed out or returned UNKNOWN, and
+    UNSAT only if every cube proved UNSAT.
     """
     if workers < 1:
         raise ValueError("workers must be positive")
@@ -161,7 +163,7 @@ def solve_parallel_cubes(
 
     completed = 0
     saw_unknown = False
-    with ProcessPoolExecutor(
+    with ThreadPoolExecutor(
         max_workers=workers,
         initializer=_initialize_cube_worker,
         initargs=(base_dimacs,),

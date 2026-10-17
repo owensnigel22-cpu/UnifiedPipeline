@@ -51,6 +51,26 @@ class SHA256BackwardTrace:
 
 
 @dataclass(frozen=True)
+class SHA256ReverseCompressionTrace:
+    """Working states recovered by reversing one SHA-256 compression block."""
+
+    rounds: int
+    initial_state: tuple[int, ...]
+    output_state: tuple[int, ...]
+    working_states: tuple[tuple[int, ...], ...]
+
+
+@dataclass(frozen=True)
+class SHA256ForwardFeedTrace:
+    """Feed-forward verification for a complete 64-byte prefix block plus suffix."""
+
+    prefix_state: tuple[int, ...]
+    padded_suffix_blocks: tuple[bytes, ...]
+    digest: bytes
+    verified_against_hashlib: bool
+
+
+@dataclass(frozen=True)
 class SHA256ScheduleNode:
     """One message-schedule word and its exact dependency names."""
 
@@ -388,6 +408,86 @@ def sha256_schedule_words(block: bytes) -> tuple[int, ...]:
             (words[index - 16] + sigma0 + words[index - 7] + sigma1) & _MASK
         )
     return tuple(words)
+
+
+def sha256_reverse_compress(
+    output_state: tuple[int, ...],
+    block: bytes,
+    *,
+    rounds: int = 64,
+    initial_state: tuple[int, ...] = _SHA_IV,
+) -> SHA256ReverseCompressionTrace:
+    """Reverse one compression block when its exact block and chaining state are known.
+
+    The output state is the state after feed-forward. Since every message
+    schedule word is known from the block, each round transition is invertible.
+    A forward recomputation validates the supplied block and states first.
+    This is a consistency tool, not a preimage attack.
+    """
+    if type(rounds) is not int or not 1 <= rounds <= 64:
+        raise ValueError("rounds must be between 1 and 64")
+    if len(output_state) != 8 or len(initial_state) != 8:
+        raise ValueError("output_state and initial_state must each contain eight words")
+    if any(type(word) is not int or not 0 <= word <= _MASK for word in output_state + initial_state):
+        raise ValueError("state words must be 32-bit unsigned integers")
+    if len(block) != 64:
+        raise ValueError("SHA-256 compression block must be exactly 64 bytes")
+    if _sha_compress(block, initial_state, rounds) != output_state:
+        raise ValueError("block and initial state do not compress to the supplied output state")
+
+    schedule = sha256_schedule_words(block)
+    working = tuple((word - initial) & _MASK for word, initial in zip(output_state, initial_state))
+    reverse_states = [working]
+    for index in range(rounds - 1, -1, -1):
+        a1, b1, c1, d1, e1, f1, g1, h1 = working
+        old_a, old_b, old_c = b1, c1, d1
+        old_e, old_f, old_g = f1, g1, h1
+        sigma0 = _ror(old_a, 2) ^ _ror(old_a, 13) ^ _ror(old_a, 22)
+        majority = (old_a & old_b) ^ (old_a & old_c) ^ (old_b & old_c)
+        t2 = (sigma0 + majority) & _MASK
+        t1 = (a1 - t2) & _MASK
+        old_d = (e1 - t1) & _MASK
+        sigma1 = _ror(old_e, 6) ^ _ror(old_e, 11) ^ _ror(old_e, 25)
+        choice = (old_e & old_f) ^ (~old_e & old_g)
+        old_h = (t1 - sigma1 - choice - _SHA_K[index] - schedule[index]) & _MASK
+        working = (old_a, old_b, old_c, old_d, old_e, old_f, old_g, old_h)
+        reverse_states.append(working)
+
+    if working != initial_state:
+        raise ArithmeticError("reverse trace did not recover the supplied initial state")
+    return SHA256ReverseCompressionTrace(
+        rounds=rounds,
+        initial_state=initial_state,
+        output_state=output_state,
+        working_states=tuple(reversed(reverse_states)),
+    )
+
+
+def sha256_forward_feed(prefix_block: bytes, suffix: bytes) -> SHA256ForwardFeedTrace:
+    """Prepend one complete 512-bit block, continue SHA-256, and verify feed-forward.
+
+    The first block is compressed from the SHA-256 IV without adding padding to
+    it. The suffix is then padded using the total byte length (64 + len(suffix)).
+    The internal compression result is checked against ``hashlib.sha256``.
+    """
+    if len(prefix_block) != 64:
+        raise ValueError("prefix_block must be exactly 64 bytes (512 bits)")
+    total_length = 64 + len(suffix)
+    if total_length > _SHA256_MAX_BYTES:
+        raise ValueError("message exceeds the SHA-256 64-bit length limit")
+    prefix_state = _sha_compress(prefix_block, _SHA_IV, 64)
+    tail = suffix + b"\x80"
+    tail += b"\0" * ((56 - len(tail) % 64) % 64)
+    tail += (total_length * 8).to_bytes(8, "big")
+    blocks = tuple(tail[offset : offset + 64] for offset in range(0, len(tail), 64))
+    final_state = prefix_state
+    for block in blocks:
+        final_state = _sha_compress(block, final_state, 64)
+    digest = b"".join(word.to_bytes(4, "big") for word in final_state)
+    reference = hashlib.sha256(prefix_block + suffix).digest()
+    if digest != reference:
+        raise ArithmeticError("SHA-256 forward-feed result disagrees with hashlib")
+    return SHA256ForwardFeedTrace(prefix_state, blocks, digest, True)
 
 
 def _byte_chunks(source: BinaryIO | Iterable[bytes]) -> Iterator[bytes]:

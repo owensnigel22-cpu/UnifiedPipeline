@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from math import gcd, isqrt
 
 from keylab.backends import integer_nth_root, modular_pow
+from keylab.numtheory.core import mod_inverse_builtin
 
 _UINT64_LIMIT = 1 << 64
 _MILLER_RABIN_BASES_64 = (2, 325, 9375, 28178, 450775, 9780504, 1795265022)
@@ -131,7 +132,7 @@ def hastad_broadcast(
     combined_ciphertext = 0
     for ciphertext, modulus in zip(cipher_values, modulus_values):
         partial_modulus = combined_modulus // modulus
-        inverse = pow(partial_modulus, -1, modulus)
+        inverse = mod_inverse_builtin(partial_modulus, modulus)
         combined_ciphertext += ciphertext * partial_modulus * inverse
     combined_ciphertext %= combined_modulus
 
@@ -230,7 +231,7 @@ def recover_rsa_private_key(
 
     totient = (p - 1) * (q - 1)
     try:
-        private_exponent = pow(public_exponent, -1, totient)
+        private_exponent = mod_inverse_builtin(public_exponent, totient)
     except ValueError as exc:
         raise ValueError("public_exponent must be coprime to the RSA totient") from exc
     return p, q, private_exponent

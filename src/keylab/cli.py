@@ -17,6 +17,7 @@ from keylab.encoding.address import address_to_target_hash
 from keylab.encoding.wif import decode as decode_wif
 from keylab.encoding.wif import encode as encode_wif
 from keylab.hashes.length_extension import sha256_length_extend
+from keylab.hashes.llm_agents import plan_sha256_cube_bits
 from keylab.hashes.reduced import (
     _sha_compress,
     invert_choice_words,
@@ -24,8 +25,10 @@ from keylab.hashes.reduced import (
     ripemd160,
     ripemd160_reduced,
     sha256_backward_trace,
+    sha256_forward_feed,
     sha256_reduced,
     sha256_reduced_stream,
+    sha256_reverse_compress,
     sha256_schedule_dependencies,
     sha256_schedule_words,
 )
@@ -735,6 +738,76 @@ def _sat_throughput_benchmark(args: argparse.Namespace, parser: argparse.Argumen
     return 0
 
 
+def _sha256_agent_solve(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
+    """Use LLM-planned cube-variable ordering with local SAT and hash verification."""
+    if args.timeout <= 0:
+        parser.error("--timeout must be positive")
+    if args.parallel_workers < 1:
+        parser.error("--parallel-workers must be positive")
+    fixed_bits: dict[int, int] = {}
+    for index, value in args.fix_bit:
+        if index in fixed_bits and fixed_bits[index] != value:
+            parser.error(f"input bit {index} was fixed to conflicting values")
+        fixed_bits[index] = value
+    try:
+        model = sha256_hash_preimage_cnf(
+            args.target,
+            message_length=args.message_length,
+            rounds=args.rounds,
+            fixed_bits=fixed_bits,
+        )
+        agent_plan = plan_sha256_cube_bits(
+            rounds=args.rounds,
+            message_length=args.message_length,
+            input_bit_count=len(model.input_bits),
+            clause_count=model.clause_count,
+            variable_count=model.variable_count,
+            depth=args.cube_depth,
+            fixed_bit_indices=set(model.fixed_bits),
+            model=args.agent_model,
+        )
+    except (ImportError, RuntimeError, ValueError) as exc:
+        parser.error(str(exc))
+
+    available = tuple(
+        variable for index, variable in enumerate(model.input_bits) if index not in model.fixed_bits
+    )
+    selected_variables = tuple(model.input_bits[index] for index in agent_plan.bit_indices)
+    selected = set(selected_variables)
+    variable_order = selected_variables + tuple(variable for variable in available if variable not in selected)
+    result = solve_parallel_cubes(
+        args.solver,
+        model.to_dimacs(),
+        variable_order,
+        depth=args.cube_depth,
+        workers=args.parallel_workers,
+        timeout=args.timeout,
+    )
+    output: dict[str, object] = {
+        "status": result.status,
+        "rounds": args.rounds,
+        "message_length": args.message_length,
+        "cube_depth": result.cube_depth,
+        "cube_total": result.total_cubes,
+        "cube_completed": result.completed_cubes,
+        "agent_model": args.agent_model,
+        "agent_bit_indices": list(agent_plan.bit_indices),
+        "agent_suggestions": {role: list(bits) for role, bits in agent_plan.agent_suggestions.items()},
+        "agent_warnings": list(agent_plan.warnings),
+        "verified": False,
+    }
+    if result.status == "SATISFIABLE":
+        candidate = model.recover_input(result.assignments)
+        verified = sha256_reduced(candidate, args.rounds) == args.target
+        output["verified"] = verified
+        if verified:
+            output["candidate_hex"] = candidate.hex()
+        else:
+            output["verification_error"] = "SAT assignment did not reproduce the target digest"
+    print(json.dumps(output, indent=2, sort_keys=True))
+    return 1 if result.status == "UNKNOWN" or output["verified"] is False and result.status == "SATISFIABLE" else 0
+
+
 def _hash_cnf_selftest(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
     message = args.message
     solver = args.solver if args.solver is not None else find_solver()
@@ -839,6 +912,32 @@ def _sha256_backward_ledger(args: argparse.Namespace, parser: argparse.ArgumentP
         trace = sha256_backward_trace(args.target, rounds=args.rounds)
     except ValueError as exc:
         parser.error(str(exc))
+    block_reverse_report: dict[str, object] | None = None
+    if args.reverse_to_round is not None:
+        if args.block is None:
+            parser.error("--reverse-to-round requires --block with the exact 64-byte padded block")
+        if len(args.target) != 32:
+            parser.error("--target must be exactly 32 bytes")
+        if not 0 <= args.reverse_to_round <= args.rounds:
+            parser.error("--reverse-to-round must be between 0 and --rounds")
+        output_state = tuple(
+            int.from_bytes(args.target[offset : offset + 4], "big")
+            for offset in range(0, 32, 4)
+        )
+        try:
+            exact_trace = sha256_reverse_compress(
+                output_state, args.block, rounds=args.rounds
+            )
+        except ValueError as exc:
+            parser.error(f"known block forward-feed verification failed: {exc}")
+        boundary_state = exact_trace.working_states[args.reverse_to_round]
+        block_reverse_report = {
+            "forward_feed_verified": True,
+            "block_hex": args.block.hex(),
+            "state_after_round": args.reverse_to_round,
+            "state_words": [f"{word:08x}" for word in boundary_state],
+            "round_numbering": "state_after_round 0 is the initial chaining state; 32 is after rounds 0..31",
+        }
     schedule_nodes = sha256_schedule_dependencies(args.rounds)
     schedule_analysis: dict[str, object] = {
         "word_count": len(schedule_nodes),
@@ -1036,6 +1135,8 @@ def _sha256_backward_ledger(args: argparse.Namespace, parser: argparse.ArgumentP
         },
         "candidate_recovered": False,
     }
+    if block_reverse_report is not None:
+        output["known_block_round_boundary"] = block_reverse_report
     serialized = json.dumps(output, indent=2, sort_keys=True) + "\n"
     if args.output == "-":
         sys.stdout.write(serialized)
@@ -1068,6 +1169,68 @@ def _sha256_stream(args: argparse.Namespace, parser: argparse.ArgumentParser) ->
         parser.error(str(exc))
     print(digest.hex())
     return 0
+
+
+def _sha256_reverse_compress_cli(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
+    if len(args.output_state) != 32:
+        parser.error("--output-state must be exactly 32 bytes (64 hex characters)")
+    if len(args.initial_state) != 32:
+        parser.error("--initial-state must be exactly 32 bytes (64 hex characters)")
+    output_state = tuple(
+        int.from_bytes(args.output_state[offset : offset + 4], "big")
+        for offset in range(0, 32, 4)
+    )
+    initial_state = tuple(
+        int.from_bytes(args.initial_state[offset : offset + 4], "big")
+        for offset in range(0, 32, 4)
+    )
+    try:
+        trace = sha256_reverse_compress(
+            output_state,
+            args.block,
+            rounds=args.rounds,
+            initial_state=initial_state,
+        )
+    except ValueError as exc:
+        parser.error(str(exc))
+    print(
+        json.dumps(
+            {
+                "rounds": trace.rounds,
+                "initial_state_verified": True,
+                "output_state_hex": args.output_state.hex(),
+                "working_states": [
+                    [f"{word:08x}" for word in state] for state in trace.working_states
+                ],
+            },
+            sort_keys=True,
+        )
+    )
+    return 0
+
+
+def _sha256_forward_feed_cli(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
+    try:
+        trace = sha256_forward_feed(args.prefix_block, args.suffix)
+    except (ValueError, ArithmeticError) as exc:
+        parser.error(str(exc))
+    target_matches = None if args.target is None else trace.digest == args.target
+    print(
+        json.dumps(
+            {
+                "prefix_block_bits": len(args.prefix_block) * 8,
+                "prefix_block_hex": args.prefix_block.hex(),
+                "suffix_hex": args.suffix.hex(),
+                "prefix_chaining_state": [f"{word:08x}" for word in trace.prefix_state],
+                "padded_suffix_blocks_hex": [block.hex() for block in trace.padded_suffix_blocks],
+                "digest_hex": trace.digest.hex(),
+                "forward_feed_verified_against_hashlib": trace.verified_against_hashlib,
+                "target_matches": target_matches,
+            },
+            sort_keys=True,
+        )
+    )
+    return 0 if target_matches is not False else 1
 
 
 def _mq_cnf(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
@@ -1402,6 +1565,26 @@ def build_parser() -> argparse.ArgumentParser:
         default="direct",
         help="three-input XOR encoding: direct eight-clause gate or two XOR2 gates",
     )
+    agent_solve = commands.add_parser(
+        "sha256-agent-solve",
+        help="use optional LLM heuristics to choose a bounded SHA-256 SAT cube partition",
+        description=(
+            "LLM agents suggest input-bit split order only. The target digest and candidate stay local; "
+            "the SAT solver checks every cube and Keylab verifies any candidate."
+        ),
+    )
+    agent_solve.add_argument("--target", type=_hex_bytes, required=True, help="32-byte target digest in hex")
+    agent_solve.add_argument("--message-length", type=int, required=True, help="exact message length in bytes")
+    agent_solve.add_argument("--rounds", type=int, default=15, help="round count from 1 to 64")
+    agent_solve.add_argument("--solver", required=True, help="external SAT solver executable")
+    agent_solve.add_argument("--agent-model", default="gpt-4.1-mini", help="OpenAI API model for planner roles")
+    agent_solve.add_argument("--cube-depth", type=int, default=4, help="split into 2**depth complete cubes (1..16)")
+    agent_solve.add_argument("--parallel-workers", type=int, default=4, help="maximum solver worker processes")
+    agent_solve.add_argument("--timeout", type=float, default=60.0, help="timeout per SAT cube in seconds")
+    agent_solve.add_argument(
+        "--fix-bit", action="append", type=_fixed_bit, default=[], metavar="INDEX=0|1",
+        help="fix an input bit locally; repeatable",
+    )
     ripemd_cnf = commands.add_parser(
         "ripemd160-cnf",
         help="generate or solve a fixed-length reduced/full-step RIPEMD-160 preimage model",
@@ -1569,6 +1752,27 @@ def build_parser() -> argparse.ArgumentParser:
     )
     sha_stream.add_argument("--input", default="-", help="binary input file path, or - for stdin")
     sha_stream.add_argument("--rounds", type=int, default=64, help="round count from 1 to 64")
+    reverse_compress = commands.add_parser(
+        "sha256-reverse-compress",
+        help="reverse every SHA-256 compression round when the exact block is known",
+        description=(
+            "Check an exact 64-byte block against a compression output state, then emit all recovered "
+            "working states. This validates known-block round inversion; it does not recover unknown blocks."
+        ),
+    )
+    reverse_compress.add_argument("--output-state", type=_hex_bytes, required=True, help="32-byte feed-forward output state")
+    reverse_compress.add_argument("--block", type=_hex_bytes, required=True, help="exact 64-byte compression block")
+    reverse_compress.add_argument("--rounds", type=int, default=64, help="compression rounds from 1 to 64")
+    reverse_compress.add_argument(
+        "--initial-state",
+        type=_hex_bytes,
+        default=b"".join(
+            word.to_bytes(4, "big")
+            for word in (0x6A09E667, 0xBB67AE85, 0x3C6EF372, 0xA54FF53A,
+                         0x510E527F, 0x9B05688C, 0x1F83D9AB, 0x5BE0CD19)
+        ),
+        help="32-byte starting chaining state; defaults to the SHA-256 IV",
+    )
     backward_ledger = commands.add_parser(
         "sha256-backward-ledger",
         help="trace the numeric SHA-256 state window before its unresolved E-state boundary",
@@ -1603,6 +1807,27 @@ def build_parser() -> argparse.ArgumentParser:
             "whether the message matches the supplied target"
         ),
     )
+    backward_ledger.add_argument(
+        "--block",
+        type=_hex_bytes,
+        help="exact 64-byte padded compression block; enables complete reverse trace",
+    )
+    backward_ledger.add_argument(
+        "--reverse-to-round",
+        type=int,
+        help="report the exact working state after this many rounds (for example 32); requires --block",
+    )
+    forward_feed = commands.add_parser(
+        "sha256-forward-feed",
+        help="prepend an exact 512-bit block and verify SHA-256 forward feed-forward",
+        description=(
+            "Treat --prefix-block as the first complete SHA-256 block, append --suffix, "
+            "pad with the full message length, and cross-check the resulting digest with hashlib."
+        ),
+    )
+    forward_feed.add_argument("--prefix-block", type=_hex_bytes, required=True, help="exact 64-byte (512-bit) prefix block")
+    forward_feed.add_argument("--suffix", type=_hex_bytes, default=b"", help="bytes appended after the prefix block, in hex")
+    forward_feed.add_argument("--target", type=_hex_bytes, help="optional expected 32-byte SHA-256 digest")
     return parser
 
 
@@ -1636,6 +1861,8 @@ def main(argv: list[str] | None = None) -> int:
         return _sha256_choice_invert(args, parser)
     if args.command == "sha256-cnf":
         return _sha256_cnf(args, parser)
+    if args.command == "sha256-agent-solve":
+        return _sha256_agent_solve(args, parser)
     if args.command == "ripemd160-cnf":
         return _ripemd160_cnf(args, parser)
     if args.command == "sha256-prefix-cnf":
@@ -1654,6 +1881,12 @@ def main(argv: list[str] | None = None) -> int:
         return _address_hash(args, parser)
     if args.command == "sha256-stream":
         return _sha256_stream(args, parser)
+    if args.command == "sha256-reverse-compress":
+        return _sha256_reverse_compress_cli(args, parser)
+    if args.command == "sha256-forward-feed":
+        if args.target is not None and len(args.target) != 32:
+            parser.error("--target must be exactly 32 bytes")
+        return _sha256_forward_feed_cli(args, parser)
     if args.command == "sha256-backward-ledger":
         return _sha256_backward_ledger(args, parser)
     print(f"{args.command}: not yet implemented", file=sys.stderr)
