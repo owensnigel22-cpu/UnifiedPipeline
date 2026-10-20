@@ -2,16 +2,10 @@
 
 from __future__ import annotations
 
-import hashlib
 import secrets
 
 from keylab.ec.secp256k1 import G, N, P, point_add_affine, point_negate_affine, scalar_mult
-
-
-def tagged_hash(tag: str, message: bytes) -> bytes:
-    """Compute the BIP-340 tagged SHA-256 construction."""
-    tag_hash = hashlib.sha256(tag.encode("ascii")).digest()
-    return hashlib.sha256(tag_hash + tag_hash + message).digest()
+from keylab.hashes.tagged import tagged_hash
 
 
 def _lift_x_even(x: int) -> tuple[int, int] | None:
@@ -98,3 +92,4 @@ def schnorr_verify(message: bytes, signature: bytes, public_key_x: bytes) -> boo
 
 
 __all__ = ["schnorr_public_key", "schnorr_sign", "schnorr_verify", "tagged_hash"]
+
