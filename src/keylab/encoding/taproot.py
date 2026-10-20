@@ -6,17 +6,12 @@ Script or validate spending conditions such as signatures and timelocks.
 
 from __future__ import annotations
 
-import hashlib
 from collections.abc import Sequence
 from dataclasses import dataclass
 
 from keylab.ec.secp256k1 import G, N, P, is_on_curve, point_add_affine, scalar_mult
 from keylab.encoding.bech32 import encode_segwit_address
-
-
-def tagged_hash(tag: str, message: bytes) -> bytes:
-    tag_hash = hashlib.sha256(tag.encode("ascii")).digest()
-    return hashlib.sha256(tag_hash + tag_hash + message).digest()
+from keylab.hashes.tagged import tagged_hash
 
 
 def lift_x(x: int) -> tuple[int, int]:
@@ -83,7 +78,9 @@ def _taproot_output(
     tweak = int.from_bytes(tweak_bytes, "big")
     if tweak >= N:
         raise ValueError("TapTweak hash is outside the curve order")
-    output = point_add_affine(internal, scalar_mult(tweak, G))
+    # ``auto`` uses coincurve/fastecdsa when available and Keylab's fixed-base
+    # generator table otherwise; the tweak is always a multiple of G.
+    output = point_add_affine(internal, scalar_mult(tweak, G, backend="auto"))
     if output is None:
         raise ValueError("Taproot tweak produced the point at infinity")
     output_x, output_y = output
@@ -157,3 +154,4 @@ def verify_taproot_script_path(output_key_x: bytes, script: bytes, control_block
 
 __all__ = ["TaprootOutput", "lift_x", "tagged_hash", "tapbranch_hash", "tapleaf_hash",
            "taproot_control_block", "taproot_output", "taproot_output_from_point", "verify_taproot_script_path"]
+
