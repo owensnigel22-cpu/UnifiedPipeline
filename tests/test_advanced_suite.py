@@ -37,4 +37,3 @@ def test_rfc6979_trace_matches_shared_nonce_api() -> None:
     trace = rfc6979_trace(private_scalar, message)
 
     assert trace["rfc6979_k_hex"] == f"0x{rfc6979_nonce_from_digest(private_scalar, digest):064x}"
-

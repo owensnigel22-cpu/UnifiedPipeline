@@ -19,4 +19,3 @@ def tagged_hash(tag: str, message: bytes) -> bytes:
 
 
 __all__ = ["tagged_hash"]
-
