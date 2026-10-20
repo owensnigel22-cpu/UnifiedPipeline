@@ -2,7 +2,7 @@ import hashlib
 
 import pytest
 
-from keylab.advanced_suite import batch_inv, rfc6979_deterministic_nonce
+from keylab.advanced_suite import batch_inv, rfc6979_deterministic_nonce, rfc6979_trace
 from keylab.ec.secp256k1 import rfc6979_nonce_from_digest
 
 
@@ -28,3 +28,13 @@ def test_advanced_suite_rfc6979_wrapper_matches_shared_digest_api() -> None:
     nonce = rfc6979_nonce_from_digest(private_scalar, digest)
 
     assert rfc6979_deterministic_nonce(private_scalar, int.from_bytes(digest, "big")) == nonce
+
+
+def test_rfc6979_trace_matches_shared_nonce_api() -> None:
+    private_scalar = 7
+    message = "Trace consistency check"
+    digest = hashlib.sha256(message.encode("utf-8")).digest()
+    trace = rfc6979_trace(private_scalar, message)
+
+    assert trace["rfc6979_k_hex"] == f"0x{rfc6979_nonce_from_digest(private_scalar, digest):064x}"
+
