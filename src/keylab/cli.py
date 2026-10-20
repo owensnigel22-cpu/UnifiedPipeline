@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import getpass
 import hashlib
 import json
 import sys
@@ -13,9 +14,17 @@ from subprocess import run
 from typing import TextIO
 
 from keylab.backends import backend_info
+from keylab.benchmarks import (
+    available_scalar_backends,
+    benchmark_hash160_only,
+    benchmark_synthetic_wifs,
+    benchmark_wif_file,
+    benchmark_wif_to_pubkey,
+)
 from keylab.encoding.address import address_to_target_hash
 from keylab.encoding.wif import decode as decode_wif
 from keylab.encoding.wif import encode as encode_wif
+from keylab.feature_audit import feature_audit
 from keylab.hashes.length_extension import sha256_length_extend
 from keylab.hashes.llm_agents import plan_sha256_cube_bits
 from keylab.hashes.reduced import (
@@ -1158,6 +1167,67 @@ def _address_hash(args: argparse.Namespace, parser: argparse.ArgumentParser) -> 
     return 0
 
 
+def _wif_derive(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
+    """Derive address formats from an interactive WIF, with private output opt-in."""
+    from keylab.encoding.address import derive_addresses_from_wif
+
+    wif = args.wif if args.wif is not None else getpass.getpass("WIF (input hidden): ")
+    try:
+        result = derive_addresses_from_wif(wif, reveal_private=args.show_private)
+    except (TypeError, ValueError, RuntimeError) as exc:
+        parser.error(str(exc))
+    if args.show_private:
+        result["notice"] = "Private key hex included by explicit request; do not save or share this output."
+    if args.show_wif:
+        result["wif"] = wif
+    print(json.dumps(result, sort_keys=True))
+    return 0
+
+
+def _sha256_symbolic_roundtrip(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
+    """Solve a tiny free-input SHA model and independently verify the candidate."""
+    if not 1 <= args.rounds <= 64:
+        parser.error("--rounds must be between 1 and 64")
+    if len(args.message) > 55:
+        parser.error("--message must be at most 55 bytes for this one-block symbolic check")
+    from keylab.hashes.reduced import sha256_reduced
+    from keylab.hashes.sha256_cnf import sha256_hash_preimage_cnf
+
+    target = sha256_reduced(args.message, rounds=args.rounds)
+    try:
+        model = sha256_hash_preimage_cnf(
+            target,
+            message_length=len(args.message),
+            rounds=args.rounds,
+            xor3_encoding=args.xor3_encoding,
+        )
+        result = solve_cnf(
+            model.formula.clauses,
+            backend=args.backend,
+            solver_name=args.solver_name,
+        )
+    except (ImportError, RuntimeError, ValueError) as exc:
+        parser.error(str(exc))
+    report: dict[str, object] = {
+        "mode": "sha256-symbolic-roundtrip",
+        "rounds": args.rounds,
+        "message_length": len(args.message),
+        "variables": model.variable_count,
+        "clauses": model.clause_count,
+        "backend": result.backend,
+        "solver_status": result.status,
+    }
+    if result.status == "SATISFIABLE":
+        candidate = model.recover_input(result.assignments)
+        report["candidate_hex"] = candidate.hex()
+        report["target_verified"] = sha256_reduced(candidate, args.rounds) == target
+        report["matches_fixture"] = candidate == args.message
+    else:
+        report["target_verified"] = False
+    print(json.dumps(report, sort_keys=True))
+    return 0 if result.status == "SATISFIABLE" and report["target_verified"] else 1
+
+
 def _sha256_stream(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
     try:
         if args.input == "-":
@@ -1321,6 +1391,64 @@ def _backend_status() -> int:
     return 0
 
 
+def _feature_audit() -> int:
+    """Print source/test-file evidence without overstating executed checks."""
+    print(json.dumps({"audit": feature_audit()}, indent=2, sort_keys=True))
+    return 0
+
+
+def _benchmark_pubkey(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
+    backends = available_scalar_backends() if args.backend == "all" else (args.backend,)
+    if not backends:
+        parser.error("--backend all found no usable scalar multiplication backends")
+    reports = []
+    for backend in backends:
+        try:
+            reports.append(benchmark_wif_to_pubkey(args.iterations, warmup=args.warmup, backend=backend))
+        except (ImportError, OSError, ValueError, ArithmeticError) as exc:
+            parser.error(f"benchmark failed for backend {backend}: {exc}")
+    print(json.dumps({"benchmark": "wif-to-compressed-pubkey", "reports": reports}, sort_keys=True))
+    return 0
+
+
+def _benchmark_wifs(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
+    """Benchmark a random synthetic corpus or WIFs loaded from a local file."""
+    backends = available_scalar_backends() if args.backend == "all" else (args.backend,)
+    reports = []
+    for backend in backends:
+        try:
+            if args.wif_file:
+                report = benchmark_wif_file(
+                    args.wif_file,
+                    backend=backend,
+                    derive_addresses=not args.no_addresses,
+                    address_types=args.addresses,
+                    warmup=args.warmup,
+                )
+            else:
+                report = benchmark_synthetic_wifs(
+                    args.count,
+                    backend=backend,
+                    derive_addresses=not args.no_addresses,
+                    address_types=args.addresses,
+                    warmup=args.warmup,
+                )
+        except (ImportError, OSError, ValueError, ArithmeticError) as exc:
+            parser.error(f"multi-WIF benchmark failed for backend {backend}: {exc}")
+        reports.append(report)
+    print(json.dumps({"reports": reports}, sort_keys=True))
+    return 0
+
+
+def _benchmark_hash160(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
+    try:
+        report = benchmark_hash160_only(args.count, backend=args.backend)
+    except (ImportError, OSError, ValueError, ArithmeticError) as exc:
+        parser.error(f"HASH160 benchmark failed: {exc}")
+    print(json.dumps(report, sort_keys=True))
+    return 0
+
+
 def _sat_solve(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
     """Read DIMACS CNF and solve it through the selected native SAT binding."""
     try:
@@ -1390,6 +1518,43 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="keylab", description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
     commands.add_parser("backends", help="list installed optional crypto, math, and SAT backends")
+    commands.add_parser("feature-audit", help="report implemented features and available evidence files")
+    pubkey_benchmark = commands.add_parser(
+        "benchmark-pubkey",
+        help="measure WIF decode, scalar multiplication, and compressed public-key formatting",
+    )
+    pubkey_benchmark.add_argument("--iterations", "--count", dest="iterations", type=int, default=1_000)
+    pubkey_benchmark.add_argument("--warmup", type=int, default=20)
+    pubkey_benchmark.add_argument(
+        "--backend", choices=("auto", "python", "python-affine-window", "python-glv", "python-wnaf", "coincurve", "fastecdsa", "all"), default="auto"
+    )
+    wif_benchmark = commands.add_parser(
+        "benchmark-wifs",
+        help="benchmark many synthetic WIFs or a local newline-delimited WIF corpus",
+        description="Reports stage timings only; it never prints WIFs, scalars, public keys, or derived addresses.",
+    )
+    wif_benchmark.add_argument("--count", type=int, default=1_000, help="synthetic WIF count (1..1,000,000)")
+    wif_benchmark.add_argument("--wif-file", help="text file with one WIF per line; blank lines and # comments are ignored")
+    wif_benchmark.add_argument("--warmup", type=int, default=3)
+    wif_benchmark.add_argument("--backend", choices=("auto", "python", "python-affine-window", "python-glv", "python-wnaf", "coincurve", "fastecdsa", "all"), default="auto")
+    wif_benchmark.add_argument(
+        "--addresses",
+        nargs="+",
+        choices=("p2pkh", "p2sh_p2wpkh", "p2wpkh", "p2tr"),
+        help="address types to time (default: all types supported by each WIF)",
+    )
+    wif_benchmark.add_argument("--no-addresses", action="store_true", help="measure only through public-key serialization")
+    hash160_benchmark = commands.add_parser(
+        "benchmark-hash160",
+        help="measure HASH160 throughput on unique compressed public-key fixtures",
+    )
+    hash160_benchmark.add_argument("--count", type=int, default=10_000)
+    hash160_benchmark.add_argument(
+        "--backend",
+        choices=("auto", "python", "python-affine-window", "python-glv", "python-wnaf", "coincurve", "fastecdsa"),
+        default="auto",
+        help="backend used to precompute valid public-key fixtures; excluded from hash timing",
+    )
     sat_solve = commands.add_parser("sat-solve", help="solve a DIMACS file with an in-process native backend")
     sat_solve.add_argument("--input", required=True, help="DIMACS CNF input file")
     sat_solve.add_argument(
@@ -1739,9 +1904,30 @@ def build_parser() -> argparse.ArgumentParser:
     extension.add_argument("--suffix", type=_hex_bytes, required=True, help="attacker-appended bytes in hex")
     address_hash = commands.add_parser(
         "address-hash",
-        help="decode a supported Bitcoin address and print its 20-byte HASH160",
+        help="decode P2PKH/P2SH/P2WPKH/P2TR address payload data",
     )
-    address_hash.add_argument("address", help="mainnet or testnet P2PKH/P2WPKH address")
+    address_hash.add_argument("address", help="mainnet or testnet P2PKH/P2SH/P2WPKH/P2TR address")
+    wif_derive = commands.add_parser(
+        "wif-derive",
+        help="derive addresses from a WIF, prompting with hidden input by default",
+    )
+    wif_derive.add_argument("--wif", help="WIF input (visible in shell history/process context; prefer hidden prompt)")
+    wif_derive.add_argument(
+        "--show-private", action="store_true", help="include private scalar hex in output explicitly"
+    )
+    wif_derive.add_argument(
+        "--show-wif", action="store_true", help="echo the input WIF in output explicitly"
+    )
+    symbolic_roundtrip = commands.add_parser(
+        "sha256-symbolic-roundtrip",
+        help="solve a free-input reduced-round SHA-256 model and verify its candidate",
+        description="A wiring check, not a full SHA-256 preimage-recovery claim. Keep the message short and round count modest.",
+    )
+    symbolic_roundtrip.add_argument("--message", type=_hex_bytes, default=b"A", help="fixture message in hex (default: 41)")
+    symbolic_roundtrip.add_argument("--rounds", type=int, default=2)
+    symbolic_roundtrip.add_argument("--backend", choices=("auto", "pysat", "cryptosat", "pycosat"), default="auto")
+    symbolic_roundtrip.add_argument("--solver-name", default="cadical195")
+    symbolic_roundtrip.add_argument("--xor3-encoding", choices=("direct", "chain"), default="direct")
     sha_stream = commands.add_parser(
         "sha256-stream",
         help="hash a binary file or stdin as a byte stream",
@@ -1837,6 +2023,20 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if args.command == "backends":
         return _backend_status()
+    if args.command == "feature-audit":
+        return _feature_audit()
+    if args.command == "benchmark-pubkey":
+        if args.iterations < 1 or args.warmup < 0:
+            parser.error("--iterations must be positive and --warmup nonnegative")
+        return _benchmark_pubkey(args, parser)
+    if args.command == "benchmark-wifs":
+        if args.count < 1 or args.warmup < 0:
+            parser.error("--count must be positive and --warmup nonnegative")
+        return _benchmark_wifs(args, parser)
+    if args.command == "benchmark-hash160":
+        if args.count < 1:
+            parser.error("--count must be positive")
+        return _benchmark_hash160(args, parser)
     if args.command == "sat-solve":
         return _sat_solve(args, parser)
     if args.command == "selftest":
@@ -1879,6 +2079,10 @@ def main(argv: list[str] | None = None) -> int:
         return _sha256_length_extension(args, parser)
     if args.command == "address-hash":
         return _address_hash(args, parser)
+    if args.command == "wif-derive":
+        return _wif_derive(args, parser)
+    if args.command == "sha256-symbolic-roundtrip":
+        return _sha256_symbolic_roundtrip(args, parser)
     if args.command == "sha256-stream":
         return _sha256_stream(args, parser)
     if args.command == "sha256-reverse-compress":

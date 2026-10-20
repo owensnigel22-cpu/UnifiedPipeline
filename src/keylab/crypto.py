@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import hmac
 from dataclasses import dataclass
 
 
@@ -11,6 +13,38 @@ class RSAKeyMaterial:
 
     private_key_pem: bytes
     public_key_pem: bytes
+
+
+def hkdf(
+    ikm: bytes,
+    length: int,
+    *,
+    salt: bytes = b"",
+    info: bytes = b"",
+    hash_name: str = "sha256",
+) -> bytes:
+    """Derive key material with RFC 5869 HKDF using SHA-256 or SHA-512."""
+    if not isinstance(ikm, bytes) or not isinstance(salt, bytes) or not isinstance(info, bytes):
+        raise TypeError("ikm, salt, and info must be bytes")
+    if type(length) is not int or length < 0:
+        raise ValueError("length must be a nonnegative integer")
+    if hash_name not in {"sha256", "sha512"}:
+        raise ValueError("hash_name must be 'sha256' or 'sha512'")
+    digest_size = hashlib.new(hash_name).digest_size
+    if length > 255 * digest_size:
+        raise ValueError("length exceeds the HKDF limit of 255 digest blocks")
+    effective_salt = salt or bytes(digest_size)
+    pseudorandom_key = hmac.new(effective_salt, ikm, hash_name).digest()
+    output = bytearray()
+    previous = b""
+    for counter in range(1, (length + digest_size - 1) // digest_size + 1):
+        previous = hmac.new(
+            pseudorandom_key,
+            previous + info + bytes((counter,)),
+            hash_name,
+        ).digest()
+        output.extend(previous)
+    return bytes(output[:length])
 
 
 def _select_backend(backend: str) -> str:
@@ -193,6 +227,7 @@ def rsa_pss_verify(
 __all__ = [
     "RSAKeyMaterial",
     "generate_rsa_keypair",
+    "hkdf",
     "rsa_oaep_decrypt",
     "rsa_oaep_encrypt",
     "rsa_pss_sign",

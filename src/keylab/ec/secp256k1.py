@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+from collections.abc import Iterator
 from functools import lru_cache
 from importlib.util import find_spec
 
@@ -19,6 +20,15 @@ Point = tuple[int, int] | None
 Jacobian = tuple[int, int, int]
 _INFINITY: Jacobian = (0, 1, 0)
 _GENERATOR_WINDOW_BITS = 4
+_AFFINE_WINDOW_BITS = 4
+_AFFINE_WINDOW_COUNT = (256 + _AFFINE_WINDOW_BITS - 1) // _AFFINE_WINDOW_BITS
+_WNAF_WINDOW_BITS = 5
+BETA = 0x7AE96A2B657C07106E64479EAC3434E99CF0497512F58995C1396C28719501EE
+LAMBDA = 0x5363AD4CC05C30E0A5261C028812645A122E22EA20816678DF02967C1B23BD72
+_GLV_MINUS_B1 = 0xE4437ED6010E88286F547FA90ABFE4C3
+_GLV_MINUS_B2 = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFE8A280AC50774346DD765CDA83DB1562C
+_GLV_G1 = 0x3086D221A7D46BCDE86C90E49284EB153DAA8A1471E8CA7FE893209A45DBB031
+_GLV_G2 = 0xE4437ED6010E88286F547FA90ABFE4C4221208AC9DF506C61571B4AE8AC47F71
 
 
 def is_on_curve(point: Point) -> bool:
@@ -137,6 +147,29 @@ def point_add(left: Jacobian, right: Jacobian) -> Jacobian:
     return x3, y3, z3
 
 
+def _point_add_mixed(left: Jacobian, right: Point) -> Jacobian:
+    """Add a Jacobian point and an affine point without normalizing either result."""
+    if right is None:
+        return left
+    if left[2] % P == 0:
+        return _to_jacobian(right)
+    x1, y1, z1 = left
+    x2, y2 = right
+    z1_squared = z1 * z1 % P
+    u2 = x2 * z1_squared % P
+    s2 = y2 * z1 * z1_squared % P
+    if x1 % P == u2:
+        return point_double(left) if y1 % P == s2 else _INFINITY
+    h = (u2 - x1) % P
+    r = (s2 - y1) % P
+    h_squared = h * h % P
+    h_cubed = h * h_squared % P
+    x3 = (r * r - h_cubed - 2 * x1 * h_squared) % P
+    y3 = (r * (x1 * h_squared - x3) - y1 * h_cubed) % P
+    z3 = h * z1 % P
+    return x3, y3, z3
+
+
 @lru_cache(maxsize=1)
 def _generator_window_table() -> tuple[Jacobian, ...]:
     """Return cached Jacobian multiples 0*G through 15*G for fixed-base multiplication."""
@@ -162,6 +195,112 @@ def _scalar_mult_generator(scalar: int) -> Point:
     return _to_affine(result)
 
 
+@lru_cache(maxsize=1)
+def _generator_affine_window_table() -> tuple[tuple[Point, ...], ...]:
+    """Precompute 4-bit multiples for every generator window, batch-normalized."""
+    jacobian_windows: list[tuple[Jacobian, ...]] = []
+    base = _to_jacobian(G)
+    for _ in range(_AFFINE_WINDOW_COUNT):
+        multiples = [_INFINITY]
+        current = base
+        for _digit in range(1, 1 << _AFFINE_WINDOW_BITS):
+            multiples.append(current)
+            current = point_add(current, base)
+        jacobian_windows.append(tuple(multiples))
+        for _ in range(_AFFINE_WINDOW_BITS):
+            base = point_double(base)
+
+    z_values = [point[2] % P for window in jacobian_windows for point in window[1:]]
+    prefixes: list[int] = []
+    product = 1
+    for z_value in z_values:
+        if z_value == 0:
+            raise ArithmeticError("fixed-base table contains a point at infinity")
+        prefixes.append(product)
+        product = product * z_value % P
+    inverse_product = mod_inverse_builtin(product, P)
+    z_inverses = [0] * len(z_values)
+    for index in range(len(z_values) - 1, -1, -1):
+        z_value = z_values[index]
+        z_inverses[index] = inverse_product * prefixes[index] % P
+        inverse_product = inverse_product * z_value % P
+
+    affine_windows: list[tuple[Point, ...]] = []
+    inverse_index = 0
+    for window in jacobian_windows:
+        affine: list[Point] = [None]
+        for x, y, _z in window[1:]:
+            z_inverse = z_inverses[inverse_index]
+            inverse_index += 1
+            inverse_squared = z_inverse * z_inverse % P
+            affine.append((x * inverse_squared % P, y * inverse_squared * z_inverse % P))
+        affine_windows.append(tuple(affine))
+    return tuple(affine_windows)
+
+
+def _scalar_mult_generator_affine_window(scalar: int) -> Point:
+    """Multiply G with a full 64-window table and Jacobian/affine mixed adds."""
+    table = _generator_affine_window_table()
+    result = _INFINITY
+    digit_mask = (1 << _AFFINE_WINDOW_BITS) - 1
+    for window_index, multiples in enumerate(table):
+        digit = (scalar >> (window_index * _AFFINE_WINDOW_BITS)) & digit_mask
+        if digit:
+            point = multiples[digit]
+            assert point is not None
+            result = _point_add_mixed(result, point)
+    return _to_affine(result)
+
+
+def wnaf_digits(scalar: int, window: int = _WNAF_WINDOW_BITS) -> tuple[int, ...]:
+    """Return least-significant-first width-w NAF digits for a nonnegative scalar."""
+    if type(scalar) is not int or scalar < 0:
+        raise ValueError("scalar must be a nonnegative integer")
+    if type(window) is not int or not 2 <= window <= 8:
+        raise ValueError("window must be between 2 and 8")
+    digits: list[int] = []
+    radix = 1 << window
+    midpoint = radix >> 1
+    while scalar:
+        if scalar & 1:
+            digit = scalar % radix
+            if digit >= midpoint:
+                digit -= radix
+            scalar -= digit
+            digits.append(digit)
+        else:
+            digits.append(0)
+        scalar >>= 1
+    return tuple(digits)
+
+
+@lru_cache(maxsize=1)
+def _generator_wnaf_table() -> tuple[Jacobian, ...]:
+    """Precompute odd multiples G, 3G, ... for fixed-base width-w NAF."""
+    count = 1 << (_WNAF_WINDOW_BITS - 2)
+    generator = _to_jacobian(G)
+    twice = point_double(generator)
+    table = [generator]
+    for _ in range(1, count):
+        table.append(point_add(table[-1], twice))
+    return tuple(table)
+
+
+def _scalar_mult_generator_wnaf(scalar: int) -> Point:
+    digits = wnaf_digits(scalar)
+    table = _generator_wnaf_table()
+    result = _INFINITY
+    for digit in reversed(digits):
+        result = point_double(result)
+        if digit:
+            multiple = table[(abs(digit) - 1) // 2]
+            if digit < 0:
+                x, y, z = multiple
+                multiple = x, (-y) % P, z
+            result = point_add(result, multiple)
+    return _to_affine(result)
+
+
 def _scalar_mult_python(scalar: int, point: Point) -> Point:
     """Compute scalar times an affine point using the readable Python implementation."""
     if point is None or scalar == 0:
@@ -177,6 +316,44 @@ def _scalar_mult_python(scalar: int, point: Point) -> Point:
             result = point_add(result, addend)
         addend = point_double(addend)
         scalar >>= 1
+    return _to_affine(result)
+
+
+def glv_decompose(scalar: int) -> tuple[int, int]:
+    """Split k into signed components satisfying k = k1 + lambda*k2 (mod N)."""
+    if type(scalar) is not int:
+        raise TypeError("scalar must be an integer")
+    scalar %= N
+    c1 = (scalar * _GLV_G1 + (1 << 383)) >> 384
+    c2 = (scalar * _GLV_G2 + (1 << 383)) >> 384
+    k2 = (c1 * _GLV_MINUS_B1 + c2 * _GLV_MINUS_B2) % N
+    k1 = (scalar - LAMBDA * k2) % N
+    if k1 > N // 2:
+        k1 -= N
+    if k2 > N // 2:
+        k2 -= N
+    if (k1 + LAMBDA * k2 - scalar) % N:
+        raise ArithmeticError("GLV scalar decomposition identity failed")
+    return k1, k2
+
+
+def _scalar_mult_glv(scalar: int, point: Point) -> Point:
+    """Experimental joint multiplication using secp256k1's GLV endomorphism."""
+    if point is None or scalar == 0:
+        return None
+    k1, k2 = glv_decompose(scalar)
+    phi = (BETA * point[0] % P, point[1])
+    point1 = point_negate_affine(point) if k1 < 0 else point
+    point2 = point_negate_affine(phi) if k2 < 0 else phi
+    k1, k2 = abs(k1), abs(k2)
+    add1, add2 = _to_jacobian(point1), _to_jacobian(point2)
+    result = _INFINITY
+    for bit in range(max(k1.bit_length(), k2.bit_length()) - 1, -1, -1):
+        result = point_double(result)
+        if (k1 >> bit) & 1:
+            result = point_add(result, add1)
+        if (k2 >> bit) & 1:
+            result = point_add(result, add2)
     return _to_affine(result)
 
 
@@ -217,14 +394,19 @@ def scalar_mult(
 ) -> Point:
     """Multiply a point, preferring installed native backends and retaining Python fallback.
 
-    ``backend`` may be ``auto``, ``python``, ``coincurve``, or ``fastecdsa``.
+    ``backend`` may be ``auto``, ``python``, ``python-affine-window``,
+    ``python-glv``, ``python-wnaf``, ``coincurve``, or ``fastecdsa``.
     The Python implementation is retained as the reference path. For secret-key
     operations, prefer a reviewed native library such as libsecp256k1.
     """
     if scalar < 0:
         raise ValueError("scalar must be non-negative")
-    if backend not in {"auto", "python", "coincurve", "fastecdsa"}:
-        raise ValueError("backend must be auto, python, coincurve, or fastecdsa")
+    if backend not in {
+        "auto", "python", "python-affine-window", "python-glv", "python-wnaf", "coincurve", "fastecdsa"
+    }:
+        raise ValueError(
+            "backend must be auto, python, python-affine-window, python-glv, python-wnaf, coincurve, or fastecdsa"
+        )
     if point is None or scalar == 0:
         return None
     if not is_on_curve(point):
@@ -256,6 +438,16 @@ def scalar_mult(
             return _scalar_mult_fastecdsa(scalar, point)
         except ImportError as exc:
             raise ImportError("install Keylab's fastecdsa extra: pip install 'keylab[ecc-alt]'") from exc
+    if backend == "python-wnaf":
+        if point == G:
+            return _scalar_mult_generator_wnaf(scalar)
+        return _scalar_mult_python(scalar, point)
+    if backend == "python-affine-window":
+        if point == G:
+            return _scalar_mult_generator_affine_window(scalar)
+        return _scalar_mult_python(scalar, point)
+    if backend == "python-glv":
+        return _scalar_mult_glv(scalar, point)
     return _scalar_mult_python(scalar, point)
 
 
@@ -269,8 +461,8 @@ def public_key_from_private_scalar(private_scalar: int, *, backend: str = "auto"
     return point
 
 
-def _rfc6979_nonce(private_scalar: int, digest: bytes) -> int:
-    """Generate the deterministic ECDSA nonce from RFC 6979 using HMAC-SHA-256."""
+def _rfc6979_candidates(private_scalar: int, digest: bytes) -> Iterator[int]:
+    """Yield successive valid RFC 6979 candidates, including rare signing retries."""
     octets = private_scalar.to_bytes(32, "big")
     reduced_digest = (int.from_bytes(digest, "big") % N).to_bytes(32, "big")
     value = b"\x01" * 32
@@ -283,9 +475,18 @@ def _rfc6979_nonce(private_scalar: int, digest: bytes) -> int:
         value = hmac.new(key, value, hashlib.sha256).digest()
         candidate = int.from_bytes(value, "big")
         if 1 <= candidate < N:
-            return candidate
+            yield candidate
         key = hmac.new(key, value + b"\x00", hashlib.sha256).digest()
         value = hmac.new(key, value, hashlib.sha256).digest()
+
+
+def rfc6979_nonce_from_digest(private_scalar: int, digest: bytes) -> int:
+    """Return the RFC 6979 HMAC-SHA-256 nonce for a 32-byte digest and valid key."""
+    if type(private_scalar) is not int or not 1 <= private_scalar < N:
+        raise ValueError("private scalar must be an integer in [1, N-1]")
+    if type(digest) is not bytes or len(digest) != 32:
+        raise ValueError("digest must be exactly 32 bytes")
+    return next(_rfc6979_candidates(private_scalar, digest))
 
 
 def ecdsa_sign_digest(
@@ -296,20 +497,22 @@ def ecdsa_sign_digest(
     This readable Python signer is for learning and validation. Use a reviewed
     constant-time native implementation for production secret-key signing.
     """
-    if len(digest) != 32:
+    if type(digest) is not bytes or len(digest) != 32:
         raise ValueError("digest must be exactly 32 bytes")
     if type(private_scalar) is not int or not 1 <= private_scalar < N:
         raise ValueError("private scalar must be an integer in [1, N-1]")
     z = int.from_bytes(digest, "big")
-    nonce = _rfc6979_nonce(private_scalar, digest)
-    nonce_point = scalar_mult(nonce, G, backend=backend)
-    if nonce_point is None:
-        raise ArithmeticError("ECDSA nonce multiplication returned infinity")
-    r = nonce_point[0] % N
-    s = (pow(nonce, -1, N) * (z + r * private_scalar)) % N
-    if not r or not s:
-        raise ArithmeticError("RFC 6979 produced a degenerate ECDSA signature")
-    return r, min(s, N - s)
+    for nonce in _rfc6979_candidates(private_scalar, digest):
+        nonce_point = scalar_mult(nonce, G, backend=backend)
+        if nonce_point is None:
+            continue
+        r = nonce_point[0] % N
+        if not r:
+            continue
+        s = (pow(nonce, -1, N) * (z + r * private_scalar)) % N
+        if s:
+            return r, min(s, N - s)
+    raise ArithmeticError("RFC 6979 failed to produce a valid ECDSA signature")
 
 
 def ecdsa_verify_digest(digest: bytes, signature: tuple[int, int], public_key: Point) -> bool:

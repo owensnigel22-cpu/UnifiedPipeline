@@ -1,5 +1,81 @@
 # Keylab Cryptographic Analysis Notes
 
+## secp256k1 signatures and key encodings
+
+`keylab.ec.sec1` parses and serializes validated compressed and uncompressed
+SEC1 public keys. `keylab.ec.schnorr` implements BIP-340 x-only public keys,
+signing, and verification, with secure random auxiliary input by default and
+the official BIP-340 vector covered by tests. The Python arithmetic remains a
+reference/research implementation; use a reviewed native library for production
+signing with secret keys.
+`keylab.crypto.hkdf` implements RFC 5869 HKDF with SHA-256/SHA-512 and checks
+the standard 255-block output limit.
+
+## HD derivation, Taproot commitments, and SAT export
+
+`keylab.hd` provides BIP-39 PBKDF2 seed derivation and BIP-32 private-path
+derivation, including a batched BIP-44 P2PKH API that reuses account-level
+derivation and a BIP-86 P2TR key-path derivation API. Both emit public address
+data only. Mnemonic word-list and checksum
+validation is separate; `mnemonic_to_seed` assumes the caller has supplied a
+valid phrase.
+
+`keylab.encoding.taproot` computes BIP-341 TapLeaf/TapBranch commitments,
+TapTweak output keys and P2TR addresses, and verifies script-path control-block
+commitments. This checks the committed script and Merkle path; it does not run
+Bitcoin Script or evaluate a witness spend. Taproot address data can also be
+decoded with `address_to_target_hash`.
+
+`keylab.encoding.address` also derives P2PKH, nested P2WPKH, native P2WPKH,
+and key-path P2TR addresses from a WIF through `derive_addresses_from_wif`,
+without returning the private scalar. `verify_pubkey_from_address` performs
+forward candidate verification for these address types. Run
+`keylab benchmark-pubkey --backend all` to measure WIF decoding, scalar
+parsing, multiplication, compression, and hex encoding separately. It uses a
+deterministic full-width public test fixture, verifies backend output against
+the Python reference implementation, and never prints the fixture WIF or
+scalar. Throughput is machine-dependent; remeasure before citing it.
+The benchmark includes fixed-base width-5 wNAF and an experimental GLV
+implementation alongside the default Python path and available native backends.
+Use `keylab benchmark-wifs --count 1000 --backend all` for a randomly generated
+multi-key corpus, or `keylab benchmark-wifs --wif-file path-to-wifs.txt` for a
+local file with one WIF per line. The file and synthetic corpus are processed
+without printing WIFs, private scalars, public keys, or addresses; corpus
+loading and warmup are excluded from timing. The report separates P2PKH,
+P2SH-P2WPKH, P2WPKH, and P2TR timing while retaining a total address stage.
+Use `keylab benchmark-wifs --count 1000 --backend coincurve --no-addresses`
+to compare key derivation with address construction removed. The command
+`keylab benchmark-wifs --count 1000 --backend coincurve --addresses p2wpkh`
+measures a single-address workload; `--addresses` accepts one or more address
+types. The command
+`keylab benchmark-hash160 --count 10000` isolates HASH160 on unique compressed
+public key fixtures; fixture generation is reported separately from hash timing.
+
+The `wif-derive` CLI prompts for WIF with hidden input and prints public
+addresses by default. Pass `--show-private` only when you deliberately want
+the private scalar hex included in terminal output, or `--show-wif` to echo the
+input WIF. The WIF is the value you enter; the tool does not generate or save a
+new one. Use `--wif` only for throwaway/test keys because command-line
+arguments may be recorded in shell history or process listings.
+
+Run `keylab feature-audit` to see which feature implementation and test-source
+files are present. It distinguishes file presence from tests that actually
+passed and benchmarks that were actually run. `keylab hash-cnf-selftest` runs
+known-input solve-and-forward-verification when a supported external SAT solver
+is installed; `keylab sha256-cnf-benchmark` reports actual model sizes and
+timings for the supported XOR3 encodings.
+`keylab sha256-symbolic-roundtrip` builds a free-input reduced-round SHA-256
+model, solves it with an installed in-process SAT backend, and checks the
+candidate by forward hashing. It is a small circuit-wiring check, not a claim
+of full SHA-256 inversion.
+
+`keylab.sat.cryptominisat.CryptoMiniSatFormula` writes CryptoMiniSat's extended
+DIMACS rows for native XOR constraints. That format is solver-specific; the
+standard-CNF parallel cube solver does not accept native XOR rows. XOR rows
+begin with `x` followed by signed literals. To encode parity zero, the exporter
+negates the first variable instead of emitting the nonstandard `x -` prefix
+found in some example text.
+
 Keylab contains educational reference implementations and bounded SAT/CNF
 experiments. They are not production cryptographic implementations, and
 reduced-round experiments are not evidence of a break in full SHA-256.
@@ -97,6 +173,10 @@ inputs and can reverse a supplied, known final compression block.
 `public_key_from_private_scalar(d)` derives and curve-checks `Q = d*G` for
 `1 <= d < n`. `ecdsa_sign_digest` uses RFC 6979 HMAC-SHA-256 nonces and
 canonical low-S signatures; `ecdsa_verify_digest` checks raw `(r, s)` pairs.
+The advanced demo's `rfc6979_deterministic_nonce` delegates to the same
+validated implementation, so the demo and library APIs use identical
+bits-to-octets handling and nonce state updates. Batch field inversions use
+one modular inversion plus linear-time multiplications.
 These are reference Python routines for correctness work, not constant-time
 production signing. Prefer libsecp256k1/coincurve for secret-key operations.
 
@@ -180,6 +260,12 @@ selected split bits, and a recovered candidate is checked locally. LLMs and
 SAT solvers do not make full-round SHA-256 preimage recovery practically
 feasible; use reduced-round models for bounded experiments. API usage may be
 billed by the provider.
+
+The cube runner keeps at most `min(workers, 2**cube_depth)` jobs in flight.
+When a cube solves, it cancels queued work and signals active solver
+subprocesses to terminate instead of waiting for their per-cube timeout. Each
+run reuses one validated immutable DIMACS parse; independent solve calls do not
+share mutable worker state.
 Use a target generated with the same round count. For `--rounds` below 64,
 this is Keylab's reduced-round SHA-256 experiment, not standard full SHA-256.
 

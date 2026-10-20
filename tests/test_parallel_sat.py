@@ -1,3 +1,5 @@
+from threading import Barrier, Event
+
 import pytest
 
 from keylab.sat.parallel import (
@@ -63,6 +65,35 @@ def test_parallel_cubes_run_solver_and_aggregate_sat_and_unsat() -> None:
     )
     assert unsat_result.status == "UNSATISFIABLE"
     assert unsat_result.completed_cubes == 2
+
+
+def test_sat_cube_cancels_other_running_solver_jobs(monkeypatch) -> None:
+    from keylab.sat import parallel
+
+    both_started = Barrier(2)
+    cancelled_job_observed = Event()
+
+    def fake_solver(executable, dimacs, timeout, *, cancel_event):
+        both_started.wait(timeout=2)
+        cube_literal = dimacs.splitlines()[-1]
+        if cube_literal == "-1 0":
+            return parallel.SolverResult("SATISFIABLE", {1: False}, "", "", 10)
+        if cancel_event.wait(timeout=2):
+            cancelled_job_observed.set()
+        return parallel.SolverResult("UNKNOWN", {}, "", "cancelled", -1)
+
+    monkeypatch.setattr(parallel, "run_solver", fake_solver)
+    result = solve_parallel_cubes(
+        "unused",
+        "p cnf 1 1\n1 0\n",
+        (1,),
+        depth=1,
+        workers=2,
+        timeout=10,
+    )
+    assert result.status == "SATISFIABLE"
+    assert result.completed_cubes == 1
+    assert cancelled_job_observed.is_set()
 
 
 def test_dimacs_with_assumptions_updates_header_and_adds_unit_clauses() -> None:

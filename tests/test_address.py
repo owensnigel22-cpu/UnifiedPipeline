@@ -7,7 +7,16 @@ import pytest
 
 from keylab.cli import main
 from keylab.ec.secp256k1 import N, compress_pubkey, scalar_mult
-from keylab.encoding.address import address_to_target_hash, hash160, p2pkh_address, p2wpkh_address
+from keylab.encoding.address import (
+    address_to_target_hash,
+    derive_addresses_from_wif,
+    hash160,
+    p2pkh_address,
+    p2sh_p2wpkh_address,
+    p2tr_address,
+    p2wpkh_address,
+    verify_pubkey_from_address,
+)
 from keylab.encoding.wif import decode, encode
 
 KNOWN_WIF = "KwHV8WDsBUuXPymuan5TQN82tPyRWZ68vb14ww8p9FFCw6a17xkR"
@@ -83,3 +92,41 @@ def test_p2wpkh_testnet_round_trip() -> None:
     public_key = compress_pubkey(scalar_mult(2))
     address = p2wpkh_address(public_key, "testnet")
     assert len(address_to_target_hash(address)) == 20
+
+
+def test_candidate_public_key_verification_covers_common_address_types() -> None:
+    public_key = compress_pubkey(scalar_mult(7))
+    addresses = (
+        p2pkh_address(public_key),
+        p2sh_p2wpkh_address(public_key),
+        p2wpkh_address(public_key),
+        p2tr_address(public_key[1:]),
+    )
+    assert all(verify_pubkey_from_address(address, public_key) for address in addresses)
+    assert not verify_pubkey_from_address(p2pkh_address(compress_pubkey(scalar_mult(8))), public_key)
+
+
+def test_wif_public_derivation_returns_all_address_families_without_private_scalar() -> None:
+    result = derive_addresses_from_wif(encode(1, compressed=True))
+    assert result["p2pkh"] == "1BgGZ9tcN4rm9KBzDn7KprQz87SZ26SAMH"
+    assert str(result["p2sh_p2wpkh"]).startswith("3")
+    assert str(result["p2wpkh"]).startswith("bc1q")
+    assert str(result["p2tr"]).startswith("bc1p")
+    assert "private_scalar" not in result
+    assert "private_key_hex" not in result
+    revealed = derive_addresses_from_wif(encode(1, compressed=True), reveal_private=True)
+    assert revealed["private_key_hex"] == f"{1:064x}"
+
+
+def test_wif_derive_cli_echoes_wif_only_when_requested(capsys) -> None:
+    from keylab.cli import main
+
+    wif = encode(1, compressed=True)
+    assert main(["wif-derive", "--wif", wif]) == 0
+    default_output = capsys.readouterr().out
+    assert wif not in default_output
+    assert "private_key_hex" not in default_output
+    assert main(["wif-derive", "--wif", wif, "--show-wif"]) == 0
+    opted_in_output = capsys.readouterr().out
+    assert wif in opted_in_output
+    assert "private_key_hex" not in opted_in_output

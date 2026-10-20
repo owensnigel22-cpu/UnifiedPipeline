@@ -1,1923 +1,602 @@
-#!/usr/bin/env python3
-"""
-pass_a_ext_and_advanced_crypto-v17.py
-Unified ECC, RSA, Address Diagnostics, Walkback, WIF, and Signature Demonstration Suite (v17)
-
-Security note: educational demonstration only. This handwritten implementation is
-not constant-time, has no independent cryptographic review, and must not protect
-real keys or funds. The CLI uses a fixed public demo key for traces.
-
-New Features & Additions in v17:
-1. RFC 6979 Deterministic Nonce Derivation Engine (--rfc6979-trace):
-   - Computes a deterministic nonce k from the private key and message hash.
-2. BIP-340 Schnorr Signatures & Taproot Verification (--schnorr-trace):
-   - Implements x-only public key derivation (even y-parity enforcement).
-   - Zero scalar inversions (s^-1) during verification: s*G == R + e*P directly.
-3. Hash-to-Curve Try-and-Increment Engine (--hash-to-curve "seed"):
-   - Maps arbitrary string/seed to candidate x-coordinates on secp256k1.
-   - Solves y^2 = x^3 + 7 mod P via modular square root y = (x^3 + 7)^((P+1)/4) mod P.
-4. Deterministically Derived Point Generator (--verifiable-point "seed"):
-   - Derives Q = Hash(P0, seed) * G using a custom, non-standard derivation.
-5. MuSig2 Multi-Party Key Aggregation Engine (--musig2-aggregate):
-   - Aggregates multiple Schnorr public keys P_1, P_2, ... into a single Taproot key P_agg.
-6. Taproot Tweak Engine (--taproot-tweak):
-   - Computes the Taproot output public key Q = P + tG.
-7. Elliptic-Curve Demonstration Sequence (--ec-prng):
-   - Generates deterministic points; this is not a cryptographic PRNG.
-8. Forward public-point stepping from an existing key (--pubkey-advance), WIF
-   address derivation, Bech32 checksum diagnosis, custom ECDSA signing, and benchmarks.
-9. RSA key generation, OAEP encryption/decryption, PSS signing/verification, and
-   key parameter analysis (--rsa-* options).
-14. Layered address/hash/public-key walkback and DIMACS CNF solving (--sat-cnf).
-10. Curve coordinate lifting/intersection and point substitution checks
-    (--decompress-y, --intersection, --substitute-y-x).
-11. Modular inverse, inverse group multiplication, and scalar bit tracing
-    (--mod-inv, --mult-neg-g, --trace-scalar/--russian-mult).
-12. Elliptic-curve secant/tangent addition, y=x substitution analysis,
-    integer shift-and-add trace, bounded Fermat RSA factor search, and candidate
-    factor checks (--curve-add, --y-equals-x, --integer-mult, --rsa-*).
-13. SHA-256 forward trace and conditional backward state ledger, plus modular
-    shift-and-add multiplication (--sha256-trace, --sha256-backward-ledger).
-"""
-
-from __future__ import annotations
-
-import argparse
-import hashlib
-import hmac
-import math
-import secrets
-import time
-
-from keylab.numtheory.core import (
-    mod_inverse_builtin,
-    mod_inverse_egcd,
-    mod_inverse_fermat,
-)
-
-# =============================================================================
-# secp256k1 Constants & Core Elliptic Curve Operations
-# =============================================================================
-
-SECP256K1_P = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEFFFFFC2F
-SECP256K1_N = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141
-SECP256K1_G = (
-    0x79BE667EF9DCBBAC55A06295CE870B07029BFCDB2DCE28D959F2815B16F81798,
-    0x483ADA7726A3C4655DA4FBFC0E1108A8FD17B448A68554199C47D08FFB10D4B8
-)
-
-_SHA256_IV = (0x6A09E667, 0xBB67AE85, 0x3C6EF372, 0xA54FF53A,
-              0x510E527F, 0x9B05688C, 0x1F83D9AB, 0x5BE0CD19)
-_SHA256_K = (
-    0x428A2F98,0x71374491,0xB5C0FBCF,0xE9B5DBA5,0x3956C25B,0x59F111F1,0x923F82A4,0xAB1C5ED5,
-    0xD807AA98,0x12835B01,0x243185BE,0x550C7DC3,0x72BE5D74,0x80DEB1FE,0x9BDC06A7,0xC19BF174,
-    0xE49B69C1,0xEFBE4786,0x0FC19DC6,0x240CA1CC,0x2DE92C6F,0x4A7484AA,0x5CB0A9DC,0x76F988DA,
-    0x983E5152,0xA831C66D,0xB00327C8,0xBF597FC7,0xC6E00BF3,0xD5A79147,0x06CA6351,0x14292967,
-    0x27B70A85,0x2E1B2138,0x4D2C6DFC,0x53380D13,0x650A7354,0x766A0ABB,0x81C2C92E,0x92722C85,
-    0xA2BFE8A1,0xA81A664B,0xC24B8B70,0xC76C51A3,0xD192E819,0xD6990624,0xF40E3585,0x106AA070,
-    0x19A4C116,0x1E376C08,0x2748774C,0x34B0BCB5,0x391C0CB3,0x4ED8AA4A,0x5B9CCA4F,0x682E6FF3,
-    0x748F82EE,0x78A5636F,0x84C87814,0x8CC70208,0x90BEFFFA,0xA4506CEB,0xBEF9A3F7,0xC67178F2,
-)
-
-def sha256_compression_trace(message: bytes) -> dict[str, object]:
-    """FIPS 180-4 SHA-256 trace, with each block's 64 forward round states."""
-    if len(message) >= (1 << 61):
-        raise ValueError("SHA-256 message must be shorter than 2^64 bits")
-    bit_length = len(message) * 8
-    padded = bytearray(message)
-    padded.append(0x80)
-    padded.extend(b"\x00" * ((56 - len(padded) % 64) % 64))
-    padded.extend(bit_length.to_bytes(8, "big"))
-    state = list(_SHA256_IV)
-    block_traces = []
-    mask = 0xFFFFFFFF
-
-    def rotr(x: int, n: int) -> int:
-        return ((x >> n) | (x << (32 - n))) & mask
-
-    for block_index in range(0, len(padded), 64):
-        block = padded[block_index:block_index + 64]
-        schedule = [int.from_bytes(block[i:i + 4], "big") for i in range(0, 64, 4)]
-        for i in range(16, 64):
-            s0 = rotr(schedule[i - 15], 7) ^ rotr(schedule[i - 15], 18) ^ (schedule[i - 15] >> 3)
-            s1 = rotr(schedule[i - 2], 17) ^ rotr(schedule[i - 2], 19) ^ (schedule[i - 2] >> 10)
-            schedule.append((schedule[i - 16] + s0 + schedule[i - 7] + s1) & mask)
-        a, b, c, d, e, f, g, h = state
-        round_states = []
-        for i in range(64):
-            big1 = rotr(e, 6) ^ rotr(e, 11) ^ rotr(e, 25)
-            choose = (e & f) ^ ((~e) & g)
-            t1 = (h + big1 + choose + _SHA256_K[i] + schedule[i]) & mask
-            big0 = rotr(a, 2) ^ rotr(a, 13) ^ rotr(a, 22)
-            majority = (a & b) ^ (a & c) ^ (b & c)
-            t2 = (big0 + majority) & mask
-            a, b, c, d, e, f, g, h = (t1 + t2) & mask, a, b, c, (d + t1) & mask, e, f, g
-            round_states.append(tuple(f"{word:08x}" for word in (a,b,c,d,e,f,g,h)))
-        state = [(old + new) & mask for old, new in zip(state, (a,b,c,d,e,f,g,h))]
-        block_traces.append({"block_index": block_index // 64,
-                             "input_state": [f"{v:08x}" for v in _SHA256_IV] if not block_traces else block_traces[-1]["output_state"],
-                             "schedule": [f"{v:08x}" for v in schedule],
-                             "round_states": round_states,
-                             "output_state": [f"{v:08x}" for v in state]})
-    digest = "".join(f"{word:08x}" for word in state)
-    reference = hashlib.sha256(message).hexdigest()
-    if digest != reference:
-        raise ArithmeticError("internal SHA-256 trace disagrees with hashlib")
-    return {"digest_hex": digest, "matches_hashlib": True, "padded_blocks": block_traces}
-
-def sha256_backward_ledger(digest_hex: str, block_hex: str | None = None) -> dict[str, object]:
-    """Explore SHA-256's last compression round, optionally reversing a known block.
-
-    Digest-only mode is explicitly conditional on a one-block padded message,
-    so the final chaining state is the standard SHA-256 IV. Supplying the exact
-    64-byte final compression block permits a full, verifiable round reversal.
-    """
-    try:
-        digest = bytes.fromhex(digest_hex.removeprefix("0x"))
-    except ValueError as exc:
-        raise ValueError("digest must be 64 hexadecimal characters") from exc
-    if len(digest) != 32:
-        raise ValueError("digest must be exactly 32 bytes")
-    digest_words = [int.from_bytes(digest[i:i + 4], "big") for i in range(0, 32, 4)]
-    target_state = [(d - iv) & 0xFFFFFFFF for d, iv in zip(digest_words, _SHA256_IV)]
-    state_hex = lambda words: [f"{word:08x}" for word in words]
-
-    def rotr(x: int, n: int) -> int:
-        return ((x >> n) | (x << (32 - n))) & 0xFFFFFFFF
-
-    result: dict[str, object] = {
-        "assumption": "digest is from exactly one padded 512-bit block compressed from the standard IV",
-        "final_working_state": state_hex(target_state),
-        "message_words_known": block_hex is not None,
-        "fully_reversed": False,
-        "state_classification": {
-            "final_working_state": "numerically derived, conditional on the one-block/standard-IV assumption",
-            "last_round_previous_state": "partially numeric; h63 remains symbolic in W63",
-            "earlier_rounds": "unresolved without message-schedule constraints",
-        },
-    }
-    if block_hex is None:
-        a1, b1, c1, d1, e1, f1, g1, h1 = target_state
-        old_a, old_b, old_c = b1, c1, d1
-        old_e, old_f, old_g = f1, g1, h1
-        big0 = rotr(old_a, 2) ^ rotr(old_a, 13) ^ rotr(old_a, 22)
-        maj = (old_a & old_b) ^ (old_a & old_c) ^ (old_b & old_c)
-        t1 = (a1 - ((big0 + maj) & 0xFFFFFFFF)) & 0xFFFFFFFF
-        old_d = (e1 - t1) & 0xFFFFFFFF
-        big1 = rotr(old_e, 6) ^ rotr(old_e, 11) ^ rotr(old_e, 25)
-        ch = (old_e & old_f) ^ ((~old_e) & old_g)
-        old_h_expression = (
-            f"T1_63 - Sigma1(e63) - Ch(e63,f63,g63) - K63 - W63 mod 2^32; "
-            f"T1_63=0x{t1:08x}"
-        )
-        result["last_round_recovered_state"] = {
-            "a63": f"0x{old_a:08x}", "b63": f"0x{old_b:08x}",
-            "c63": f"0x{old_c:08x}", "d63": f"0x{old_d:08x}",
-            "e63": f"0x{old_e:08x}", "f63": f"0x{old_f:08x}",
-            "g63": f"0x{old_g:08x}", "h63": old_h_expression,
-            "unknown": "W63 (the final expanded message-schedule word)"
-        }
-        result["boundary"] = "Earlier rounds depend on unresolved W63 and message-schedule constraints."
-        return result
-
-    try:
-        block = bytes.fromhex(block_hex.removeprefix("0x"))
-    except ValueError as exc:
-        raise ValueError("block must be 128 hexadecimal characters") from exc
-    if len(block) != 64:
-        raise ValueError("block must be exactly 64 bytes (one SHA-256 compression block)")
-    words = [int.from_bytes(block[i:i + 4], "big") for i in range(0, 64, 4)]
-    for i in range(16, 64):
-        s0 = rotr(words[i - 15], 7) ^ rotr(words[i - 15], 18) ^ (words[i - 15] >> 3)
-        s1 = rotr(words[i - 2], 17) ^ rotr(words[i - 2], 19) ^ (words[i - 2] >> 10)
-        words.append((words[i - 16] + s0 + words[i - 7] + s1) & 0xFFFFFFFF)
-    a, b, c, d, e, f, g, h = _SHA256_IV
-    forward = []
-    for i in range(64):
-        big1 = rotr(e, 6) ^ rotr(e, 11) ^ rotr(e, 25)
-        ch = (e & f) ^ ((~e) & g)
-        t1 = (h + big1 + ch + _SHA256_K[i] + words[i]) & 0xFFFFFFFF
-        big0 = rotr(a, 2) ^ rotr(a, 13) ^ rotr(a, 22)
-        maj = (a & b) ^ (a & c) ^ (b & c)
-        t2 = (big0 + maj) & 0xFFFFFFFF
-        a, b, c, d, e, f, g, h = (t1 + t2) & 0xFFFFFFFF, a, b, c, (d + t1) & 0xFFFFFFFF, e, f, g
-        forward.append((a,b,c,d,e,f,g,h))
-    computed_digest = b"".join(((iv + work) & 0xFFFFFFFF).to_bytes(4, "big")
-                                for iv, work in zip(_SHA256_IV, (a,b,c,d,e,f,g,h))).hex()
-    if computed_digest != digest.hex():
-        raise ValueError("provided block does not compress from the standard IV to the supplied digest")
-
-    current = list(target_state)
-    for i in range(63, -1, -1):
-        a1, b1, c1, d1, e1, f1, g1, h1 = current
-        old_a, old_b, old_c = b1, c1, d1
-        old_e, old_f, old_g = f1, g1, h1
-        big0 = rotr(old_a, 2) ^ rotr(old_a, 13) ^ rotr(old_a, 22)
-        maj = (old_a & old_b) ^ (old_a & old_c) ^ (old_b & old_c)
-        t1 = (a1 - ((big0 + maj) & 0xFFFFFFFF)) & 0xFFFFFFFF
-        old_d = (e1 - t1) & 0xFFFFFFFF
-        big1 = rotr(old_e, 6) ^ rotr(old_e, 11) ^ rotr(old_e, 25)
-        ch = (old_e & old_f) ^ ((~old_e) & old_g)
-        old_h = (t1 - big1 - ch - _SHA256_K[i] - words[i]) & 0xFFFFFFFF
-        current = [old_a,old_b,old_c,old_d,old_e,old_f,old_g,old_h]
-    result.update({"fully_reversed": True, "recovered_initial_state": state_hex(current),
-                   "matches_standard_iv": tuple(current) == _SHA256_IV,
-                   "state_classification": {
-                       "final_working_state": "numerically recovered",
-                       "intermediate_round_states": "numerically recovered using the exact block schedule",
-                       "initial_state": "numerically recovered and compared with the standard IV",
-                   },
-                   "boundary": "All rounds reversed using the supplied exact message block."})
-    return result
-
-def run_extended_joint_lookahead_sweep() -> list[dict[str, object]]:
-    """Return v10's illustrative density sweep as a synthetic planning model.
-
-    These estimates are not generated by a SAT solver and must not be read as
-    measured propagation or cryptanalytic results.
-    """
-    total_vars, total_clauses = 210, 582
-    records = []
-    for depth in (0, 2, 4, 8, 12, 16, 24, 32, 48, 64):
-        remaining_vars = max(total_vars - depth, 146)
-        eliminated_clauses = int(depth * 2.64)
-        remaining_clauses = max(total_clauses - eliminated_clauses, 413)
-        records.append({
-            "cube_depth_bits": depth,
-            "remaining_vars": remaining_vars,
-            "remaining_clauses": remaining_clauses,
-            "clause_density_alpha": round(remaining_clauses / remaining_vars, 4),
-            "illustrative_unit_propagation_rate_pct": round(depth / 64 * 100, 1),
-            "evidence_kind": "synthetic estimate; no SAT/CNF solver run",
-        })
-    return records
-
-def field_inv(n: int, p: int = SECP256K1_P) -> int:
-    """Base field coordinate multiplicative inverse via Fermat's Little Theorem."""
-    n %= p
-    if n == 0:
-        raise ValueError("zero has no multiplicative inverse")
-    return mod_inverse_fermat(n, p)
-
-def eea_mod_inv(a: int, m: int = SECP256K1_P) -> int:
-    """Compatibility wrapper for the iterative Extended Euclidean inverse."""
-    return mod_inverse_egcd(a, m)
-
-def batch_inv(vals: list[int], p: int = SECP256K1_P) -> list[int]:
-    """
-    Montgomery Batch Inversion: Computes modular inverses for k elements in parallel
-    using 1 modular exponentiation + 3(k-1) multiplications (~40x faster).
-    """
-    if not vals:
-        return []
-    prod = [1]
-    for v in vals:
-        v_non_zero = v if v != 0 else 1
-        prod.append((prod[-1] * v_non_zero) % p)
-    
-    inv = mod_inverse_builtin(prod[-1], p)
-    res = []
-    for i in range(len(vals) - 1, -1, -1):
-        v_non_zero = vals[i] if vals[i] != 0 else 1
-        res.append((inv * prod[i]) % p)
-        inv = (inv * v_non_zero) % p
-    return [0 if value % p == 0 else inverse for value, inverse in zip(vals, reversed(res))]
-
-def scalar_inv(d: int, n: int = SECP256K1_N) -> int:
-    """Scalar multiplicative inverse d^(-1) mod N via Fermat's Little Theorem."""
-    return mod_inverse_fermat(d, n)
-
-def point_negate(pt: tuple[int, int]) -> tuple[int, int]:
-    """Group additive inverse -P = (x, P - y mod P)."""
-    return (pt[0], (-pt[1]) % SECP256K1_P)
-
-def jacobian_double(p1: tuple[int, int, int]) -> tuple[int, int, int]:
-    """Fast Point Doubling in Jacobian Projective coordinates (a=0)."""
-    X1, Y1, Z1 = p1
-    if Y1 == 0:
-        return (0, 0, 0)
-    S = (4 * X1 * Y1**2) % SECP256K1_P
-    M = (3 * X1**2) % SECP256K1_P
-    X3 = (M**2 - 2 * S) % SECP256K1_P
-    Y3 = (M * (S - X3) - 8 * Y1**4) % SECP256K1_P
-    Z3 = (2 * Y1 * Z1) % SECP256K1_P
-    return (X3, Y3, Z3)
-
-def jacobian_add(p1: tuple[int, int, int], p2: tuple[int, int, int]) -> tuple[int, int, int]:
-    """Full Point Addition in Jacobian Projective coordinates."""
-    if p1[2] == 0:
-        return p2
-    if p2[2] == 0:
-        return p1
-    X1, Y1, Z1 = p1
-    X2, Y2, Z2 = p2
-    U1 = (X1 * Z2**2) % SECP256K1_P
-    U2 = (X2 * Z1**2) % SECP256K1_P
-    S1 = (Y1 * Z2**3) % SECP256K1_P
-    S2 = (Y2 * Z1**3) % SECP256K1_P
-    if U1 == U2:
-        if S1 != S2:
-            return (0, 0, 0)
-        return jacobian_double(p1)
-    H = (U2 - U1) % SECP256K1_P
-    R = (S2 - S1) % SECP256K1_P
-    H2 = (H * H) % SECP256K1_P
-    H3 = (H * H2) % SECP256K1_P
-    X3 = (R**2 - H3 - 2 * U1 * H2) % SECP256K1_P
-    Y3 = (R * (U1 * H2 - X3) - S1 * H3) % SECP256K1_P
-    Z3 = (H * Z1 * Z2) % SECP256K1_P
-    return (X3, Y3, Z3)
-
-def jacobian_add_mixed(p1: tuple[int, int, int], p2_aff: tuple[int, int]) -> tuple[int, int, int]:
-    """Optimized Mixed Point Addition (Jacobian + Affine)."""
-    if p1[2] == 0:
-        return (p2_aff[0], p2_aff[1], 1)
-    if p2_aff == (0, 0):
-        return p1
-    X1, Y1, Z1 = p1
-    X2, Y2 = p2_aff
-    Z1_2 = (Z1 * Z1) % SECP256K1_P
-    U2 = (X2 * Z1_2) % SECP256K1_P
-    S2 = (Y2 * Z1 * Z1_2) % SECP256K1_P
-    if X1 == U2:
-        if Y1 != S2:
-            return (0, 0, 0)
-        return jacobian_double(p1)
-    H = (U2 - X1) % SECP256K1_P
-    R = (S2 - Y1) % SECP256K1_P
-    H2 = (H * H) % SECP256K1_P
-    H3 = (H * H2) % SECP256K1_P
-    X3 = (R**2 - H3 - 2 * X1 * H2) % SECP256K1_P
-    Y3 = (R * (X1 * H2 - X3) - Y1 * H3) % SECP256K1_P
-    Z3 = (H * Z1) % SECP256K1_P
-    return (X3, Y3, Z3)
-
-def jacobian_to_affine(p1: tuple[int, int, int]) -> tuple[int, int]:
-    """Converts Jacobian projective point (X, Y, Z) to Affine (x, y)."""
-    X, Y, Z = p1
-    if Z == 0:
-        return (0, 0)
-    z_inv = eea_mod_inv(Z, SECP256K1_P)
-    z_inv2 = (z_inv * z_inv) % SECP256K1_P
-    z_inv3 = (z_inv2 * z_inv) % SECP256K1_P
-    return ((X * z_inv2) % SECP256K1_P, (Y * z_inv3) % SECP256K1_P)
-
-# =============================================================================
-# Precomputed Fixed 4-Bit Affine Window Table for Generator G
-# =============================================================================
-
-_G_PRECOMP_AFFINE: list[list[tuple[int, int]]] = []
-
-def _init_g_precomp_table():
-    """Initializes fixed 4-bit affine window table for generator G at startup."""
-    if _G_PRECOMP_AFFINE:
-        return
-    
-    G_JAC = (SECP256K1_G[0], SECP256K1_G[1], 1)
-    curr = G_JAC
-    all_jac = []
-    
-    for window in range(64):
-        table_w = [(0, 0, 0)]
-        table_w.append(curr)
-        for mult in range(2, 16):
-            table_w.append(jacobian_add(table_w[-1], curr))
-        all_jac.append(table_w)
-        for _ in range(4):
-            curr = jacobian_double(curr)
-
-    z_coords = []
-    for w in range(64):
-        for mult in range(1, 16):
-            z_coords.append(all_jac[w][mult][2])
-
-    inv_z = batch_inv(z_coords, SECP256K1_P)
-    
-    idx = 0
-    for w in range(64):
-        table_aff = [(0, 0)]
-        for mult in range(1, 16):
-            zi = inv_z[idx]
-            idx += 1
-            zi2 = (zi * zi) % SECP256K1_P
-            zi3 = (zi2 * zi) % SECP256K1_P
-            X, Y, _ = all_jac[w][mult]
-            table_aff.append(((X * zi2) % SECP256K1_P, (Y * zi3) % SECP256K1_P))
-        _G_PRECOMP_AFFINE.append(table_aff)
-
-def scalar_mult_g_fast(k: int) -> tuple[int, int]:
-    """Optimized fixed-base scalar multiplication k * G using 4-bit affine window table."""
-    k %= SECP256K1_N
-    if k == 0:
-        return (0, 0)
-    if not _G_PRECOMP_AFFINE:
-        _init_g_precomp_table()
-    R = (0, 0, 0)
-    for window in range(64):
-        val = (k >> (4 * window)) & 0xF
-        if val > 0:
-            R = jacobian_add_mixed(R, _G_PRECOMP_AFFINE[window][val])
-    return jacobian_to_affine(R)
-
-def compute_naf(k: int) -> list[int]:
-    """Derives Non-Adjacent Form (NAF) signed binary representation for scalar k."""
-    if k < 0:
-        raise ValueError("NAF input must be non-negative")
-    naf = []
-    while k > 0:
-        if k % 2 == 1:
-            ki = 2 - (k % 4)
-            k -= ki
-        else:
-            ki = 0
-        naf.append(ki)
-        k //= 2
-    return naf
-
-def scalar_mult_naf_jacobian(k: int, pt: tuple[int, int]) -> tuple[int, int, int]:
-    """Multiply an arbitrary point without converting the result to affine form."""
-    if k < 0:
-        return scalar_mult_naf_jacobian(-k, point_negate(pt))
-    k %= SECP256K1_N
-    if k == 0:
-        return (0, 0, 0)
-    naf = compute_naf(k)
-    P_jac = (pt[0], pt[1], 1)
-    P_neg_jac = (pt[0], (-pt[1]) % SECP256K1_P, 1)
-    R_jac = (0, 0, 0)
-    
-    for val in reversed(naf):
-        R_jac = jacobian_double(R_jac)
-        if val == 1:
-            R_jac = jacobian_add(R_jac, P_jac)
-        elif val == -1:
-            R_jac = jacobian_add(R_jac, P_neg_jac)
-            
-    return R_jac
-
-def scalar_mult_naf(k: int, pt: tuple[int, int] = SECP256K1_G) -> tuple[int, int]:
-    """Performs scalar point multiplication k * P using NAF or fast table lookup."""
-    if pt == SECP256K1_G and k >= 0:
-        return scalar_mult_g_fast(k)
-    return jacobian_to_affine(scalar_mult_naf_jacobian(k, pt))
-
-def is_on_curve(pt: tuple[int, int]) -> bool:
-    x, y = pt
-    return 0 <= x < SECP256K1_P and 0 <= y < SECP256K1_P and (y * y - x * x * x - 7) % SECP256K1_P == 0
-
-def lift_x_even(x: int) -> tuple[int, int]:
-    """Decode a BIP-340 x-only public key to the curve point with even y."""
-    if not 0 <= x < SECP256K1_P:
-        raise ValueError("public-key x coordinate is outside the field")
-    c = (pow(x, 3, SECP256K1_P) + 7) % SECP256K1_P
-    y = pow(c, (SECP256K1_P + 1) // 4, SECP256K1_P)
-    if y * y % SECP256K1_P != c:
-        raise ValueError("x coordinate does not lift to a secp256k1 point")
-    return (x, y if y % 2 == 0 else SECP256K1_P - y)
-
-def parse_pubkey(pubkey_hex: str) -> tuple[int, int]:
-    """Parse a 32-byte x-only or 33-byte SEC compressed secp256k1 public key."""
-    raw = bytes.fromhex(pubkey_hex.removeprefix("0x"))
-    if len(raw) == 32:
-        return lift_x_even(int.from_bytes(raw, "big"))
-    if len(raw) != 33 or raw[0] not in (2, 3):
-        raise ValueError("public key must be 32-byte x-only or 33-byte compressed SEC hex")
-    x = int.from_bytes(raw[1:], "big")
-    pt = lift_x_even(x)
-    return pt if raw[0] == 2 or pt[1] % 2 == 0 else point_negate(pt)
-
-def curve_y_roots(x: int) -> tuple[int, ...]:
-    """Return the curve's y-coordinate root(s) for x, or raise if x has no point."""
-    if not 0 <= x < SECP256K1_P:
-        raise ValueError("x coordinate must be in [0, p)")
-    rhs = (pow(x, 3, SECP256K1_P) + 7) % SECP256K1_P
-    y = pow(rhs, (SECP256K1_P + 1) // 4, SECP256K1_P)
-    if y * y % SECP256K1_P != rhs:
-        raise ValueError("x coordinate does not lift to a secp256k1 point")
-    other = (-y) % SECP256K1_P
-    return (y,) if y == other else tuple(sorted((y, other)))
-
-def scalar_multiplication_trace(k: int, pt: tuple[int, int] = SECP256K1_G) -> dict[str, object]:
-    """Educational left-to-right double-and-add trace for a nonnegative scalar."""
-    if k < 0:
-        raise ValueError("scalar trace requires a nonnegative scalar")
-    if not is_on_curve(pt):
-        raise ValueError("input point is not on secp256k1")
-    result = (0, 0, 0)
-    rows = []
-    for bit_index, bit in enumerate(bin(k)[2:] if k else "0"):
-        result = jacobian_double(result)
-        did_add = bit == "1"
-        if did_add:
-            result = jacobian_add_mixed(result, pt)
-        rows.append({"bit_index": bit_index, "bit": int(bit), "added_point": did_add})
-    return {"scalar": k, "bit_length": k.bit_length(), "hamming_weight": k.bit_count(),
-            "result": jacobian_to_affine(result), "steps": rows}
-
-def modular_inverse_report(value: int, modulus: int, method: str = "builtin") -> dict[str, int | str]:
-    """Compute a modular inverse with the selected method and report its check."""
-    if modulus <= 1:
-        raise ValueError("modulus must be greater than 1")
-    gcd_value = math.gcd(value, modulus)
-    if gcd_value != 1:
-        raise ValueError(f"inverse does not exist: gcd(value, modulus) = {gcd_value}")
-    methods = {
-        "builtin": mod_inverse_builtin,
-        "egcd": mod_inverse_egcd,
-        "fermat": mod_inverse_fermat,
-    }
-    try:
-        inverse = methods[method](value, modulus)
-    except KeyError as exc:
-        raise ValueError("method must be builtin, egcd, or fermat") from exc
-    return {"value": value, "modulus": modulus, "gcd": gcd_value, "inverse": inverse,
-            "check": (value * inverse) % modulus, "method": method}
-
-def curve_add_geometry(p1: tuple[int, int], p2: tuple[int, int]) -> dict[str, object]:
-    """Return the secant/tangent line and elliptic-curve sum of two points."""
-    for point in (p1, p2):
-        if point != (0, 0) and not is_on_curve(point):
-            raise ValueError("both input points must be on secp256k1 (use (0,0) for infinity)")
-    if p1 == (0, 0):
-        return {"slope": None, "third_intersection": p2, "sum": p2}
-    if p2 == (0, 0):
-        return {"slope": None, "third_intersection": p1, "sum": p1}
-    x1, y1 = p1
-    x2, y2 = p2
-    if x1 == x2 and (y1 + y2) % SECP256K1_P == 0:
-        return {"slope": None, "third_intersection": (0, 0), "sum": (0, 0)}
-    if p1 == p2:
-        if y1 == 0:
-            return {"slope": None, "third_intersection": (x1, 0), "sum": (0, 0)}
-        slope = (3 * x1 * x1 * mod_inverse_builtin(2 * y1, SECP256K1_P)) % SECP256K1_P
-    else:
-        slope = ((y2 - y1) * mod_inverse_builtin(x2 - x1, SECP256K1_P)) % SECP256K1_P
-    x3 = (slope * slope - x1 - x2) % SECP256K1_P
-    y_line = (slope * (x3 - x1) + y1) % SECP256K1_P
-    third = (x3, y_line)
-    total = (x3, (-y_line) % SECP256K1_P)
-    return {"slope": slope, "third_intersection": third, "sum": total}
-
-def y_equals_x_report(x: int) -> dict[str, int | bool]:
-    """Evaluate the curve equation after substituting y=x, in the base field."""
-    x %= SECP256K1_P
-    residual = (pow(x, 3, SECP256K1_P) + 7 - pow(x, 2, SECP256K1_P)) % SECP256K1_P
-    return {"x": x, "residual": residual, "is_curve_point": residual == 0}
-
-def russian_integer_multiply(a: int, b: int) -> dict[str, object]:
-    """Trace binary shift-and-add multiplication, including signed operands."""
-    sign = -1 if (a < 0) ^ (b < 0) else 1
-    multiplicand, multiplier = abs(a), abs(b)
-    rows, total = [], 0
-    while multiplier:
-        bit = multiplier & 1
-        if bit:
-            total += multiplicand
-        rows.append({"multiplicand": multiplicand, "multiplier": multiplier,
-                     "bit": bit, "partial_sum": total})
-        multiplicand <<= 1
-        multiplier >>= 1
-    return {"product": sign * total, "steps": rows}
-
-def russian_modular_multiply(a: int, b: int, modulus: int) -> dict[str, object]:
-    """Compute a*b mod m by binary shift-and-add with bounded residues."""
-    if modulus <= 0:
-        raise ValueError("modulus must be positive")
-    sign = -1 if (a < 0) ^ (b < 0) else 1
-    x, y = abs(a) % modulus, abs(b)
-    total, rows = 0, []
-    while y:
-        bit = y & 1
-        if bit:
-            total = (total + x) % modulus
-        rows.append({"addend": x, "multiplier": y, "bit": bit, "residue": total})
-        x = (2 * x) % modulus
-        y >>= 1
-    result = (sign * total) % modulus
-    if result != (a * b) % modulus:
-        raise ArithmeticError("modular multiplication trace verification failed")
-    return {"result": result, "steps": rows, "verified": True}
-
-def fermat_factor(n: int, max_steps: int = 100_000) -> dict[str, object]:
-    """Bounded Fermat search; succeeds quickly only when odd factors are close."""
-    if n <= 1 or n % 2 == 0:
-        raise ValueError("Fermat search requires an odd integer greater than 1")
-    if max_steps < 0:
-        raise ValueError("max_steps must be nonnegative")
-    a = math.isqrt(n)
-    if a * a < n:
-        a += 1
-    for step in range(max_steps + 1):
-        delta = a * a - n
-        b = math.isqrt(delta)
-        if b * b == delta:
-            p, q = a - b, a + b
-            if p > 1 and p * q == n:
-                return {"found": True, "p": p, "q": q, "steps": step}
-        a += 1
-    return {"found": False, "steps": max_steps, "limit": max_steps}
-
-def rsa_factor_candidate_report(n: int, p: int, q: int, e: int = 65537) -> dict[str, object]:
-    """Check a proposed RSA factor pair and exponent compatibility."""
-    if n <= 1 or p <= 1 or q <= 1 or e <= 1:
-        raise ValueError("n, p, q, and e must be integers greater than 1")
-    product_matches = p * q == n
-    p_probable_prime = _is_probable_prime(p) if product_matches else False
-    q_probable_prime = _is_probable_prime(q) if product_matches else False
-    exponent_coprime = math.gcd(e, math.lcm(p - 1, q - 1)) == 1 if product_matches else False
-    return {"product_matches": product_matches, "p_probable_prime": p_probable_prime,
-            "q_probable_prime": q_probable_prime, "exponent_coprime_to_lambda": exponent_coprime,
-            "candidate_valid": product_matches and p_probable_prime and q_probable_prime and exponent_coprime}
-
-def compress_pubkey(pt: tuple[int, int]) -> bytes:
-    """Derives 33-byte SEC compressed public key byte array."""
-    x, y = pt
-    prefix = b'\x02' if y % 2 == 0 else b'\x03'
-    return prefix + x.to_bytes(32, 'big')
-
-def batch_jacobian_to_affine(points: list[tuple[int, int, int]]) -> list[tuple[int, int]]:
-    """Convert many Jacobian points with one batch inversion."""
-    if not points:
-        return []
-    z_inverses = batch_inv([point[2] for point in points], SECP256K1_P)
-    result = []
-    for (x, y, z), z_inv in zip(points, z_inverses):
-        if z == 0:
-            result.append((0, 0))
-            continue
-        z_inv2 = z_inv * z_inv % SECP256K1_P
-        z_inv3 = z_inv2 * z_inv % SECP256K1_P
-        result.append((x * z_inv2 % SECP256K1_P, y * z_inv3 % SECP256K1_P))
-    return result
-
-def advance_public_key(pubkey_hex: str, steps: int = 10) -> dict[str, object]:
-    """Advance a public point by repeatedly adding G, with batched output conversion.
-
-    This is public-point arithmetic Q_i = Q_(i-1) + G. It is not BIP32 derivation,
-    and it does not recover or reveal a private key.
-    """
-    if not 1 <= steps <= 1000:
-        raise ValueError("steps must be between 1 and 1000")
-    point = parse_pubkey(pubkey_hex)
-    current = (point[0], point[1], 1)
-    walked = []
-    for _ in range(steps):
-        current = jacobian_add_mixed(current, SECP256K1_G)
-        walked.append(current)
-    affine_points = batch_jacobian_to_affine(walked)
-    return {
-        "start_pubkey_hex": compress_pubkey(point).hex(),
-        "steps": [
-            {"index": index, "point_at_infinity": pt == (0, 0),
-             "compressed_pubkey_hex": None if pt == (0, 0) else compress_pubkey(pt).hex()}
-            for index, pt in enumerate(affine_points, start=1)
-        ],
-    }
-
-# =============================================================================
-# RFC 6979 Deterministic Nonce Generator Engine
-# =============================================================================
-
-def rfc6979_deterministic_nonce(privkey_d: int, hash_z: int) -> int:
-    """
-    Derives a deterministic ephemeral nonce using the RFC 6979 procedure.
-    The result is reproducible for a given private key and message hash.
-    """
-    if not 1 <= privkey_d < SECP256K1_N:
-        raise ValueError("private key must be in [1, n-1]")
-    d_bytes = privkey_d.to_bytes(32, 'big')
-    h_bytes = (hash_z % SECP256K1_N).to_bytes(32, 'big')
-    V = b'\x01' * 32
-    K = b'\x00' * 32
-    
-    K = hmac.new(K, V + b'\x00' + d_bytes + h_bytes, hashlib.sha256).digest()
-    V = hmac.new(K, V, hashlib.sha256).digest()
-    K = hmac.new(K, V + b'\x01' + d_bytes + h_bytes, hashlib.sha256).digest()
-    V = hmac.new(K, V, hashlib.sha256).digest()
-    
-    while True:
-        V = hmac.new(K, V, hashlib.sha256).digest()
-        k_candidate = int.from_bytes(V, 'big')
-        if 1 <= k_candidate < SECP256K1_N:
-            return k_candidate
-        K = hmac.new(K, V + b'\x00', hashlib.sha256).digest()
-        V = hmac.new(K, V, hashlib.sha256).digest()
-
-def rfc6979_trace(privkey_d: int, msg_str: str) -> dict[str, object]:
-    """Traces RFC 6979 deterministic nonce generation."""
-    z = int.from_bytes(hashlib.sha256(msg_str.encode('utf-8')).digest(), 'big')
-    k_det = rfc6979_deterministic_nonce(privkey_d, z)
-    R_pt = scalar_mult_g_fast(k_det)
-    return {
-        "msg_input": msg_str,
-        "hash_z_hex": f"0x{z:064x}",
-        "rfc6979_k_hex": f"0x{k_det:064x}",
-        "ephemeral_R_affine": R_pt,
-        "deterministic_for_key_and_hash": True
-    }
-
-# =============================================================================
-# BIP-340 Schnorr Signatures & Taproot Engine
-# =============================================================================
-
-def tagged_hash(tag: str, msg_bytes: bytes) -> bytes:
-    """Computes BIP-340 Tagged Hash: SHA256(SHA256(tag) || SHA256(tag) || msg)."""
-    tag_digest = hashlib.sha256(tag.encode('utf-8')).digest()
-    return hashlib.sha256(tag_digest + tag_digest + msg_bytes).digest()
-
-def schnorr_bip340_sign_and_verify_trace(
-    privkey_d: int, msg_str: str, aux_rand: bytes = b"\x00" * 32
-) -> dict[str, object]:
-    """
-    Executes a complete BIP-340 Schnorr signature generation and verification trace:
-    1. Enforces x-only public key (even y-parity).
-    2. Generates the BIP-340 nonce using tagged aux and nonce hashes.
-    3. Computes challenge e via tagged hash BIP0340/challenge.
-    4. Computes signature s = (k + e * d) mod N.
-    5. Verifies s * G == R + e * P directly (NO SCALAR INVERSION s^-1 REQUIRED!).
-    """
-    if not 1 <= privkey_d < SECP256K1_N:
-        raise ValueError("private key must be in [1, n-1]")
-    if len(aux_rand) != 32:
-        raise ValueError("BIP-340 auxiliary randomness must be exactly 32 bytes")
-    msg_bytes = msg_str.encode('utf-8')
-    if len(msg_bytes) != 32:
-        raise ValueError("BIP-340 messages must be exactly 32 bytes; pass a 32-byte hex message via a future CLI option")
-    
-    P = scalar_mult_g_fast(privkey_d)
-    d = privkey_d
-    if P[1] % 2 != 0:
-        d = SECP256K1_N - d
-        P = point_negate(P)
-
-    d_bytes = d.to_bytes(32, 'big')
-    aux_hash = tagged_hash("BIP0340/aux", aux_rand)
-    t = bytes(a ^ b for a, b in zip(d_bytes, aux_hash))
-    k_bytes = tagged_hash("BIP0340/nonce", t + P[0].to_bytes(32, 'big') + msg_bytes)
-    k = int.from_bytes(k_bytes, 'big') % SECP256K1_N
-    if k == 0:
-        raise ValueError("Invalid zero nonce derived")
-
-    R = scalar_mult_g_fast(k)
-    if R[1] % 2 != 0:
-        k = SECP256K1_N - k
-        R = point_negate(R)
-
-    e_bytes = tagged_hash("BIP0340/challenge", R[0].to_bytes(32, 'big') + P[0].to_bytes(32, 'big') + msg_bytes)
-    e = int.from_bytes(e_bytes, 'big') % SECP256K1_N
-
-    s = (k + e * d) % SECP256K1_N
-
-    sG = scalar_mult_g_fast(s)
-    eP_jac = scalar_mult_naf_jacobian(e, P)
-    R_plus_eP_jac = jacobian_add((R[0], R[1], 1), eP_jac)
-    R_plus_eP = jacobian_to_affine(R_plus_eP_jac)
-
-    verified = (sG == R_plus_eP)
-
-    return {
-        "x_only_pubkey_P_hex": f"0x{P[0]:064x}",
-        "P_y_even": (P[1] % 2 == 0),
-        "msg_input": msg_str,
-        "nonce_k_hex": f"0x{k:064x}",
-        "R_x_hex": f"0x{R[0]:064x}",
-        "challenge_e_hex": f"0x{e:064x}",
-        "sig_s_hex": f"0x{s:064x}",
-        "sG_affine": sG,
-        "R_plus_eP_affine": R_plus_eP,
-        "verified": verified,
-        "zero_inversions_required": True,
-        "aux_rand_hex": aux_rand.hex(),
-    }
-
-def ecdsa_sign_and_verify_trace(privkey_d: int, message: str) -> dict[str, object]:
-    """Sign a text payload or 0x-prefixed hash with RFC 6979 and verify it."""
-    if not 1 <= privkey_d < SECP256K1_N:
-        raise ValueError("private key must be in [1, n-1]")
-    z = int(message, 16) if message.lower().startswith("0x") else int.from_bytes(hashlib.sha256(message.encode('utf-8')).digest(), 'big')
-    k = rfc6979_deterministic_nonce(privkey_d, z)
-    R = scalar_mult_g_fast(k)
-    r = R[0] % SECP256K1_N
-    if r == 0:
-        raise ValueError("invalid nonce produced r = 0")
-    s = (scalar_inv(k, SECP256K1_N) * (z + r * privkey_d)) % SECP256K1_N
-    if s == 0:
-        raise ValueError("invalid signature produced s = 0")
-    low_s_normalized = s > SECP256K1_N // 2
-    if low_s_normalized:
-        s = SECP256K1_N - s
-    Q = scalar_mult_g_fast(privkey_d)
-    w = scalar_inv(s, SECP256K1_N)
-    u1, u2 = z * w % SECP256K1_N, r * w % SECP256K1_N
-    u1G, u2Q = scalar_mult_g_fast(u1), scalar_mult_naf(u2, Q)
-    R_prime = jacobian_to_affine(jacobian_add((u1G[0], u1G[1], 1), (u2Q[0], u2Q[1], 1)))
-    return {
-        "pubkey_hex": compress_pubkey(Q).hex(),
-        "hash_z_hex": f"0x{z:064x}",
-        "sig_r_hex": f"0x{r:064x}",
-        "sig_s_hex": f"0x{s:064x}",
-        "low_s_normalized": low_s_normalized,
-        "verified": R_prime != (0, 0) and R_prime[0] % SECP256K1_N == r,
-    }
-
-def ecdsa_nonce_reuse_attack_trace(privkey_d: int, reused_k: int) -> dict[str, object]:
-    """Educational demonstration: reusing an ECDSA nonce exposes the signing key."""
-    if not 1 <= privkey_d < SECP256K1_N or not 1 <= reused_k < SECP256K1_N:
-        raise ValueError("private key and nonce must be in [1, n-1]")
-    z1 = int.from_bytes(hashlib.sha256(b"Nonce reuse demo message one").digest(), 'big')
-    z2 = int.from_bytes(hashlib.sha256(b"Nonce reuse demo message two").digest(), 'big')
-    r = scalar_mult_g_fast(reused_k)[0] % SECP256K1_N
-    s1 = scalar_inv(reused_k, SECP256K1_N) * (z1 + r * privkey_d) % SECP256K1_N
-    s2 = scalar_inv(reused_k, SECP256K1_N) * (z2 + r * privkey_d) % SECP256K1_N
-    recovered_k = (z1 - z2) * scalar_inv(s1 - s2, SECP256K1_N) % SECP256K1_N
-    recovered_d = (s1 * recovered_k - z1) * scalar_inv(r, SECP256K1_N) % SECP256K1_N
-    return {"shared_r_hex": f"0x{r:064x}", "nonce_recovered": recovered_k == reused_k, "private_key_recovered": recovered_d == privkey_d}
-
-# =============================================================================
-# Hash-to-Curve & Verifiably Random Point Generators
-# =============================================================================
-
-def hash_to_curve_try_and_increment(seed_str: str) -> dict[str, object]:
-    """
-    Experimental try-and-increment mapping. This is not a standardized hash-to-curve
-    suite and must not be used to derive protocol keys.
-    Tests candidate x-coordinates and computes modular square root y = (x^3 + 7)^((P+1)/4) mod P.
-    """
-    counter = 0
-    while True:
-        candidate_bytes = hashlib.sha256(seed_str.encode('utf-8') + counter.to_bytes(4, 'big')).digest()
-        x_candidate = int.from_bytes(candidate_bytes, 'big') % SECP256K1_P
-        rhs = (pow(x_candidate, 3, SECP256K1_P) + 7) % SECP256K1_P
-        
-        # Test for quadratic residue
-        if rhs == 0 or pow(rhs, (SECP256K1_P - 1) // 2, SECP256K1_P) == 1:
-            y_even = pow(rhs, (SECP256K1_P + 1) // 4, SECP256K1_P)
-            pt = (x_candidate, y_even)
-            return {
-                "seed": seed_str,
-                "tries": counter,
-                "point_x_hex": f"0x{pt[0]:064x}",
-                "point_y_hex": f"0x{pt[1]:064x}",
-                "on_curve": pow(pt[1], 2, SECP256K1_P) == (pow(pt[0], 3, SECP256K1_P) + 7) % SECP256K1_P
-            }
-        counter += 1
-
-def verifiable_pseudorandom_point(seed_str: str) -> dict[str, object]:
-    """
-    Deterministically derives Q = Hash(P0 || seed) * G. This custom construction
-    does not establish a general proof of trapdoor absence or follow a named standard.
-    """
-    P0_bytes = SECP256K1_G[0].to_bytes(32, 'big')
-    seed_bytes = seed_str.encode('utf-8')
-    c_hash = hashlib.sha256(P0_bytes + seed_bytes).digest()
-    c_scalar = (int.from_bytes(c_hash, 'big') % (SECP256K1_N - 1)) + 1
-    
-    Q_pt = scalar_mult_g_fast(c_scalar)
-    return {
-        "seed": seed_str,
-        "derived_scalar_c_hex": f"0x{c_scalar:064x}",
-        "verifiable_point_Q_x_hex": f"0x{Q_pt[0]:064x}",
-        "verifiable_point_Q_y_hex": f"0x{Q_pt[1]:064x}",
-        "compressed_pubkey_hex": compress_pubkey(Q_pt).hex(),
-        "trust_property": "Reproducibly derived via SHA-256; custom construction, not a protocol standard"
-    }
-
-# =============================================================================
-# New in v17: MuSig2 Key Aggregation, Taproot Tweaking & Long-Period EC PRNG
-# =============================================================================
-
-def musig2_aggregate_keys(pubkey_hex_list: list[str]) -> dict[str, object]:
-    """
-    MuSig2 Key Aggregation Engine: Aggregates multiple Schnorr public keys into a joint key P_agg.
-    Calculates key coefficients a_i = Hash(KeyAgg || P_1 || ... || P_n || P_i) for unforgeability.
-    """
-    if len(pubkey_hex_list) < 2:
-        raise ValueError("provide at least two public keys")
-    pts = [lift_x_even(parse_pubkey(p_hex)[0]) for p_hex in pubkey_hex_list]
-
-    # Compute KeyAgg list digest
-    list_bytes = b"".join(pt[0].to_bytes(32, 'big') for pt in pts)
-    L_hash = tagged_hash("KeyAgg/list", list_bytes)
-
-    # Compute key coefficients a_i and sum a_i * P_i
-    R_agg_jac = (0, 0, 0)
-    coeffs = []
-    xkeys = [pt[0].to_bytes(32, 'big') for pt in pts]
-    second_unique = next((key for key in xkeys[1:] if key != xkeys[0]), None)
-    for pt, key in zip(pts, xkeys):
-        # MuSig2 assigns coefficient 1 to the second distinct key.
-        a_i = 1 if key == second_unique else int.from_bytes(tagged_hash("KeyAgg coefficient", L_hash + key), 'big') % SECP256K1_N
-        if a_i == 0:
-            raise ValueError("MuSig2 key coefficient is zero")
-        coeffs.append(f"0x{a_i:064x}")
-        
-        aP_i_jac = scalar_mult_naf_jacobian(a_i, pt)
-        R_agg_jac = jacobian_add(R_agg_jac, aP_i_jac)
-
-    P_agg = jacobian_to_affine(R_agg_jac)
-    return {
-        "input_pubkeys_count": len(pubkey_hex_list),
-        "key_coefficients_a_i": coeffs,
-        "aggregated_point_x_hex": f"0x{P_agg[0]:064x}",
-        "aggregated_point_y_hex": f"0x{P_agg[1]:064x}",
-        "x_only_aggregated_pubkey_hex": f"0x{P_agg[0]:064x}"
-    }
-
-def taproot_tweak_pubkey(internal_pubkey_x_hex: str, merkle_root_hex: str = "") -> dict[str, object]:
-    """
-    Computes Taproot Tweak: Q = P + t*G, where t = TaggedHash("TapTweak", P_x || merkle_root).
-    """
-    P_internal = lift_x_even(parse_pubkey(internal_pubkey_x_hex)[0])
-
-    m_bytes = bytes.fromhex(merkle_root_hex.replace("0x", "")) if merkle_root_hex else b""
-    t_bytes = tagged_hash("TapTweak", P_internal[0].to_bytes(32, 'big') + m_bytes)
-    t_scalar = int.from_bytes(t_bytes, 'big')
-    if t_scalar >= SECP256K1_N:
-        raise ValueError("TapTweak hash is outside the scalar range")
-
-    tG = scalar_mult_g_fast(t_scalar)
-    Q_jac = jacobian_add((P_internal[0], P_internal[1], 1), (tG[0], tG[1], 1))
-    Q_taproot = jacobian_to_affine(Q_jac)
-    if Q_taproot == (0, 0):
-        raise ValueError("Taproot tweak produced the point at infinity")
-
-    return {
-        "internal_pubkey_x_hex": f"0x{P_internal[0]:064x}",
-        "taproot_tweak_t_hex": f"0x{t_scalar:064x}",
-        "output_taproot_pubkey_x_hex": f"0x{Q_taproot[0]:064x}",
-        "output_taproot_pubkey_y_hex": f"0x{Q_taproot[1]:064x}"
-    }
-
-def long_period_ec_prng_generator(seed_str: str, dimension: int = 4) -> dict[str, object]:
-    """
-    Generates a deterministic demonstration sequence. This LCG-based construction
-    is not cryptographically secure and its period is not guaranteed to equal N.
-    """
-    if not 1 <= dimension <= 1024:
-        raise ValueError("dimension must be between 1 and 1024")
-    seed_hash = hashlib.sha256(seed_str.encode('utf-8')).digest()
-    state_scalar = int.from_bytes(seed_hash, 'big') % SECP256K1_N
-
-    vector = []
-    for _ in range(dimension):
-        state_scalar = (state_scalar * 0x5deacee9 + 0xb) % SECP256K1_N
-        pt = scalar_mult_g_fast(state_scalar)
-        vector.append({
-            "coord_x_hex": f"0x{pt[0]:064x}",
-            "coord_y_hex": f"0x{pt[1]:064x}"
-        })
-
-    return {
-        "seed": seed_str,
-        "dimension": dimension,
-        "security_note": "Demonstration only; not a cryptographically secure PRNG",
-        "generated_pseudorandom_vectors": vector
-    }
-
-def bech32_polymod_diagnose(address: str) -> dict[str, object]:
-    """Validate a Bech32/Bech32m checksum and report its HRP and encoding variant."""
-    if not 8 <= len(address) <= 90:
-        raise ValueError("Bech32 address length must be between 8 and 90 characters")
-    if address.lower() != address and address.upper() != address:
-        raise ValueError("Bech32 strings cannot mix uppercase and lowercase")
-    address = address.lower()
-    separator = address.rfind('1')
-    if separator < 1 or separator + 7 > len(address):
-        raise ValueError("Bech32 separator or checksum position is invalid")
-    hrp, encoded = address[:separator], address[separator + 1:]
-    if any(not 33 <= ord(ch) <= 126 for ch in hrp):
-        raise ValueError("Bech32 human-readable prefix must contain printable ASCII")
-    charset = 'qpzry9x8gf2tvdw0s3jn54khce6mua7l'
-    try:
-        data = [charset.index(char) for char in encoded]
-    except ValueError as exc:
-        raise ValueError("Bech32 address contains an invalid data character") from exc
-    generators = (0x3b6a57b2, 0x26508e6d, 0x1ea119fa, 0x3d4233dd, 0x2a1462b3)
-    check = 1
-    values = [ord(ch) >> 5 for ch in hrp] + [0] + [ord(ch) & 31 for ch in hrp] + data
-    for value in values:
-        top = check >> 25
-        check = ((check & 0x1ffffff) << 5) ^ value
-        for bit, generator in enumerate(generators):
-            if (top >> bit) & 1:
-                check ^= generator
-    variant = "bech32" if check == 1 else "bech32m" if check == 0x2bc830a3 else "unknown"
-    return {
-        "address": address,
-        "hrp": hrp,
-        "data_length_5bit": len(data) - 6,
-        "polymod_residual": f"0x{check:08x}",
-        "checksum_variant": variant,
-        "valid_checksum": variant != "unknown",
-    }
-
-def decode_wif(wif: str) -> dict[str, object]:
-    """Decode and validate a Base58Check WIF, then derive its public-key addresses."""
-    alphabet = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz'
-    wif = wif.strip()
-    if not wif:
-        raise ValueError("WIF value cannot be empty")
-    number = 0
-    for char in wif:
-        try:
-            number = number * 58 + alphabet.index(char)
-        except ValueError as exc:
-            raise ValueError(f"Invalid Base58 character: {char!r}") from exc
-    body = number.to_bytes((number.bit_length() + 7) // 8, 'big') if number else b''
-    raw = b'\x00' * (len(wif) - len(wif.lstrip('1'))) + body
-    if len(raw) not in (37, 38):
-        raise ValueError("WIF payload must contain a 32-byte scalar and checksum")
-    payload, checksum = raw[:-4], raw[-4:]
-    if hashlib.sha256(hashlib.sha256(payload).digest()).digest()[:4] != checksum:
-        raise ValueError("Invalid WIF checksum")
-    version = payload[0]
-    if version not in (0x80, 0xEF):
-        raise ValueError("Unsupported WIF network prefix")
-    compressed = len(payload) == 34 and payload[-1] == 1
-    if len(payload) != (34 if compressed else 33):
-        raise ValueError("Malformed WIF payload or compression marker")
-    private_scalar = int.from_bytes(payload[1:33], 'big')
-    if not 1 <= private_scalar < SECP256K1_N:
-        raise ValueError("WIF private scalar must be in [1, n-1]")
-    point = scalar_mult_g_fast(private_scalar)
-    compressed_key = compress_pubkey(point)
-    serialized = compressed_key if compressed else b'\x04' + point[0].to_bytes(32, 'big') + point[1].to_bytes(32, 'big')
-    h160 = hashlib.new('ripemd160', hashlib.sha256(serialized).digest()).digest()
-    network_prefix = b'\x00' if version == 0x80 else b'\x6f'
-    payload = network_prefix + h160
-    check = hashlib.sha256(hashlib.sha256(payload).digest()).digest()[:4]
-    encoded_number = int.from_bytes(payload + check, 'big')
-    encoded = []
-    while encoded_number:
-        encoded_number, digit = divmod(encoded_number, 58)
-        encoded.append(alphabet[digit])
-    leading_zeroes = len(payload + check) - len((payload + check).lstrip(b'\x00'))
-    legacy = '1' * leading_zeroes + ''.join(reversed(encoded))
-    segwit = None
-    if compressed:
-        hrp = 'bc' if version == 0x80 else 'tb'
-        charset = 'qpzry9x8gf2tvdw0s3jn54khce6mua7l'
-        expanded = [ord(ch) >> 5 for ch in hrp] + [0] + [ord(ch) & 31 for ch in hrp]
-        data = [0]
-        acc = bits = 0
-        for byte in h160:
-            acc = (acc << 8) | byte
-            bits += 8
-            while bits >= 5:
-                bits -= 5
-                data.append((acc >> bits) & 31)
-        if bits:
-            data.append((acc << (5 - bits)) & 31)
-        check_values = expanded + data + [0] * 6
-        polymod = 1
-        generators = (0x3b6a57b2, 0x26508e6d, 0x1ea119fa, 0x3d4233dd, 0x2a1462b3)
-        for value in check_values:
-            top = polymod >> 25
-            polymod = ((polymod & 0x1ffffff) << 5) ^ value
-            for bit, generator in enumerate(generators):
-                if (top >> bit) & 1:
-                    polymod ^= generator
-        polymod ^= 1
-        checksum_chars = [(polymod >> (5 * (5 - idx))) & 31 for idx in range(6)]
-        segwit = hrp + '1' + ''.join(charset[v] for v in data + checksum_chars)
-    return {
-        "network": "mainnet" if version == 0x80 else "testnet",
-        "compressed": compressed,
-        "private_key_hex": f"0x{private_scalar:064x}",
-        "public_key_hex": serialized.hex(),
-        "hash160_hex": h160.hex(),
-        "legacy_p2pkh": legacy,
-        "native_segwit": segwit,
-    }
-
-def _walkback_trace_parse(target: str) -> dict[str, object]:
-    """Parse an address/hash/public key and state what public data it reveals.
-
-    The function never claims to recover a private key from a hash or address.
-    """
-    value = target.strip()
-    if not value:
-        raise ValueError("walkback target cannot be empty")
-    if len(value) == 40:
-        try:
-            payload = bytes.fromhex(value)
-            return {"input": value, "type": "raw HASH160", "hash160_hex": payload.hex(),
-                    "public_key_hex": None, "private_key_recoverable": False,
-                    "limit": "A HASH160 does not reveal its public key or private key."}
-        except ValueError:
-            pass
-    key_text = value.removeprefix("0x").removeprefix("0X")
-    if len(key_text) in (64, 66):
-        try:
-            point = parse_pubkey(key_text)
-            return {"input": value, "type": "public key", "hash160_hex": None,
-                    "public_key_hex": compress_pubkey(point).hex(), "private_key_recoverable": False,
-                    "limit": "A public key does not reveal its private scalar under the discrete-log assumption."}
-        except (ValueError, OverflowError):
-            pass
-    if '1' in value and value.lower().split('1', 1)[0] in ("bc", "tb", "bcrt"):
-        diag = bech32_polymod_diagnose(value)
-        if not diag["valid_checksum"]:
-            raise ValueError("invalid Bech32 checksum")
-        separator = value.lower().rfind('1')
-        encoded = value.lower()[separator + 1:]
-        charset = 'qpzry9x8gf2tvdw0s3jn54khce6mua7l'
-        data = [charset.index(ch) for ch in encoded]
-        payload5 = data[:-6]
-        witness_version = payload5[0]
-        acc = bits = 0
-        program = bytearray()
-        for word in payload5[1:]:
-            acc = (acc << 5) | word
-            bits += 5
-            if bits >= 8:
-                bits -= 8
-                program.append((acc >> bits) & 0xff)
-        if bits >= 5 or ((acc << (8 - bits)) & 0xff):
-            raise ValueError("invalid witness program padding")
-        if not 2 <= len(program) <= 40 or not 0 <= witness_version <= 16:
-            raise ValueError("invalid SegWit witness version or program length")
-        if (witness_version == 0 and len(program) not in (20, 32)):
-            raise ValueError("version 0 witness program must be 20 or 32 bytes")
-        if (witness_version == 0 and diag["checksum_variant"] != "bech32") or (witness_version > 0 and diag["checksum_variant"] != "bech32m"):
-            raise ValueError("checksum variant does not match witness version")
-        key_hex = program.hex() if witness_version == 1 and len(program) == 32 else None
-        return {"input": value, "type": f"SegWit v{witness_version}", "witness_program_hex": program.hex(),
-                "public_key_hex": key_hex, "private_key_recoverable": False,
-                "limit": "The address encodes a witness program; it does not reveal the private key."}
-    # Base58Check legacy P2PKH/P2SH address.
-    alphabet = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz'
-    number = 0
-    for char in value:
-        try:
-            number = number * 58 + alphabet.index(char)
-        except ValueError as exc:
-            raise ValueError("target is neither a recognized public key, HASH160, nor address") from exc
-    body = number.to_bytes((number.bit_length() + 7) // 8, 'big') if number else b''
-    raw = b'\x00' * (len(value) - len(value.lstrip('1'))) + body
-    if len(raw) != 25 or hashlib.sha256(hashlib.sha256(raw[:-4]).digest()).digest()[:4] != raw[-4:]:
-        raise ValueError("invalid Base58Check address")
-    version = raw[0]
-    kinds = {0x00: "mainnet P2PKH", 0x05: "mainnet P2SH", 0x6f: "testnet P2PKH", 0xc4: "testnet P2SH"}
-    if version not in kinds:
-        raise ValueError("unsupported Base58Check address version")
-    return {"input": value, "type": kinds[version], "hash160_hex": raw[1:21].hex(),
-            "public_key_hex": None, "private_key_recoverable": False,
-            "limit": "The address contains a HASH160 payload; it cannot be inverted to the key."}
-
-def walkback_trace(target: str) -> dict[str, object]:
-    """Return decoded public data with a detailed reverse-path investigation."""
-    result = _walkback_trace_parse(target)
-    kind = str(result["type"])
-    layers = [{"stage": "Target parsing and public encoding", "status": "decoded",
-               "data": f"Interpreted as {kind}; encoding/checksum validated where applicable."}]
-    public_key = result.get("public_key_hex")
-    hash160 = result.get("hash160_hex")
-    witness = result.get("witness_program_hex")
-    if public_key:
-        layers.append({"stage": "Public point to private scalar", "status": "point available; scalar not derived",
-                       "data": "The reverse step is the secp256k1 discrete-log equation Q = kG."})
-    elif hash160:
-        if "P2SH" in kind:
-            source = "HASH160(redeem script)"
-        elif kind == "SegWit v0" and witness and len(witness) == 64:
-            source = "SHA256(witness script)"
-        else:
-            source = "HASH160(public key)"
-        layers.append({"stage": "Address payload to spending data", "status": "payload extracted; preimage unresolved",
-                       "data": f"The payload is {source}; its preimage is not contained in the address."})
-        if source == "HASH160(public key)":
-            layers.append({"stage": "Public key to private scalar", "status": "not reached without a public-key candidate",
-                           "data": "A candidate point would still require solving Q = kG."})
-    else:
-        layers.append({"stage": "Reverse path", "status": "payload unavailable",
-                       "data": str(result.get("limit", "No public-key or hash payload was extracted."))})
-    result["layers"] = layers
-    return result
-
-
-def solve_cnf(clauses: list[list[int]], variable_count: int, node_limit: int = 100_000) -> dict[str, object]:
-    """Dependency-free DPLL solver with unit propagation and pure-literal elimination."""
-    if variable_count < 0 or node_limit < 1:
-        raise ValueError("variable_count must be nonnegative and node_limit positive")
-    if any(lit == 0 or abs(lit) > variable_count for clause in clauses for lit in clause):
-        raise ValueError("CNF literal is zero or exceeds the declared variable count")
-    stats = {"decisions": 0, "propagations": 0, "nodes": 0}
-    def search(assign: dict[int, bool]):
-        stats["nodes"] += 1
-        if stats["nodes"] > node_limit:
-            raise TimeoutError
-        while True:
-            pending_clauses=[]; unit=None; polarities={}
-            for clause in clauses:
-                if any(assign.get(abs(lit)) == (lit > 0) for lit in clause if abs(lit) in assign):
-                    continue
-                pending=[lit for lit in clause if abs(lit) not in assign]
-                if not pending:
-                    return None
-                pending_clauses.append(pending)
-                if len(pending)==1:
-                    unit=pending[0]; break
-                for lit in pending:
-                    polarities.setdefault(abs(lit), set()).add(lit > 0)
-            if unit is not None:
-                assign[abs(unit)] = unit > 0; stats["propagations"] += 1; continue
-            if not pending_clauses:
-                return assign
-            pure=next(((v,next(iter(signs))) for v,signs in polarities.items() if len(signs)==1),None)
-            if pure:
-                assign[pure[0]]=pure[1]; stats["propagations"] += 1; continue
-            break
-        freq={}
-        for clause in pending_clauses:
-            for lit in clause: freq[abs(lit)]=freq.get(abs(lit),0)+1
-        var=max(freq,key=freq.get); stats["decisions"] += 1
-        for val in (True,False):
-            branch=dict(assign); branch[var]=val
-            answer=search(branch)
-            if answer is not None: return answer
-        return None
-    try:
-        model=search({}); status="SAT" if model is not None else "UNSAT"
-    except TimeoutError:
-        model=None; status="UNKNOWN (node limit reached)"
-    return {"status":status,"model":model,**stats,"clauses":len(clauses),"variables":variable_count}
-
-
-def parse_dimacs_cnf(text: str) -> tuple[int, list[list[int]]]:
-    """Read a DIMACS CNF instance."""
-    nvars=nclauses=None; clauses=[]; pending=[]
-    for line_no,line in enumerate(text.splitlines(),1):
-        line=line.strip()
-        if not line or line.startswith('c'): continue
-        fields=line.split()
-        if fields[0]=='p':
-            if nvars is not None or len(fields)!=4 or fields[1]!='cnf': raise ValueError(f"invalid DIMACS header at line {line_no}")
-            nvars,nclauses=int(fields[2]),int(fields[3]); continue
-        if nvars is None: raise ValueError("DIMACS clauses must follow a p cnf header")
-        for value in fields:
-            lit=int(value)
-            if lit==0: clauses.append(pending); pending=[]
-            else: pending.append(lit)
-    if nvars is None or pending or len(clauses)!=nclauses: raise ValueError("DIMACS header/clause count mismatch")
-    if any(abs(lit)>nvars for clause in clauses for lit in clause): raise ValueError("DIMACS literal outside declared variable range")
-    return nvars,clauses
-
-def run_performance_benchmark(trials: int = 8) -> dict[str, object]:
-    """Compare the optimized fixed-base path with generic NAF and inversion paths."""
-    if not 1 <= trials <= 100:
-        raise ValueError("benchmark trials must be between 1 and 100")
-    scalars = [int.from_bytes(hashlib.sha256(f"benchmark:{i}".encode()).digest(), 'big') % SECP256K1_N for i in range(trials)]
-    # Warm up the lazy precomputation before timing either path.
-    scalar_mult_g_fast(scalars[0])
-    start = time.perf_counter()
-    generic = [jacobian_to_affine(scalar_mult_naf_jacobian(k, SECP256K1_G)) for k in scalars]
-    generic_seconds = time.perf_counter() - start
-    start = time.perf_counter()
-    optimized = [scalar_mult_g_fast(k) for k in scalars]
-    optimized_seconds = time.perf_counter() - start
-    if generic != optimized:
-        raise RuntimeError("benchmark paths produced different public points")
-    values = [int.from_bytes(hashlib.sha256(f"inverse:{i}".encode()).digest(), 'big') % SECP256K1_P or 1 for i in range(32)]
-    start = time.perf_counter()
-    [pow(v, SECP256K1_P - 2, SECP256K1_P) for v in values]
-    individual_seconds = time.perf_counter() - start
-    start = time.perf_counter()
-    batch_inv(values, SECP256K1_P)
-    batch_seconds = time.perf_counter() - start
-    return {
-        "trials": trials,
-        "generic_naf_seconds": generic_seconds,
-        "fixed_base_seconds": optimized_seconds,
-        "fixed_base_speedup_percent": ((generic_seconds / optimized_seconds) - 1) * 100 if optimized_seconds else 0.0,
-        "individual_inversions_seconds": individual_seconds,
-        "batch_inversions_seconds": batch_seconds,
-        "batch_inversion_speedup_percent": ((individual_seconds / batch_seconds) - 1) * 100 if batch_seconds else 0.0,
-        "points_match": True,
-    }
-
-# =============================================================================
-# RSA Toolkit: educational RSA-OAEP and RSA-PSS operations (RFC 8017)
-# =============================================================================
-
-def _mgf1(seed: bytes, length: int, hash_fn=hashlib.sha256) -> bytes:
-    """Mask generation function MGF1."""
-    if length < 0 or length > (1 << 32) * hash_fn().digest_size:
-        raise ValueError("invalid MGF1 output length")
-    output = bytearray()
-    for counter in range((length + hash_fn().digest_size - 1) // hash_fn().digest_size):
-        output.extend(hash_fn(seed + counter.to_bytes(4, 'big')).digest())
-    return bytes(output[:length])
-
-def _is_probable_prime(n: int, rounds: int = 32) -> bool:
-    """Miller-Rabin probable-prime check with small-prime trial division."""
-    small_primes = (2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47)
-    if n < 2:
-        return False
-    for prime in small_primes:
-        if n == prime:
-            return True
-        if n % prime == 0:
-            return False
-    d, s = n - 1, 0
-    while d % 2 == 0:
-        d //= 2
-        s += 1
-    for _ in range(rounds):
-        a = secrets.randbelow(n - 3) + 2
-        x = pow(a, d, n)
-        if x in (1, n - 1):
-            continue
-        for _ in range(s - 1):
-            x = pow(x, 2, n)
-            if x == n - 1:
-                break
-        else:
-            return False
-    return True
-
-def _generate_prime(bits: int, exponent: int) -> int:
-    while True:
-        candidate = secrets.randbits(bits) | (1 << (bits - 1)) | 1
-        if math.gcd(candidate - 1, exponent) == 1 and _is_probable_prime(candidate):
-            return candidate
-
-def rsa_generate_keypair(bits: int = 2048, exponent: int = 65537) -> dict[str, int]:
-    """Generate an RSA keypair. Educational implementation; not constant-time."""
-    if not 2048 <= bits <= 4096 or bits % 2:
-        raise ValueError("RSA modulus size must be an even number from 2048 to 4096 bits")
-    if exponent < 3 or exponent % 2 == 0:
-        raise ValueError("RSA public exponent must be an odd integer >= 3")
-    half = bits // 2
-    while True:
-        p = _generate_prime(half, exponent)
-        q = _generate_prime(half, exponent)
-        if p == q:
-            continue
-        n = p * q
-        if n.bit_length() != bits:
-            continue
-        lam = math.lcm(p - 1, q - 1)
-        if math.gcd(exponent, lam) == 1:
-            d = mod_inverse_builtin(exponent, lam)
-            return {"n": n, "e": exponent, "d": d, "p": p, "q": q}
-
-def rsa_key_info(n: int, e: int, d: int | None = None, p: int | None = None, q: int | None = None) -> dict[str, object]:
-    """Inspect supplied RSA parameters and report consistency/capacity checks."""
-    if n <= 3 or n % 2 == 0:
-        raise ValueError("RSA modulus must be a positive odd integer")
-    if e < 3 or e >= n or e % 2 == 0:
-        raise ValueError("RSA public exponent must be an odd integer >= 3")
-    factors_match = None if p is None or q is None else p * q == n
-    private_exponent_consistent = None
-    if p is not None and q is not None and d is not None and factors_match:
-        private_exponent_consistent = (e * d) % math.lcm(p - 1, q - 1) == 1
-    key_bytes = (n.bit_length() + 7) // 8
-    return {
-        "modulus_bits": n.bit_length(),
-        "modulus_bytes": key_bytes,
-        "public_exponent": e,
-        "oaep_sha256_max_message_bytes": max(0, key_bytes - 2 * hashlib.sha256().digest_size - 2),
-        "at_least_2048_bits": n.bit_length() >= 2048,
-        "factor_product_matches_modulus": factors_match,
-        "private_exponent_consistent": private_exponent_consistent,
-    }
-
-def rsa_oaep_encrypt(message: bytes, n: int, e: int, label: bytes = b"") -> bytes:
-    """Encrypt bytes with RSAES-OAEP using SHA-256 and a fresh random seed."""
-    if n <= 3 or n % 2 == 0 or e < 3 or e >= n or e % 2 == 0:
-        raise ValueError("invalid RSA public key")
-    h_len = hashlib.sha256().digest_size
-    k = (n.bit_length() + 7) // 8
-    if k < 2 * h_len + 2:
-        raise ValueError("RSA key is too small for OAEP/SHA-256")
-    if len(message) > k - 2 * h_len - 2:
-        raise ValueError(f"message too long for this RSA key; maximum is {k - 2 * h_len - 2} bytes")
-    l_hash = hashlib.sha256(label).digest()
-    db = l_hash + b'\x00' * (k - len(message) - 2 * h_len - 2) + b'\x01' + message
-    seed = secrets.token_bytes(h_len)
-    db_mask = _mgf1(seed, k - h_len - 1)
-    masked_db = bytes(a ^ b for a, b in zip(db, db_mask))
-    seed_mask = _mgf1(masked_db, h_len)
-    masked_seed = bytes(a ^ b for a, b in zip(seed, seed_mask))
-    encoded = b'\x00' + masked_seed + masked_db
-    m = int.from_bytes(encoded, 'big')
-    if m >= n:
-        raise ValueError("encoded message is outside the RSA modulus")
-    return pow(m, e, n).to_bytes(k, 'big')
-
-def rsa_oaep_decrypt(ciphertext: bytes, n: int, d: int, label: bytes = b"") -> bytes:
-    """Decrypt RSAES-OAEP/SHA-256 bytes. Python big integers are not constant-time."""
-    if n <= 3 or n % 2 == 0 or not 1 <= d < n:
-        raise ValueError("invalid RSA private key")
-    h_len = hashlib.sha256().digest_size
-    k = (n.bit_length() + 7) // 8
-    if k < 2 * h_len + 2:
-        raise ValueError("RSA key is too small for OAEP/SHA-256")
-    c = int.from_bytes(ciphertext, 'big')
-    if len(ciphertext) != k or c >= n:
-        raise ValueError("ciphertext has invalid length or value")
-    encoded = pow(c, d, n).to_bytes(k, 'big')
-    if encoded[0] != 0:
-        raise ValueError("OAEP decoding failed")
-    masked_seed = encoded[1:1 + h_len]
-    masked_db = encoded[1 + h_len:]
-    seed_mask = _mgf1(masked_db, h_len)
-    seed = bytes(a ^ b for a, b in zip(masked_seed, seed_mask))
-    db_mask = _mgf1(seed, k - h_len - 1)
-    db = bytes(a ^ b for a, b in zip(masked_db, db_mask))
-    l_hash = hashlib.sha256(label).digest()
-    if not hmac.compare_digest(db[:h_len], l_hash):
-        raise ValueError("OAEP decoding failed")
-    delimiter = db.find(b'\x01', h_len)
-    if delimiter < 0 or any(db[h_len:delimiter]):
-        raise ValueError("OAEP decoding failed")
-    return db[delimiter + 1:]
-
-def rsa_pss_sign(message: bytes, n: int, d: int, salt_length: int = 32) -> bytes:
-    """Sign bytes using RSASSA-PSS/SHA-256 and a random salt."""
-    if n <= 3 or n % 2 == 0 or not 1 <= d < n:
-        raise ValueError("invalid RSA private key")
-    em_bits = n.bit_length() - 1
-    em_len = (em_bits + 7) // 8
-    h_len = hashlib.sha256().digest_size
-    if salt_length < 0 or em_len < h_len + salt_length + 2:
-        raise ValueError("RSA key is too small for the selected PSS salt length")
-    m_hash = hashlib.sha256(message).digest()
-    salt = secrets.token_bytes(salt_length)
-    h_value = hashlib.sha256(b'\x00' * 8 + m_hash + salt).digest()
-    db = b'\x00' * (em_len - h_len - salt_length - 2) + b'\x01' + salt
-    masked_db = bytearray(a ^ b for a, b in zip(db, _mgf1(h_value, em_len - h_len - 1)))
-    masked_db[0] &= 0xff >> (8 * em_len - em_bits)
-    encoded = bytes(masked_db) + h_value + b'\xbc'
-    signature = pow(int.from_bytes(encoded, 'big'), d, n)
-    return signature.to_bytes((n.bit_length() + 7) // 8, 'big')
-
-def rsa_pss_verify(message: bytes, signature: bytes, n: int, e: int, salt_length: int = 32) -> bool:
-    """Verify RSASSA-PSS/SHA-256 with the specified salt length."""
-    if n <= 3 or n % 2 == 0 or e < 3 or e >= n or e % 2 == 0:
-        return False
-    k = (n.bit_length() + 7) // 8
-    if len(signature) != k:
-        return False
-    sig_value = int.from_bytes(signature, 'big')
-    if sig_value >= n:
-        return False
-    em_bits = n.bit_length() - 1
-    em_len = (em_bits + 7) // 8
-    h_len = hashlib.sha256().digest_size
-    if salt_length < 0 or em_len < h_len + salt_length + 2:
-        return False
-    encoded = pow(sig_value, e, n).to_bytes(k, 'big')
-    if em_len != len(encoded):
-        encoded = encoded[-em_len:]
-    if encoded[-1] != 0xbc:
-        return False
-    masked_db, h_value = encoded[:em_len - h_len - 1], encoded[em_len - h_len - 1:-1]
-    unused_bits = 8 * em_len - em_bits
-    if unused_bits and masked_db[0] >> (8 - unused_bits):
-        return False
-    db = bytearray(a ^ b for a, b in zip(masked_db, _mgf1(h_value, em_len - h_len - 1)))
-    db[0] &= 0xff >> unused_bits
-    padding_len = em_len - h_len - salt_length - 2
-    if any(db[:padding_len]) or db[padding_len] != 1:
-        return False
-    salt = bytes(db[-salt_length:]) if salt_length else b''
-    expected = hashlib.sha256(b'\x00' * 8 + hashlib.sha256(message).digest() + salt).digest()
-    return hmac.compare_digest(h_value, expected)
-
-def rsa_demo(bits: int = 2048) -> dict[str, object]:
-    """Run ephemeral OAEP encryption/decryption and PSS signing/verification."""
-    key = rsa_generate_keypair(bits)
-    info = rsa_key_info(key['n'], key['e'], key['d'], key['p'], key['q'])
-    message = b"RSA OAEP/PSS demonstration"
-    ciphertext = rsa_oaep_encrypt(message, key['n'], key['e'])
-    recovered = rsa_oaep_decrypt(ciphertext, key['n'], key['d'])
-    signature = rsa_pss_sign(message, key['n'], key['d'])
-    return {
-        "key_info": info,
-        "ciphertext_hex": ciphertext.hex(),
-        "decrypt_matches": recovered == message,
-        "signature_hex": signature.hex(),
-        "signature_verified": rsa_pss_verify(message, signature, key['n'], key['e']),
-    }
-
-# =============================================================================
-# CLI Main Entrypoint
-# =============================================================================
-
-def bip340_message_arg(value: str) -> str:
-    if len(value.encode('utf-8')) != 32:
-        raise argparse.ArgumentTypeError("BIP-340 message must encode to exactly 32 UTF-8 bytes")
-    return value
-
-def main():
-    parser = argparse.ArgumentParser(description="Unified Cryptanalytic, Diagnostic, Multiplicative, Geometry, Walkback, WIF, ECDSA, Schnorr, Taproot, MuSig2, Nonce & Point Generation Suite (v17)")
-    parser.add_argument("--sign-msg", type=str, metavar='MSG_STR', help="Sign text or a 0x-prefixed hash using the fixed demo key")
-    parser.add_argument("--nonce-reuse-attack", action="store_true", help="Run an educational ECDSA nonce-reuse key-recovery demonstration")
-    parser.add_argument("--pubkey-advance", type=str, metavar='PUBKEY_HEX', help="Advance a valid public point by repeatedly adding G")
-    parser.add_argument("--steps", type=int, default=10, help="Number of public-point additions (1 to 1000; default: 10)")
-    parser.add_argument("--wif", type=str, metavar='WIF', help="Validate WIF and derive its public key and addresses")
-    parser.add_argument("--bech32-diagnose", type=str, metavar='ADDRESS', help="Check a Bech32 or Bech32m checksum")
-    parser.add_argument("--walkback-trace", type=str, metavar='ADDRESS_OR_KEY', help="Parse an address/public key and report what can be known from it")
-    parser.add_argument("--benchmark-mult", action="store_true", help="Benchmark generic NAF vs fixed-base multiplication and batch inversions")
-    parser.add_argument("--mod-inv", nargs=2, type=lambda value: int(value, 0), metavar=('VALUE', 'MODULUS'), help="Compute VALUE inverse modulo MODULUS (decimal or 0x-prefixed)")
-    parser.add_argument("--mod-inv-method", choices=("builtin", "egcd", "fermat"), default="builtin", help="Inverse algorithm; Fermat requires a prime modulus")
-    parser.add_argument("--mult-neg-g", type=lambda value: int(value, 0), metavar='SCALAR', help="Compute the group inverse -(SCALAR * G)")
-    parser.add_argument("--trace-scalar", "--russian-mult", dest="trace_scalar", type=lambda value: int(value, 0), metavar='SCALAR', help="Trace left-to-right double-and-add scalar multiplication of G")
-    parser.add_argument("--decompress-y", type=lambda value: int(value, 0), metavar='X', help="Lift x to the even-y secp256k1 point")
-    parser.add_argument("--intersection", type=lambda value: int(value, 0), metavar='X', help="Find curve point(s) at x (intersection with vertical line x=X)")
-    parser.add_argument("--substitute-y-x", nargs=2, type=lambda value: int(value, 0), metavar=('X', 'Y'), help="Check whether (X,Y) satisfies y^2 = x^3 + 7 mod p")
-    parser.add_argument("--curve-add", nargs=2, metavar=('PUBKEY1_HEX', 'PUBKEY2_HEX'), help="Show secant/tangent geometry and point sum for two compressed or x-only points")
-    parser.add_argument("--y-equals-x", type=lambda value: int(value, 0), metavar='X', help="Evaluate y=x in the secp256k1 curve equation at x")
-    parser.add_argument("--integer-mult", nargs=2, type=int, metavar=('A', 'B'), help="Trace signed integer shift-and-add multiplication")
-    parser.add_argument("--mod-mult", nargs=3, type=int, metavar=('A', 'B', 'MODULUS'), help="Trace shift-and-add multiplication modulo MODULUS")
-    parser.add_argument("--sha256-trace", type=str, metavar='TEXT', help="Trace the standardized forward SHA-256 compression rounds for UTF-8 text")
-    parser.add_argument("--sha256-backward-ledger", type=str, metavar='DIGEST_HEX', help="Explore conditional SHA-256 backward state recovery from a 32-byte digest")
-    parser.add_argument("--sha256-block", type=str, metavar='BLOCK_HEX', help="Exact 64-byte final compression block for complete backward verification")
-    parser.add_argument("--sat-cnf", type=str, metavar='DIMACS_FILE', help="Solve a DIMACS CNF instance with the built-in DPLL solver")
-    parser.add_argument("--sat-node-limit", type=int, default=100000, help="DPLL search node limit (default: 100000)")
-    parser.add_argument("--joint-lookahead", action="store_true", help="Show the restored illustrative W63/W62 lookahead density sweep (synthetic estimates, not solver output)")
-    parser.add_argument("--rsa-fermat-factor", type=lambda value: int(value, 0), metavar='N', help="Bounded Fermat factor search for an odd RSA modulus (decimal or 0x-prefixed)")
-    parser.add_argument("--rsa-verify-factors", nargs=3, type=lambda value: int(value, 0), metavar=('N', 'P', 'Q'), help="Verify candidate RSA factors and public-exponent compatibility")
-    parser.add_argument("--fermat-steps", type=int, default=100000, help="Maximum Fermat search iterations (default: 100000)")
-    parser.add_argument("--rsa-keygen", type=int, metavar='BITS', help="Generate RSA parameters (2048 to 4096 bits) and display them")
-    parser.add_argument("--rsa-demo", nargs='?', type=int, const=2048, metavar='BITS', help="Run ephemeral RSA-OAEP encryption and RSA-PSS signature demo")
-    parser.add_argument("--rsa-info", action="store_true", help="Report information about --rsa-n and --rsa-e")
-    parser.add_argument("--rsa-encrypt", type=str, metavar='TEXT', help="Encrypt UTF-8 text with RSA-OAEP/SHA-256")
-    parser.add_argument("--rsa-decrypt", type=str, metavar='CIPHERTEXT_HEX', help="Decrypt hex ciphertext with RSA-OAEP/SHA-256")
-    parser.add_argument("--rsa-sign", type=str, metavar='TEXT', help="Sign UTF-8 text with RSA-PSS/SHA-256")
-    parser.add_argument("--rsa-verify", nargs=2, metavar=('TEXT', 'SIGNATURE_HEX'), help="Verify an RSA-PSS/SHA-256 signature")
-    parser.add_argument("--rsa-n", type=str, metavar='MODULUS_HEX', help="RSA modulus for RSA operations")
-    parser.add_argument("--rsa-e", type=int, default=65537, metavar='EXPONENT', help="RSA public exponent (default 65537)")
-    parser.add_argument("--rsa-d", type=str, metavar='PRIVATE_EXPONENT_HEX', help="RSA private exponent for decrypt/sign")
-    parser.add_argument("--musig2-aggregate", nargs='+', metavar='PUBKEY_HEX', help="Aggregate multiple Schnorr public keys into a joint key P_agg")
-    parser.add_argument("--taproot-tweak", nargs=1, metavar='PUBKEY_X_HEX', help="Compute Taproot output key Q = P + t*G")
-    parser.add_argument("--ec-prng", type=str, metavar='SEED_STR', help="Generate deterministic demonstration points (not a secure PRNG)")
-    parser.add_argument("--rfc6979-trace", type=str, metavar='MSG_STR', help="Trace RFC 6979 deterministic nonce derivation")
-    parser.add_argument("--schnorr-trace", type=bip340_message_arg, metavar='MSG_32_BYTES', help="Trace BIP-340 using an exactly 32-byte UTF-8 message")
-    parser.add_argument("--aux-rand", type=bytes.fromhex, metavar='HEX32', help="32-byte BIP-340 auxiliary randomness as 64 hex characters (default: all-zero vector setting)")
-    parser.add_argument("--hash-to-curve", type=str, metavar='SEED_STR', help="Map arbitrary seed string to valid secp256k1 point")
-    parser.add_argument("--verifiable-point", type=str, metavar='SEED_STR', help="Generate a deterministically derived point using a custom construction")
-    parser.add_argument("--all", action="store_true", help="Run complete suite")
-    
-    args = parser.parse_args()
-
-    if args.steps != 10 and not args.pubkey_advance:
-        parser.error("--steps requires --pubkey-advance")
-    if args.mod_inv_method != "builtin" and not args.mod_inv:
-        parser.error("--mod-inv-method requires --mod-inv")
-    rsa_actions = (args.rsa_keygen is not None, args.rsa_demo is not None, args.rsa_info, args.rsa_encrypt is not None, args.rsa_decrypt is not None, args.rsa_sign is not None, args.rsa_verify is not None)
-    if sum(rsa_actions) > 1:
-        parser.error("choose one RSA operation per invocation")
-    if (args.rsa_n or args.rsa_d) and not any(rsa_actions):
-        parser.error("--rsa-n and --rsa-d must be used with an RSA operation")
-    if args.sha256_block and not args.sha256_backward_ledger:
-        parser.error("--sha256-block requires --sha256-backward-ledger")
-    if args.aux_rand is not None and len(args.aux_rand) != 32:
-        parser.error("--aux-rand must encode exactly 32 bytes (64 hex characters)")
-    if args.aux_rand is not None and not (args.schnorr_trace or args.all):
-        parser.error("--aux-rand requires --schnorr-trace or --all")
-    if not (args.sign_msg or args.nonce_reuse_attack or args.pubkey_advance or args.wif or args.bech32_diagnose or args.walkback_trace or args.benchmark_mult or args.mod_inv or args.mult_neg_g is not None or args.trace_scalar is not None or args.decompress_y is not None or args.intersection is not None or args.substitute_y_x or args.curve_add or args.y_equals_x is not None or args.integer_mult or args.mod_mult or args.sha256_trace is not None or args.sha256_backward_ledger is not None or args.joint_lookahead or args.sat_cnf or args.rsa_fermat_factor is not None or args.rsa_verify_factors or any(rsa_actions) or args.musig2_aggregate or args.taproot_tweak or args.ec_prng or args.rfc6979_trace or args.schnorr_trace or args.hash_to_curve or args.verifiable_point or args.all):
-        parser.print_help()
-        return
-
-    if args.sat_node_limit < 1:
-        parser.error("--sat-node-limit must be positive")
-    if args.sat_cnf:
-        try:
-            with open(args.sat_cnf, "r", encoding="utf-8") as cnf_file:
-                variable_count, clauses = parse_dimacs_cnf(cnf_file.read())
-            sat_result = solve_cnf(clauses, variable_count, args.sat_node_limit)
-        except (OSError, ValueError) as exc:
-            parser.error(str(exc))
-        print(f"[DPLL SAT] {sat_result['status']} variables={sat_result['variables']} clauses={sat_result['clauses']} decisions={sat_result['decisions']} propagations={sat_result['propagations']} nodes={sat_result['nodes']}")
-        if sat_result["model"] is not None:
-            print("    Model:", " ".join(f"{v if bit else -v}" for v,bit in sorted(sat_result["model"].items())), "0")
-        return
-
-    print("=" * 80)
-    print("UNIFIED CRYPTANALYTIC, DIAGNOSTIC, MULTIPLICATIVE, GEOMETRY, WALKBACK, WIF, SCHNORR & NONCE SUITE (v17)")
-    print("=" * 80)
-
-    try:
-        if args.mod_inv:
-            value, modulus = args.mod_inv
-            inv = modular_inverse_report(value, modulus, args.mod_inv_method)
-            print(f"\n[Modular Inverse: {inv['method']}] {inv['value']}^(-1) mod {inv['modulus']} = {inv['inverse']} (check={inv['check']})")
-        if args.mult_neg_g is not None:
-            scalar = args.mult_neg_g
-            point = scalar_mult_g_fast(scalar)
-            negated = (0, 0) if point == (0, 0) else point_negate(point)
-            print(f"\n[Group Inverse] -({scalar} * G) = {('point at infinity' if negated == (0, 0) else f'({negated[0]:064x}, {negated[1]:064x})')}")
-        if args.trace_scalar is not None:
-            trace = scalar_multiplication_trace(args.trace_scalar)
-            print(f"\n[Scalar Trace] k={trace['scalar']} bits={trace['bit_length']} hamming_weight={trace['hamming_weight']}")
-            for row in trace['steps']:
-                print(f"    bit {row['bit_index']:>3}: {row['bit']} | double, {'add G' if row['added_point'] else 'no add'}")
-            result = trace['result']
-            print(f"    Result: {'point at infinity' if result == (0, 0) else f'({result[0]:064x}, {result[1]:064x})'}")
-        if args.decompress_y is not None:
-            x = args.decompress_y
-            y = curve_y_roots(x)[0]
-            print(f"\n[Point Lift] x=0x{x:064x} -> even y=0x{y:064x}")
-        if args.intersection is not None:
-            x = args.intersection
-            roots = curve_y_roots(x)
-            print(f"\n[Curve Intersection] vertical line x=0x{x:064x}: {len(roots)} point(s)")
-            for y in roots:
-                print(f"    (0x{x:064x}, 0x{y:064x})")
-        if args.substitute_y_x:
-            x, y = args.substitute_y_x
-            valid = is_on_curve((x, y))
-            print(f"\n[Curve Substitution] ({x}, {y}) is {'on' if valid else 'not on'} secp256k1")
-        if args.curve_add:
-            point1, point2 = (parse_pubkey(key) for key in args.curve_add)
-            geom = curve_add_geometry(point1, point2)
-            fmt_point = lambda pt: "point at infinity" if pt == (0, 0) else f"(0x{pt[0]:064x}, 0x{pt[1]:064x})"
-            slope_text = "undefined" if geom["slope"] is None else f"0x{geom['slope']:064x}"
-            print("\n[Curve Addition Geometry]")
-            print(f"    Slope lambda         : {slope_text}")
-            print(f"    Third intersection   : {fmt_point(geom['third_intersection'])}")
-            print(f"    Group sum P1 + P2    : {fmt_point(geom['sum'])}")
-        if args.y_equals_x is not None:
-            report = y_equals_x_report(args.y_equals_x)
-            print(f"\n[y=x substitution] residual = 0x{report['residual']:064x}; curve point: {report['is_curve_point']}")
-        if args.integer_mult:
-            result = russian_integer_multiply(*args.integer_mult)
-            print(f"\n[Integer Shift-and-Add] {args.integer_mult[0]} * {args.integer_mult[1]} = {result['product']}")
-            for index, row in enumerate(result['steps']):
-                print(f"    bit {index:>3}: multiplier={row['multiplier']} bit={row['bit']} partial_sum={row['partial_sum']}")
-        if args.mod_mult:
-            a, b, modulus = args.mod_mult
-            result = russian_modular_multiply(a, b, modulus)
-            print(f"\n[Modular Shift-and-Add] ({a} * {b}) mod {modulus} = {result['result']} (verified={result['verified']})")
-            for index, row in enumerate(result['steps']):
-                print(f"    bit {index:>3}: multiplier={row['multiplier']} bit={row['bit']} residue={row['residue']}")
-        if args.sha256_trace is not None:
-            result = sha256_compression_trace(args.sha256_trace.encode('utf-8'))
-            print(f"\n[SHA-256 Forward Compression Trace] digest={result['digest_hex']} verified={result['matches_hashlib']}")
-            for block in result['padded_blocks']:
-                print(f"    Block {block['block_index']} input state : {' '.join(block['input_state'])}")
-                for round_index, state in enumerate(block['round_states']):
-                    print(f"      Round {round_index:02}: {' '.join(state)}")
-                print(f"    Block {block['block_index']} output state: {' '.join(block['output_state'])}")
-        if args.sha256_backward_ledger is not None:
-            ledger = sha256_backward_ledger(args.sha256_backward_ledger, args.sha256_block)
-            print("\n[SHA-256 Backward Ledger]")
-            print(f"    Assumption            : {ledger['assumption']}")
-            print(f"    Final working state   : {' '.join(ledger['final_working_state'])}")
-            print(f"    Fully reversed        : {ledger['fully_reversed']}")
-            print(f"    Boundary              : {ledger['boundary']}")
-            if ledger['fully_reversed']:
-                print(f"    Recovered initial     : {' '.join(ledger['recovered_initial_state'])}")
-                print(f"    Matches standard IV   : {ledger['matches_standard_iv']}")
-            else:
-                for name, value in ledger['last_round_recovered_state'].items():
-                    print(f"    {name:22}: {value}")
-            for name, value in ledger['state_classification'].items():
-                print(f"    Classification {name:20}: {value}")
-        if args.joint_lookahead:
-            print("\n[W63/W62 Joint Lookahead Density Sweep]")
-            print("    Synthetic planning estimates only; this does not run SAT or CNF solving.")
-            for row in run_extended_joint_lookahead_sweep():
-                print(f"    depth={row['cube_depth_bits']:>2} vars={row['remaining_vars']:>3} clauses={row['remaining_clauses']:>3} density={row['clause_density_alpha']:.4f} illustrative-propagation={row['illustrative_unit_propagation_rate_pct']:.1f}%")
-        if args.rsa_fermat_factor is not None:
-            factor_result = fermat_factor(args.rsa_fermat_factor, args.fermat_steps)
-            if factor_result['found']:
-                print(f"\n[Bounded Fermat Search] factors found in {factor_result['steps']} step(s):")
-                print(f"    p = {factor_result['p']}\n    q = {factor_result['q']}")
-            else:
-                print(f"\n[Bounded Fermat Search] no factors found within {factor_result['steps']} step(s)")
-        if args.rsa_verify_factors:
-            n, p, q = args.rsa_verify_factors
-            report = rsa_factor_candidate_report(n, p, q, args.rsa_e)
-            print("\n[RSA Factor Candidate Check]")
-            for name, value in report.items():
-                print(f"    {name:32}: {value}")
-    except (ValueError, OverflowError) as exc:
-        parser.error(str(exc))
-
-    try:
-        rsa_n = int(args.rsa_n.removeprefix("0x"), 16) if args.rsa_n else None
-        rsa_d = int(args.rsa_d.removeprefix("0x"), 16) if args.rsa_d else None
-        if args.rsa_keygen is not None:
-            generated = rsa_generate_keypair(args.rsa_keygen)
-            print("\n[RSA] Generated educational RSA key (private values shown because --rsa-keygen was explicit):")
-            for name in ("n", "e", "d", "p", "q"):
-                print(f"    {name:>2} = 0x{generated[name]:x}")
-        elif args.rsa_demo is not None:
-            result = rsa_demo(args.rsa_demo)
-            print("\n[RSA] OAEP/PSS demonstration (ephemeral key; private values not printed):")
-            print(f"    Modulus size          : {result['key_info']['modulus_bits']} bits")
-            print(f"    OAEP decrypt matches  : {result['decrypt_matches']}")
-            print(f"    PSS signature verifies: {result['signature_verified']}")
-        elif args.rsa_info:
-            if rsa_n is None:
-                parser.error("--rsa-info requires --rsa-n")
-            info = rsa_key_info(rsa_n, args.rsa_e, rsa_d)
-            print("\n[RSA] Public-key analysis:")
-            for name, value in info.items():
-                print(f"    {name:32}: {value}")
-        elif args.rsa_encrypt is not None:
-            if rsa_n is None:
-                parser.error("--rsa-encrypt requires --rsa-n")
-            ciphertext = rsa_oaep_encrypt(args.rsa_encrypt.encode('utf-8'), rsa_n, args.rsa_e)
-            print(f"\n[RSA] OAEP ciphertext hex: {ciphertext.hex()}")
-        elif args.rsa_decrypt is not None:
-            if rsa_n is None or rsa_d is None:
-                parser.error("--rsa-decrypt requires --rsa-n and --rsa-d")
-            plaintext = rsa_oaep_decrypt(bytes.fromhex(args.rsa_decrypt), rsa_n, rsa_d)
-            try:
-                print(f"\n[RSA] OAEP plaintext: {plaintext.decode('utf-8')}")
-            except UnicodeDecodeError:
-                print(f"\n[RSA] OAEP plaintext hex: {plaintext.hex()}")
-        elif args.rsa_sign is not None:
-            if rsa_n is None or rsa_d is None:
-                parser.error("--rsa-sign requires --rsa-n and --rsa-d")
-            signature = rsa_pss_sign(args.rsa_sign.encode('utf-8'), rsa_n, rsa_d)
-            print(f"\n[RSA] PSS signature hex: {signature.hex()}")
-        elif args.rsa_verify is not None:
-            if rsa_n is None:
-                parser.error("--rsa-verify requires --rsa-n")
-            message, signature_hex = args.rsa_verify
-            verified = rsa_pss_verify(message.encode('utf-8'), bytes.fromhex(signature_hex), rsa_n, args.rsa_e)
-            print(f"\n[RSA] PSS signature valid: {verified}")
-    except (ValueError, OverflowError) as exc:
-        parser.error(str(exc))
-
-    demo_privkey = 0x01f12490f2ab49919eb91164f8b92e50b0eca5821a99797583508fd5e22108fb
-
-    if args.sign_msg:
-        signed = ecdsa_sign_and_verify_trace(demo_privkey, args.sign_msg)
-        print("\n[0] ECDSA Custom Message Demo (fixed demo key):")
-        print(f"    Public Key            : {signed['pubkey_hex']}")
-        print(f"    Message Hash z        : {signed['hash_z_hex']}")
-        print(f"    Signature r           : {signed['sig_r_hex']}")
-        print(f"    Signature s           : {signed['sig_s_hex']}")
-        print(f"    Low-S normalized      : {signed['low_s_normalized']}")
-        print(f"    Verification          : {signed['verified']}")
-
-    if args.pubkey_advance or args.all:
-        demo_pubkey = compress_pubkey(scalar_mult_g_fast(demo_privkey)).hex()
-        start_key = args.pubkey_advance if args.pubkey_advance else demo_pubkey
-        advance = advance_public_key(start_key, args.steps if args.pubkey_advance else 10)
-        print("\n[0a] Forward Public-Point Walk (Q_i = Q_(i-1) + G):")
-        print(f"    Starting Public Key   : {advance['start_pubkey_hex']}")
-        print(f"    Steps                 : {len(advance['steps'])}")
-        for item in advance['steps']:
-            key = item['compressed_pubkey_hex'] or "point at infinity"
-            print(f"    Step {item['index']:>4}               : {key}")
-
-    if args.wif or args.all:
-        demo_wif = "KwHV8WDsBUuXPymuan5TQN82tPyRWZ68vb14ww8p9FFCw6a17xkR"
-        decoded = decode_wif(args.wif if args.wif else demo_wif)
-        print("\n[0c] WIF Forward Derivation:")
-        print(f"    Network               : {decoded['network']}")
-        print(f"    Private Scalar        : {decoded['private_key_hex'] if args.wif else '[redacted demo key]'}")
-        print(f"    Public Key            : {decoded['public_key_hex']}")
-        print(f"    Hash160               : {decoded['hash160_hex']}")
-        print(f"    Legacy P2PKH          : {decoded['legacy_p2pkh']}")
-        print(f"    Native SegWit         : {decoded['native_segwit'] or 'unavailable for uncompressed keys'}")
-
-    if args.bech32_diagnose or args.all:
-        address = args.bech32_diagnose if args.bech32_diagnose else "bc1q956d8j8ypxvk3aewnyrxx4u0dqyxf6a7exsprn"
-        diag = bech32_polymod_diagnose(address)
-        print("\n[0d] Bech32 Checksum Diagnosis:")
-        print(f"    Address               : {diag['address']}")
-        print(f"    HRP                   : {diag['hrp']}")
-        print(f"    Checksum variant      : {diag['checksum_variant']}")
-        print(f"    Polymod residual      : {diag['polymod_residual']}")
-        print(f"    Valid checksum        : {diag['valid_checksum']}")
-
-    if args.walkback_trace or args.all:
-        target = args.walkback_trace if args.walkback_trace else "bc1q956d8j8ypxvk3aewnyrxx4u0dqyxf6a7exsprn"
-        try:
-            trace = walkback_trace(target)
-        except ValueError as exc:
-            parser.error(str(exc))
-        print("\n[0f] Address/Public-Key Walkback:")
-        print(f"    Input                 : {trace['input']}")
-        print(f"    Parsed as             : {trace['type']}")
-        if trace.get('hash160_hex'):
-            print(f"    HASH160               : {trace['hash160_hex']}")
-        if trace.get('witness_program_hex'):
-            print(f"    Witness program       : {trace['witness_program_hex']}")
-        if trace.get('public_key_hex'):
-            print(f"    Public key            : {trace['public_key_hex']}")
-        print(f"    Private key recovery  : {trace['private_key_recoverable']}")
-        print(f"    Limit                 : {trace['limit']}")
-        print("    Reverse layers:")
-        for layer in trace["layers"]:
-            print(f"      {layer['stage']} [{layer['status']}]")
-            print(f"        {layer['data']}")
-
-    if args.benchmark_mult or args.all:
-        bench = run_performance_benchmark()
-        print("\n[0e] Performance Benchmark (points are checked for equality):")
-        print(f"    Trials                : {bench['trials']}")
-        print(f"    Generic NAF           : {bench['generic_naf_seconds']:.4f}s")
-        print(f"    Fixed-base            : {bench['fixed_base_seconds']:.4f}s ({bench['fixed_base_speedup_percent']:.1f}% faster)")
-        print(f"    Individual inversions : {bench['individual_inversions_seconds']:.4f}s")
-        print(f"    Batch inversions      : {bench['batch_inversions_seconds']:.4f}s ({bench['batch_inversion_speedup_percent']:.1f}% faster)")
-
-    if args.nonce_reuse_attack or args.all:
-        attack = ecdsa_nonce_reuse_attack_trace(
-            demo_privkey,
-            0x9876543210abcdef9876543210abcdef9876543210abcdef9876543210abcdef,
-        )
-        print("\n[0b] ECDSA Nonce-Reuse Demonstration:")
-        print(f"    Shared r              : {attack['shared_r_hex']}")
-        print(f"    Nonce recovered       : {attack['nonce_recovered']}")
-        print(f"    Private key recovered : {attack['private_key_recovered']}")
-
-    # CLI Command 1: RFC 6979 Nonce
-    if args.rfc6979_trace or args.all:
-        msg_str = args.rfc6979_trace if args.rfc6979_trace else "RFC 6979 Deterministic Nonce Test Payload"
-        priv_d = demo_privkey
-        res = rfc6979_trace(priv_d, msg_str)
-        print("\n[1] RFC 6979 Deterministic Nonce Derivation Engine:")
-        print("    Private Key d         : [redacted demo key]")
-        print(f"    Message Payload       : \"{res['msg_input']}\"")
-        print(f"    Message SHA-256 Hash z: {res['hash_z_hex']}")
-        print(f"    Deterministic Nonce k : {res['rfc6979_k_hex']}")
-        print(f"    Ephemeral Point R     : (0x{res['ephemeral_R_affine'][0]:064x}, 0x{res['ephemeral_R_affine'][1]:064x})")
-        print("    Property              : Deterministic for this key and message hash.")
-
-    # CLI Command 2: BIP-340 Schnorr Trace
-    if args.schnorr_trace or args.all:
-        msg_str = args.schnorr_trace if args.schnorr_trace else "Taproot payload".ljust(32, " ")
-        priv_d = demo_privkey
-        res = schnorr_bip340_sign_and_verify_trace(
-            priv_d, msg_str, aux_rand=args.aux_rand or b"\x00" * 32
-        )
-        print("\n[2] BIP-340 Schnorr Signature & Taproot Verification Trace:")
-        print("    Private Key d         : [redacted demo key]")
-        print(f"    x-Only Public Key P_x : {res['x_only_pubkey_P_hex']} (y Even: {res['P_y_even']})")
-        print(f"    Deterministic Nonce k : {res['nonce_k_hex']}")
-        print(f"    Ephemeral Point R_x   : {res['R_x_hex']}")
-        print(f"    Challenge Hash e      : {res['challenge_e_hex']}")
-        print(f"    Signature Scalar s    : {res['sig_s_hex']}")
-        print(f"    s * G Affine Point    : (0x{res['sG_affine'][0]:064x}, 0x{res['sG_affine'][1]:064x})")
-        print(f"    R + e*P Affine Point  : (0x{res['R_plus_eP_affine'][0]:064x}, 0x{res['R_plus_eP_affine'][1]:064x})")
-        print(f"    Verification Status   : Verified -> {res['verified']}")
-        print("    Verification Property : s * G == R + e * P (Zero scalar inversions required)")
-
-    # CLI Command 3: Hash-to-Curve
-    if args.hash_to_curve or args.all:
-        seed_str = args.hash_to_curve if args.hash_to_curve else "SESPake_curve_point_seed"
-        h2c = hash_to_curve_try_and_increment(seed_str)
-        print("\n[3] Hash-to-Curve Try-and-Increment Engine (secp256k1):")
-        print(f"    Seed String Input     : \"{h2c['seed']}\"")
-        print(f"    Tries Until Solution  : {h2c['tries']}")
-        print(f"    Derived Point P_x     : {h2c['point_x_hex']}")
-        print(f"    Derived Point P_y     : {h2c['point_y_hex']}")
-        print(f"    Curve Verification    : y^2 == x^3 + 7 mod P -> {h2c['on_curve']}")
-
-    # CLI Command 4: Verifiable Point
-    if args.verifiable_point or args.all:
-        seed_str = args.verifiable_point if args.verifiable_point else "ISO_IEC_15946_5_seed"
-        vpt = verifiable_pseudorandom_point(seed_str)
-        print("\n[4] Deterministically Derived Point Generator:")
-        print(f"    Seed String Input     : \"{vpt['seed']}\"")
-        print(f"    Derived Scalar c      : {vpt['derived_scalar_c_hex']}")
-        print(f"    Derived Point Q_x     : {vpt['verifiable_point_Q_x_hex']}")
-        print(f"    Derived Point Q_y     : {vpt['verifiable_point_Q_y_hex']}")
-        print(f"    Derivation Note       : {vpt['trust_property']}")
-
-    # CLI Command 5: MuSig2 Key Aggregation
-    if args.musig2_aggregate or args.all:
-        keys = args.musig2_aggregate if args.musig2_aggregate else [
-            "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
-            "02038fbdd86e5f2a1781fbe8a7476d14af8544fdd5a737be5fbeb11cc912c026a5"
-        ]
-        musig = musig2_aggregate_keys(keys)
-        print("\n[5] MuSig2 Multi-Party Key Aggregation Engine:")
-        print(f"    Aggregated Keys Count : {musig['input_pubkeys_count']}")
-        print(f"    Key Coefficients a_i  : {musig['key_coefficients_a_i']}")
-        print(f"    Aggregated Point P_agg: ({musig['aggregated_point_x_hex']}, {musig['aggregated_point_y_hex']})")
-
-    # CLI Command 6: Taproot Tweak
-    if args.taproot_tweak or args.all:
-        pk_x = args.taproot_tweak[0] if args.taproot_tweak else "0x038fbdd86e5f2a1781fbe8a7476d14af8544fdd5a737be5fbeb11cc912c026a5"
-        tweak = taproot_tweak_pubkey(pk_x)
-        print("\n[6] Taproot Tweak Engine (Q = P + t*G):")
-        print(f"    Internal PubKey P_x   : {tweak['internal_pubkey_x_hex']}")
-        print(f"    Taproot Tweak t       : {tweak['taproot_tweak_t_hex']}")
-        print(f"    Output Taproot Key Q_x: {tweak['output_taproot_pubkey_x_hex']}")
-
-    # CLI Command 7: Long Period PRNG
-    if args.ec_prng or args.all:
-        seed_str = args.ec_prng if args.ec_prng else "high_dim_simulation_seed"
-        prng = long_period_ec_prng_generator(seed_str)
-        print("\n[7] Long-Period Elliptic Curve PRNG Vector Generator:")
-        print(f"    Seed String Input     : \"{prng['seed']}\"")
-        print(f"    Security Note         : {prng['security_note']}")
-        print("    Generated PRNG Vectors:")
-        for idx, vec in enumerate(prng['generated_pseudorandom_vectors']):
-            print(f"      Dim {idx+1} | x: {vec['coord_x_hex'][:18]}... | y: {vec['coord_y_hex'][:18]}...")
-
-    print("=" * 80)
-
-if __name__ == "__main__":
-    main()
+YªçŠx-®éÜj×¢ëiºÚ+Š§j[h‘éÜ¢éíß}uÙ:-jZ.¶›­–)Þ³R2÷W7"ö&–âöVçb—F†öã0¢"" §75ööW‡EöæEöGfæ6VEö7'—Fò×crç¥Væ–f–VBT42Â%4ÂFG&W72F–væ÷7F–72ÂvÆ¶&6²Ât”bÂæB6–væGW&RFVÖöç7G&F–öâ7V—FR‡cr ¥6V7W&—G’æ÷FS¢VGV6F–öæÂFVÖöç7G&F–öâöæÇ’âF†—2†æGw&—GFVâ–×ÆVÖVçFF–öâ—0¦æ÷B6öç7FçB×F–ÖRÂ†2æò–æFWVæFVçB7'—Föw&†–2&Wf–WrÂæB×W7Bæ÷B&÷FV7@§&VÂ¶W—2÷"gVæG2âF†R4Ä’W6W2f—†VBV&Æ–2FVÖò¶W’f÷"G&6W2à ¤æWrfVGW&W2bFF—F–öç2–âcs £â$d2c“s’FWFW&Ö–æ—7F–2æöæ6RFW&—fF–öâVæv–æR‚Ò×&f3c“s’×G&6R“ ¢Ò6ö×WFW2FWFW&Ö–æ—7F–2æöæ6R²g&öÒF†R&—fFR¶W’æBÖW76vR†6‚à£"â$•Ó3C66†æ÷'"6–væGW&W2bF&ö÷BfW&–f–6F–öâ‚Ò×66†æ÷'"×G&6R“ ¢Ò–×ÆVÖVçG2‚ÖöæÇ’V&Æ–2¶W’FW&—fF–öâ†WfVâ’×&—G’Væf÷&6VÖVçB’à¢Ò¦W&ò66Æ"–çfW'6–öç2‡5âÓ’GW&–ærfW&–f–6F–öã¢2¤rÓÒ"²R¥F—&V7FÇ’à£2â†6‚×FòÔ7W'fRG'’ÖæBÔ–æ7&VÖVçBVæv–æR‚ÒÖ†6‚×FòÖ7W'fR'6VVB"“ ¢ÒÖ2&&—G&'’7G&–ær÷6VVBFò6æF–FFR‚Ö6ö÷&F–æFW2öâ6V7#Sf³à¢Ò6öÇfW2•ã"Ò…ã2²rÖöBf–ÖöGVÆ"7V&R&ö÷B’Ò‡…ã2²r•â‚…³’óB’ÖöBà£BâFWFW&Ö–æ—7F–6ÆÇ’FW&—fVBö–çBvVæW&F÷"‚Ò×fW&–f–&ÆR×ö–çB'6VVB"“ ¢ÒFW&—fW2Ò†6‚…Â6VVB’¢rW6–ær7W7FöÒÂæöâ×7FæF&BFW&—fF–öâà£Râ×U6–s"×VÇF’Õ'G’¶W’vw&VvF–öâVæv–æR‚ÒÖ×W6–s"Övw&VvFR“ ¢Òvw&VvFW2×VÇF—ÆR66†æ÷'"V&Æ–2¶W—2óÂó"Ââââ–çFò6–ævÆRF&ö÷B¶W’övrà£bâF&ö÷BGvV²Væv–æR‚Ò×F&ö÷B×GvV²“ ¢Ò6ö×WFW2F†RF&ö÷B÷WGWBV&Æ–2¶W’Ò²Drà£râVÆÆ—F–2Ô7W'fRFVÖöç7G&F–öâ6WVVæ6R‚ÒÖV2×&ær“ ¢ÒvVæW&FW2FWFW&Ö–æ—7F–2ö–çG3²F†—2—2æ÷B7'—Föw&†–2$ärà£‚âf÷'v&BV&Æ–2×ö–çB7FW–ærg&öÒâW†—7F–ær¶W’‚Ò×V&¶W’ÖGfæ6R’Ât”`¢FG&W72FW&—fF–öâÂ&V6ƒ3"6†V6·7VÒF–væ÷6—2Â7W7FöÒT4E46–væ–ærÂæB&Væ6†Ö&·2à£’â%4¶W’vVæW&F–öâÂôUVæ7'—F–öâöFV7'—F–öâÂ526–væ–ær÷fW&–f–6F–öâÂæ@¢¶W’&ÖWFW"æÇ—6—2‚Ò×'6Ò¢÷F–öç2’à£BâÆ–W&VBFG&W72ö†6‚÷V&Æ–2Ö¶W’vÆ¶&6²æBD”Ô524äb6öÇf–ær‚Ò×6BÖ6æb’à£â7W'fR6ö÷&F–æFRÆ–gF–ærö–çFW'6V7F–öâæBö–çB7V'7F—GWF–öâ6†V6·0¢‚ÒÖFV6ö×&W72×’ÂÒÖ–çFW'6V7F–öâÂÒ×7V'7F—GWFR×’×‚’à£âÖöGVÆ"–çfW'6RÂ–çfW'6Rw&÷W×VÇF—Æ–6F–öâÂæB66Æ"&—BG&6–æp¢‚ÒÖÖöBÖ–çbÂÒÖ×VÇBÖæVrÖrÂÒ×G&6R×66Æ"òÒ×'W76–âÖ×VÇB’à£"âVÆÆ—F–2Ö7W'fR6V6çB÷FævVçBFF—F–öâÂ“×‚7V'7F—GWF–öâæÇ—6—2À¢–çFVvW"6†–gBÖæBÖFBG&6RÂ&÷VæFVBfW&ÖB%4f7F÷"6V&6‚ÂæB6æF–FFP¢f7F÷"6†V6·2‚ÒÖ7W'fRÖFBÂÒ×’ÖWVÇ2×‚ÂÒÖ–çFVvW"Ö×VÇBÂÒ×'6Ò¢’à£2â4„Ó#Sbf÷'v&BG&6RæB6öæF—F–öæÂ&6·v&B7FFRÆVFvW"ÂÇW2ÖöGVÆ ¢6†–gBÖæBÖFB×VÇF—Æ–6F–öâ‚Ò×6†#Sb×G&6RÂÒ×6†#SbÖ&6·v&BÖÆVFvW"’à¢""  ¦g&öÒõögWGW&Uõò–×÷'Bææ÷FF–öç0 ¦–×÷'B&w'6P¦–×÷'B†6†Æ– ¦–×÷'B†Ö0¦–×÷'BÖF€¦–×÷'B6V7&WG0¦–×÷'BF–ÖP ¦g&öÒ¶W–Æ"æV2ç6V7#Sf³–×÷'B&f3c“s•öæöæ6Uög&öÕöF–vW7@¦g&öÒ¶W–Æ"æçV×F†V÷'’æ6÷&R–×÷'B€¢ÖöEö–çfW'6Uö'V–ÇF–âÀ¢ÖöEö–çfW'6UöVv6BÀ¢ÖöEö–çfW'6UöfW&ÖBÀ¢ ¢2ÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÐ¢26V7#Sf³6öç7FçG2b6÷&RVÆÆ—F–27W'fR÷W&F–öç0¢2ÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÐ ¥4T5#Sd³õÒ„dddddddddddddddddddddddddddddddddddddddddddddddddddddddTddddd3$`¥4T5#Sd³ôâÒ„dddddddddddddddddddddddddddddddT$TD4SdcC„4$$dC#TS„4C3cCC¥4T5#Sd³ôrÒ€¢ƒs”$ScctTc”D4$$3STc#“T4Sƒs#s#”$d4D#$D4S#„C“S”c#ƒT#dcƒs“‚À¢ƒCƒ4Dss#d43CcSTDDd$d3S„„dCt#CC„cƒSSC“”3CtC„dd#CD#€¢ ¥õ4„#Seô•bÒƒƒd”SccrÂ„$#ctSƒRÂƒ43dTc3s"Â„SDdcS4À¢ƒSSS#tbÂƒ”#Scƒ„2Âƒcƒ4C”"ÂƒT$S4C’¥õ4„#Seô²Ò€¢ƒC#„$c“‚Ãƒs3sCC“Ã„#T3d$4bÃ„S”#TD$RÃƒ3“Sd3#T"ÃƒS”ccÃƒ“#4cƒ$BÃ„#3TTCRÀ¢„Cƒt“‚Ãƒ#ƒ3T#Ãƒ#C3ƒT$RÃƒSS3tD32Ãƒs$$STCsBÃƒƒDT#dRÃƒ”$D3drÃ„3”$csBÀ¢„SC”#c”3Ã„Td$SCsƒbÃƒd3”D3bÃƒ#C442Ãƒ$DS“$3dbÃƒDsCƒDÃƒT4#”D2Ãƒsdc“ƒ„DÀ¢ƒ“ƒ4SSS"Ã„ƒ33cdBÃ„#3#t3‚Ã„$cS“td3rÃ„3dS$c2Ã„CTs“CrÃƒd4c3SÃƒC#“#“crÀ¢ƒ#t#sƒRÃƒ$S##3‚ÃƒDC$3dDd2ÃƒS33ƒC2ÃƒcSs3SBÃƒscd$"Ãƒƒ3$3“$RÃƒ“#s#$3ƒRÀ¢„$$dS„Ã„ƒccD"Ã„3#D#„#sÃ„3sd3S2Ã„C“$Sƒ’Ã„Cc““c#BÃ„cCS3SƒRÃƒdsÀ¢ƒ”D3bÃƒS3sd3‚Ãƒ#sCƒssD2Ãƒ3D#$4#RÃƒ3“34#2ÃƒDTC„DÃƒT#”44DbÃƒcƒ$Sddc2À¢ƒsC„cƒ$TRÃƒs„Sc3dbÃƒƒD3ƒsƒBÃƒ„43s#‚Ãƒ“$TdddÃ„CSd4T"Ã„$Tc”4crÃ„3css„c"À¢ ¦FVb6†#Seö6ö×&W76–öå÷G&6R†ÖW76vS¢'—FW2’ÓâF–7E·7G"Âö&¦V7EÓ ¢""$d•2ƒÓB4„Ó#SbG&6RÂv—F‚V6‚&Æö6²w2cBf÷'v&B&÷VæB7FFW2â"" ¢–bÆVâ†ÖW76vR’ãÒƒÃÂc“ ¢&—6RfÇVTW'&÷"‚%4„Ó#SbÖW76vR×W7B&R6†÷'FW"F†â%ãcB&—G2"¢&—EöÆVæwF‚ÒÆVâ†ÖW76vR’¢€¢FFVBÒ'—FV'&’†ÖW76vR¢FFVBæVæBƒƒƒ¢FFVBæW‡FVæB†"%Çƒ"¢‚ƒSbÒÆVâ‡FFVB’RcB’RcB’¢FFVBæW‡FVæB†&—EöÆVæwF‚çFõö'—FW2ƒ‚Â&&–r"’¢7FFRÒÆ—7B…õ4„#Seô•b¢&Æö6µ÷G&6W2ÒµÐ¢Ö6²Ò„ddddddd` ¢FVb&÷G"‡ƒ¢–çBÂã¢–çB’Óâ–çC ¢&WGW&â‚‡‚ãââ’Â‡‚ÃÂƒ3"Òâ’’’bÖ6° ¢f÷"&Æö6µö–æFW‚–â&ævRƒÂÆVâ‡FFVB’ÂcB“ ¢&Æö6²ÒFFVE¶&Æö6µö–æFWƒ¦&Æö6µö–æFW‚²cEÐ¢66†VGVÆRÒ¶–çBæg&öÕö'—FW2†&Æö6µ¶“¦’²EÒÂ&&–r"’f÷"’–â&ævRƒÂcBÂB•Ð¢f÷"’–â&ævRƒbÂcB“ ¢3Ò&÷G"‡66†VGVÆU¶’ÒUÒÂr’â&÷G"‡66†VGVÆU¶’ÒUÒÂ‚’â‡66†VGVÆU¶’ÒUÒãâ2¢3Ò&÷G"‡66†VGVÆU¶’Ò%ÒÂr’â&÷G"‡66†VGVÆU¶’Ò%ÒÂ’’â‡66†VGVÆU¶’Ò%Òãâ¢66†VGVÆRæVæB‚‡66†VGVÆU¶’ÒeÒ²3²66†VGVÆU¶’ÒuÒ²3’bÖ6²¢Â"Â2ÂBÂRÂbÂrÂ‚Ò7FFP¢&÷VæE÷7FFW2ÒµÐ¢f÷"’–â&ævRƒcB“ ¢&–sÒ&÷G"†RÂb’â&÷G"†RÂ’â&÷G"†RÂ#R¢6†ö÷6RÒ†Rbb’â‚‡æR’br¢CÒ†‚²&–s²6†ö÷6R²õ4„#Seôµ¶•Ò²66†VGVÆU¶•Ò’bÖ6°¢&–sÒ&÷G"†Â"’â&÷G"†Â2’â&÷G"†Â#"¢Ö¦÷&—G’Ò†b"’â†b2’â†"b2¢C"Ò†&–s²Ö¦÷&—G’’bÖ6°¢Â"Â2ÂBÂRÂbÂrÂ‚Ò‡C²C"’bÖ6²ÂÂ"Â2Â†B²C’bÖ6²ÂRÂbÂp¢&÷VæE÷7FFW2æVæB‡GWÆR†b'·v÷&C£‡‡Ò"f÷"v÷&B–â†Æ"Æ2ÆBÆRÆbÆrÆ‚’’¢7FFRÒ²†öÆB²æWr’bÖ6²f÷"öÆBÂæWr–â¦—‡7FFRÂ†Æ"Æ2ÆBÆRÆbÆrÆ‚’•Ð¢&Æö6µ÷G&6W2æVæB‡²&&Æö6µö–æFW‚#¢&Æö6µö–æFW‚òòcBÀ¢&–çWE÷7FFR#¢¶b'·c£‡‡Ò"f÷"b–âõ4„#Seô•eÒ–bæ÷B&Æö6µ÷G&6W2VÇ6R&Æö6µ÷G&6W5²ÓÕ²&÷WGWE÷7FFR%ÒÀ¢'66†VGVÆR#¢¶b'·c£‡‡Ò"f÷"b–â66†VGVÆUÒÀ¢'&÷VæE÷7FFW2#¢&÷VæE÷7FFW2À¢&÷WGWE÷7FFR#¢¶b'·c£‡‡Ò"f÷"b–â7FFU×Ò¢F–vW7BÒ""æ¦ö–â†b'·v÷&C£‡‡Ò"f÷"v÷&B–â7FFR¢&VfW&Væ6RÒ†6†Æ–"ç6†#Sb†ÖW76vR’æ†W†F–vW7B‚¢–bF–vW7BÒ&VfW&Væ6S ¢&—6R&—F†ÖWF–4W'&÷"‚&–çFW&æÂ4„Ó#SbG&6RF—6w&VW2v—F‚†6†Æ–""¢&WGW&â²&F–vW7Eö†W‚#¢F–vW7BÂ&ÖF6†W5ö†6†Æ–"#¢G'VRÂ'FFVEö&Æö6·2#¢&Æö6µ÷G&6W7Ð ¦FVb6†#Seö&6·v&EöÆVFvW"†F–vW7Eö†Wƒ¢7G"Â&Æö6µö†Wƒ¢7G"ÂæöæRÒæöæR’ÓâF–7E·7G"Âö&¦V7EÓ ¢""$W‡Æ÷&R4„Ó#Sbw2Æ7B6ö×&W76–öâ&÷VæBÂ÷F–öæÆÇ’&WfW'6–ær¶æ÷vâ&Æö6²à ¢F–vW7BÖöæÇ’ÖöFR—2W‡Æ–6—FÇ’6öæF—F–öæÂöâöæRÖ&Æö6²FFVBÖW76vRÀ¢6òF†Rf–æÂ6†–æ–ær7FFR—2F†R7FæF&B4„Ó#Sb•bâ7WÇ––ærF†RW†7@¢cBÖ'—FRf–æÂ6ö×&W76–öâ&Æö6²W&Ö—G2gVÆÂÂfW&–f–&ÆR&÷VæB&WfW'6Âà¢"" ¢G'“ ¢F–vW7BÒ'—FW2æg&öÖ†W‚†F–vW7Eö†W‚ç&VÖ÷fW&Vf—‚‚#‚"’¢W†6WBfÇVTW'&÷"2W†3 ¢&—6RfÇVTW'&÷"‚&F–vW7B×W7B&RcB†W†FV6–ÖÂ6†&7FW'2"’g&öÒW†0¢–bÆVâ†F–vW7B’Ò3# ¢&—6RfÇVTW'&÷"‚&F–vW7B×W7B&RW†7FÇ’3"'—FW2"¢F–vW7E÷v÷&G2Ò¶–çBæg&öÕö'—FW2†F–vW7E¶“¦’²EÒÂ&&–r"’f÷"’–â&ævRƒÂ3"ÂB•Ð¢F&vWE÷7FFRÒ²†BÒ—b’b„dddddddbf÷"BÂ—b–â¦—†F–vW7E÷v÷&G2Âõ4„#Seô•b•Ð¢7FFUö†W‚ÒÆÖ&Fv÷&G3¢¶b'·v÷&C£‡‡Ò"f÷"v÷&B–âv÷&G5Ð ¢FVb&÷G"‡ƒ¢–çBÂã¢–çB’Óâ–çC ¢&WGW&â‚‡‚ãââ’Â‡‚ÃÂƒ3"Òâ’’’b„ddddddd` ¢&W7VÇC¢F–7E·7G"Âö&¦V7EÒÒ°¢&77V×F–öâ#¢&F–vW7B—2g&öÒW†7FÇ’öæRFFVBS"Ö&—B&Æö6²6ö×&W76VBg&öÒF†R7FæF&B•b"À¢&f–æÅ÷v÷&¶–æu÷7FFR#¢7FFUö†W‚‡F&vWE÷7FFR’À¢&ÖW76vU÷v÷&G5ö¶æ÷vâ#¢&Æö6µö†W‚—2æ÷BæöæRÀ¢&gVÆÇ•÷&WfW'6VB#¢fÇ6RÀ¢'7FFUö6Æ76–f–6F–öâ#¢°¢&f–æÅ÷v÷&¶–æu÷7FFR#¢&çVÖW&–6ÆÇ’FW&—fVBÂ6öæF—F–öæÂöâF†RöæRÖ&Æö6²÷7FæF&BÔ•b77V×F–öâ"À¢&Æ7E÷&÷VæE÷&Wf–÷W5÷7FFR#¢''F–ÆÇ’çVÖW&–3²ƒc2&VÖ–ç27–Ö&öÆ–2–âsc2"À¢&V&Æ–W%÷&÷VæG2#¢'Vç&W6öÇfVBv—F†÷WBÖW76vR×66†VGVÆR6öç7G&–çG2"À¢ÒÀ¢Ð¢–b&Æö6µö†W‚—2æöæS ¢Â#Â3ÂCÂSÂcÂsÂƒÒF&vWE÷7FFP¢öÆEöÂöÆEö"ÂöÆEö2Ò#Â3ÂC¢öÆEöRÂöÆEöbÂöÆEörÒcÂsÂƒ¢&–sÒ&÷G"†öÆEöÂ"’â&÷G"†öÆEöÂ2’â&÷G"†öÆEöÂ#"¢Ö¢Ò†öÆEöböÆEö"’â†öÆEöböÆEö2’â†öÆEö"böÆEö2¢CÒ†Ò‚†&–s²Ö¢’b„dddddddb’’b„ddddddd`¢öÆEöBÒ†SÒC’b„ddddddd`¢&–sÒ&÷G"†öÆEöRÂb’â&÷G"†öÆEöRÂ’â&÷G"†öÆEöRÂ#R¢6‚Ò†öÆEöRböÆEöb’â‚‡æöÆEöR’böÆEör¢öÆEö…öW‡&W76–öâÒ€¢b%Cóc2Ò6–vÖ†Sc2’Ò6‚†Sc2Æcc2Æsc2’Ò³c2Òsc2ÖöB%ã3#² ¢b%Cóc3Ó‡·C£‡‡Ò ¢¢&W7VÇE²&Æ7E÷&÷VæE÷&V6÷fW&VE÷7FFR%ÒÒ°¢&c2#¢b#‡¶öÆEö£‡‡Ò"Â&#c2#¢b#‡¶öÆEö#£‡‡Ò"À¢&3c2#¢b#‡¶öÆEö3£‡‡Ò"Â&Cc2#¢b#‡¶öÆEöC£‡‡Ò"À¢&Sc2#¢b#‡¶öÆEöS£‡‡Ò"Â&cc2#¢b#‡¶öÆEöc£‡‡Ò"À¢&sc2#¢b#‡¶öÆEös£‡‡Ò"Â&ƒc2#¢öÆEö…öW‡&W76–öâÀ¢'Væ¶æ÷vâ#¢%sc2‡F†Rf–æÂW‡æFVBÖW76vR×66†VGVÆRv÷&B’ ¢Ð¢&W7VÇE²&&÷VæF'’%ÒÒ$V&Æ–W"&÷VæG2FWVæBöâVç&W6öÇfVBsc2æBÖW76vR×66†VGVÆR6öç7G&–çG2â ¢&WGW&â&W7VÇ@ ¢G'“ ¢&Æö6²Ò'—FW2æg&öÖ†W‚†&Æö6µö†W‚ç&VÖ÷fW&Vf—‚‚#‚"’¢W†6WBfÇVTW'&÷"2W†3 ¢&—6RfÇVTW'&÷"‚&&Æö6²×W7B&R#‚†W†FV6–ÖÂ6†&7FW'2"’g&öÒW†0¢–bÆVâ†&Æö6²’ÒcC ¢&—6RfÇVTW'&÷"‚&&Æö6²×W7B&RW†7FÇ’cB'—FW2†öæR4„Ó#Sb6ö×&W76–öâ&Æö6²’"¢v÷&G2Ò¶–çBæg&öÕö'—FW2†&Æö6µ¶“¦’²EÒÂ&&–r"’f÷"’–â&ævRƒÂcBÂB•Ð¢f÷"’–â&ævRƒbÂcB“ ¢3Ò&÷G"‡v÷&G5¶’ÒUÒÂr’â&÷G"‡v÷&G5¶’ÒUÒÂ‚’â‡v÷&G5¶’ÒUÒãâ2¢3Ò&÷G"‡v÷&G5¶’Ò%ÒÂr’â&÷G"‡v÷&G5¶’Ò%ÒÂ’’â‡v÷&G5¶’Ò%Òãâ¢v÷&G2æVæB‚‡v÷&G5¶’ÒeÒ²3²v÷&G5¶’ÒuÒ²3’b„dddddddb¢Â"Â2ÂBÂRÂbÂrÂ‚Òõ4„#Seô•`¢f÷'v&BÒµÐ¢f÷"’–â&ævRƒcB“ ¢&–sÒ&÷G"†RÂb’â&÷G"†RÂ’â&÷G"†RÂ#R¢6‚Ò†Rbb’â‚‡æR’br¢CÒ†‚²&–s²6‚²õ4„#Seôµ¶•Ò²v÷&G5¶•Ò’b„ddddddd`¢&–sÒ&÷G"†Â"’â&÷G"†Â2’â&÷G"†Â#"¢Ö¢Ò†b"’â†b2’â†"b2¢C"Ò†&–s²Ö¢’b„ddddddd`¢Â"Â2ÂBÂRÂbÂrÂ‚Ò‡C²C"’b„dddddddbÂÂ"Â2Â†B²C’b„dddddddbÂRÂbÂp¢f÷'v&BæVæB‚†Æ"Æ2ÆBÆRÆbÆrÆ‚’¢6ö×WFVEöF–vW7BÒ"""æ¦ö–â‚‚†—b²v÷&²’b„dddddddb’çFõö'—FW2ƒBÂ&&–r"¢f÷"—bÂv÷&²–â¦—…õ4„#Seô•bÂ†Æ"Æ2ÆBÆRÆbÆrÆ‚’’’æ†W‚‚¢–b6ö×WFVEöF–vW7BÒF–vW7Bæ†W‚‚“ ¢&—6RfÇVTW'&÷"‚'&÷f–FVB&Æö6²FöW2æ÷B6ö×&W72g&öÒF†R7FæF&B•bFòF†R7WÆ–VBF–vW7B" ¢7W'&VçBÒÆ—7B‡F&vWE÷7FFR¢f÷"’–â&ævRƒc2ÂÓÂÓ“ ¢Â#Â3ÂCÂSÂcÂsÂƒÒ7W'&Vç@¢öÆEöÂöÆEö"ÂöÆEö2Ò#Â3ÂC¢öÆEöRÂöÆEöbÂöÆEörÒcÂsÂƒ¢&–sÒ&÷G"†öÆEöÂ"’â&÷G"†öÆEöÂ2’â&÷G"†öÆEöÂ#"¢Ö¢Ò†öÆEöböÆEö"’â†öÆEöböÆEö2’â†öÆEö"böÆEö2¢CÒ†Ò‚†&–s²Ö¢’b„dddddddb’’b„ddddddd`¢öÆEöBÒ†SÒC’b„ddddddd`¢&–sÒ&÷G"†öÆEöRÂb’â&÷G"†öÆEöRÂ’â&÷G"†öÆEöRÂ#R¢6‚Ò†öÆEöRböÆEöb’â‚‡æöÆEöR’böÆEör¢öÆEö‚Ò‡CÒ&–sÒ6‚Òõ4„#Seôµ¶•ÒÒv÷&G5¶•Ò’b„ddddddd`¢7W'&VçBÒ¶öÆEöÆöÆEö"ÆöÆEö2ÆöÆEöBÆöÆEöRÆöÆEöbÆöÆEörÆöÆEö…Ð¢&W7VÇBçWFFR‡²&gVÆÇ•÷&WfW'6VB#¢G'VRÂ'&V6÷fW&VEö–æ—F–Å÷7FFR#¢7FFUö†W‚†7W'&VçB’À¢&ÖF6†W5÷7FæF&Eö—b#¢GWÆR†7W'&VçB’ÓÒõ4„#Seô•bÀ¢'7FFUö6Æ76–f–6F–öâ#¢°¢&f–æÅ÷v÷&¶–æu÷7FFR#¢&çVÖW&–6ÆÇ’&V6÷fW&VB"À¢&–çFW&ÖVF–FU÷&÷VæE÷7FFW2#¢&çVÖW&–6ÆÇ’&V6÷fW&VBW6–ærF†RW†7B&Æö6²66†VGVÆR"À¢&–æ—F–Å÷7FFR#¢&çVÖW&–6ÆÇ’&V6÷fW&VBæB6ö×&VBv—F‚F†R7FæF&B•b"À¢ÒÀ¢&&÷VæF'’#¢$ÆÂ&÷VæG2&WfW'6VBW6–ærF†R7WÆ–VBW†7BÖW76vR&Æö6²â'Ò¢&WGW&â&W7VÇ@ ¦FVb'VåöW‡FVæFVEö¦ö–çEöÆöö¶†VE÷7vVW‚’ÓâÆ—7E¶F–7E·7G"Âö&¦V7EÕÓ ¢""%&WGW&âcw2–ÆÇW7G&F—fRFVç6—G’7vVW27–çF†WF–2Æææ–ærÖöFVÂà ¢F†W6RW7F–ÖFW2&Ræ÷BvVæW&FVB'’4B6öÇfW"æB×W7Bæ÷B&R&VB0¢ÖV7W&VB&÷vF–öâ÷"7'—FæÇ—F–2&W7VÇG2à¢"" ¢F÷FÅ÷f'2ÂF÷FÅö6ÆW6W2Ò#ÂSƒ ¢&V6÷&G2ÒµÐ¢f÷"FWF‚–âƒÂ"ÂBÂ‚Â"ÂbÂ#BÂ3"ÂC‚ÂcB“ ¢&VÖ–æ–æu÷f'2ÒÖ‚‡F÷FÅ÷f'2ÒFWF‚ÂCb¢VÆ–Ö–æFVEö6ÆW6W2Ò–çB†FWF‚¢"ãcB¢&VÖ–æ–æuö6ÆW6W2ÒÖ‚‡F÷FÅö6ÆW6W2ÒVÆ–Ö–æFVEö6ÆW6W2ÂC2¢&V6÷&G2æVæB‡°¢&7V&UöFWF…ö&—G2#¢FWF‚À¢'&VÖ–æ–æu÷f'2#¢&VÖ–æ–æu÷f'2À¢'&VÖ–æ–æuö6ÆW6W2#¢&VÖ–æ–æuö6ÆW6W2À¢&6ÆW6UöFVç6—G•öÇ†#¢&÷VæB‡&VÖ–æ–æuö6ÆW6W2ò&VÖ–æ–æu÷f'2ÂB’À¢&–ÆÇW7G&F—fU÷Væ—E÷&÷vF–öå÷&FU÷7B#¢&÷VæB†FWF‚òcB¢Â’À¢&Wf–FVæ6Uö¶–æB#¢'7–çF†WF–2W7F–ÖFS²æò4Bô4äb6öÇfW"'Vâ"À¢Ò¢&WGW&â&V6÷&G0 ¦FVbf–VÆEö–çb†ã¢–çBÂ¢–çBÒ4T5#Sd³õ’Óâ–çC ¢""$&6RÖf–VÆB–çfW'6Rf–—F†öâw2W‡FVæFVBÔWV6Æ–FVâÖöGVÆ"–çfW'6Râ"" ¢âSÒ ¢–bâÓÒ ¢&—6RfÇVTW'&÷"‚'¦W&ò†2æò×VÇF—Æ–6F—fR–çfW'6R"¢&WGW&âÖöEö–çfW'6Uö'V–ÇF–â†âÂ ¦FVbVVöÖöEö–çb†¢–çBÂÓ¢–çBÒ4T5#Sd³õ’Óâ–çC ¢""$6ö×F–&–Æ—G’w&W"f÷"F†R—FW&F—fRW‡FVæFVBWV6Æ–FVâ–çfW'6Râ"" ¢&WGW&âÖöEö–çfW'6UöVv6B†ÂÒ ¦FVb&F6…ö–çb‡fÇ3¢Æ—7E¶–çEÒÂ¢–çBÒ4T5#Sd³õ’ÓâÆ—7E¶–çEÓ ¢""$–çfW'BÖç’æöç¦W&òf–VÆBVÆVÖVçG2W6–æröæRÖöGVÆ"–çfW'6–öâà ¢¦W&ò–çWG2ÖFò¦W&òf÷"6ö×F–&–Æ—G’v—F‚ö–çBÖBÖ–æf–æ—G’&F6†W2à¢F†RÖWF†öB—26WVVçF–ÂÖöçFvöÖW'’&F6‚–çfW'6–öâÂæ÷B&ÆÆVÂv÷&²à¢"" ¢–bæ÷BfÇ3 ¢&WGW&âµÐ¢–bG—R‡’—2æ÷B–çB÷"ÃÒ ¢&—6RfÇVTW'&÷"‚&ÖöGVÇW2×W7B&Râ–çFVvW"w&VFW"F†â"¢&Vf—†W2Ò³Ò¢ÆVâ‡fÇ2¢&öGV7BÒ¢æ÷&ÖÆ—¦VBÒ³Ò¢ÆVâ‡fÇ2¢f÷"–æFW‚ÂfÇVR–âVçVÖW&FR‡fÇ2“ ¢–bG—R‡fÇVR’—2æ÷B–çC ¢&—6RfÇVTW'&÷"‚&&F6‚–çfW'6–öâfÇVW2×W7B&R–çFVvW'2"¢fÇVRSÒ ¢æ÷&ÖÆ—¦VE¶–æFW…ÒÒfÇVP¢&Vf—†W5¶–æFW…ÒÒ&öGV7@¢–bfÇVS ¢&öGV7BÒ&öGV7B¢fÇVRR  ¢–çfW'6U÷&öGV7BÒÖöEö–çfW'6Uö'V–ÇF–â‡&öGV7BÂ¢&W7VÇBÒ³Ò¢ÆVâ‡fÇ2¢f÷"’–â&ævR†ÆVâ‡fÇ2’ÒÂÓÂÓ“ ¢fÇVRÒæ÷&ÖÆ—¦VE¶•Ð¢–bfÇVS ¢&W7VÇE¶•ÒÒ–çfW'6U÷&öGV7B¢&Vf—†W5¶•ÒR ¢–çfW'6U÷&öGV7BÒ–çfW'6U÷&öGV7B¢fÇVRR ¢&WGW&â&W7VÇ@ ¦FVb66Æ%ö–çb†C¢–çBÂã¢–çBÒ4T5#Sd³ôâ’Óâ–çC ¢""%66Æ"–çfW'6RW6–ærÖöGVÇW2ÖvVæW&ÂÆv÷&—F†Ó²æò&–ÖÆ—G’77V×F–öââ"" ¢&WGW&âÖöEö–çfW'6Uö'V–ÇF–â†BÂâ ¦FVbö–çEöæVvFR‡C¢GWÆU¶–çBÂ–çEÒ’ÓâGWÆU¶–çBÂ–çEÓ ¢""$w&÷WFF—F—fR–çfW'6RÕÒ‡‚ÂÒ’ÖöB’â"" ¢&WGW&â‡E³ÒÂ‚×E³Ò’R4T5#Sd³õ ¦FVb¦6ö&–åöF÷V&ÆR‡¢GWÆU¶–çBÂ–çBÂ–çEÒ’ÓâGWÆU¶–çBÂ–çBÂ–çEÓ ¢""$f7Bö–çBF÷V&Æ–ær–â¦6ö&–â&ö¦V7F—fR6ö÷&F–æFW2†Ó’â"" ¢ƒÂ“Â£Ò¢–b“ÓÒ ¢&WGW&âƒÂÂ¢2ÒƒB¢ƒ¢“¢£"’R4T5#Sd³õ ¢ÒÒƒ2¢ƒ¢£"’R4T5#Sd³õ ¢ƒ2Ò„Ò¢£"Ò"¢2’R4T5#Sd³õ ¢“2Ò„Ò¢…2Òƒ2’Ò‚¢“¢£B’R4T5#Sd³õ ¢£2Òƒ"¢“¢£’R4T5#Sd³õ ¢&WGW&â…ƒ2Â“2Â£2 ¦FVb¦6ö&–åöFB‡¢GWÆU¶–çBÂ–çBÂ–çEÒÂ#¢GWÆU¶–çBÂ–çBÂ–çEÒ’ÓâGWÆU¶–çBÂ–çBÂ–çEÓ ¢""$gVÆÂö–çBFF—F–öâ–â¦6ö&–â&ö¦V7F—fR6ö÷&F–æFW2â"" ¢–b³%ÒÓÒ ¢&WGW&â ¢–b%³%ÒÓÒ ¢&WGW&â¢ƒÂ“Â£Ò¢ƒ"Â“"Â£"Ò ¢SÒ…ƒ¢£"¢£"’R4T5#Sd³õ ¢S"Ò…ƒ"¢£¢£"’R4T5#Sd³õ ¢3Ò…“¢£"¢£2’R4T5#Sd³õ ¢3"Ò…“"¢£¢£2’R4T5#Sd³õ ¢–bSÓÒS# ¢–b3Ò3# ¢&WGW&âƒÂÂ¢&WGW&â¦6ö&–åöF÷V&ÆR‡¢‚Ò…S"ÒS’R4T5#Sd³õ ¢"Ò…3"Ò3’R4T5#Sd³õ ¢ƒ"Ò„‚¢‚’R4T5#Sd³õ ¢ƒ2Ò„‚¢ƒ"’R4T5#Sd³õ ¢ƒ2Ò…"¢£"Òƒ2Ò"¢S¢ƒ"’R4T5#Sd³õ ¢“2Ò…"¢…S¢ƒ"Òƒ2’Ò3¢ƒ2’R4T5#Sd³õ ¢£2Ò„‚¢£¢£"’R4T5#Sd³õ ¢&WGW&â…ƒ2Â“2Â£2 ¦FVb¦6ö&–åöFEöÖ—†VB‡¢GWÆU¶–çBÂ–çBÂ–çEÒÂ%öfc¢GWÆU¶–çBÂ–çEÒ’ÓâGWÆU¶–çBÂ–çBÂ–çEÓ ¢""$÷F–Ö—¦VBÖ—†VBö–çBFF—F–öâ„¦6ö&–â²ff–æR’â"" ¢–b³%ÒÓÒ ¢&WGW&â‡%öfe³ÒÂ%öfe³ÒÂ¢–b%öfbÓÒƒÂ“ ¢&WGW&â¢ƒÂ“Â£Ò¢ƒ"Â“"Ò%öf`¢£ó"Ò…£¢£’R4T5#Sd³õ ¢S"Ò…ƒ"¢£ó"’R4T5#Sd³õ ¢3"Ò…“"¢£¢£ó"’R4T5#Sd³õ ¢–bƒÓÒS# ¢–b“Ò3# ¢&WGW&âƒÂÂ¢&WGW&â¦6ö&–åöF÷V&ÆR‡¢‚Ò…S"Òƒ’R4T5#Sd³õ ¢"Ò…3"Ò“’R4T5#Sd³õ ¢ƒ"Ò„‚¢‚’R4T5#Sd³õ ¢ƒ2Ò„‚¢ƒ"’R4T5#Sd³õ ¢ƒ2Ò…"¢£"Òƒ2Ò"¢ƒ¢ƒ"’R4T5#Sd³õ ¢“2Ò…"¢…ƒ¢ƒ"Òƒ2’Ò“¢ƒ2’R4T5#Sd³õ ¢£2Ò„‚¢£’R4T5#Sd³õ ¢&WGW&â…ƒ2Â“2Â£2 ¦FVb¦6ö&–å÷Fõöff–æR‡¢GWÆU¶–çBÂ–çBÂ–çEÒ’ÓâGWÆU¶–çBÂ–çEÓ ¢""$6öçfW'G2¦6ö&–â&ö¦V7F—fRö–çB…‚Â’Â¢’Fòff–æR‡‚Â’’â"" ¢‚Â’Â¢Ò¢–b¢ÓÒ ¢&WGW&âƒÂ¢¥ö–çbÒVVöÖöEö–çb…¢Â4T5#Sd³õ¢¥ö–çc"Ò‡¥ö–çb¢¥ö–çb’R4T5#Sd³õ ¢¥ö–çc2Ò‡¥ö–çc"¢¥ö–çb’R4T5#Sd³õ ¢&WGW&â‚…‚¢¥ö–çc"’R4T5#Sd³õÂ…’¢¥ö–çc2’R4T5#Sd³õ ¢2ÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÐ¢2&V6ö×WFVBf—†VBBÔ&—Bff–æRv–æF÷rF&ÆRf÷"vVæW&F÷"p¢2ÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÐ ¥ôuõ$T4ôÕôdd”äS¢Æ—7E¶Æ—7E·GWÆU¶–çBÂ–çEÕÕÒÒµÐ ¦FVbö–æ—Eöu÷&V6ö×÷F&ÆR‚“ ¢""$–æ—F–Æ—¦W2f—†VBBÖ&—Bff–æRv–æF÷rF&ÆRf÷"vVæW&F÷"rB7F'GWâ"" ¢–bôuõ$T4ôÕôdd”äS ¢&WGW&à¢ ¢uô¤2Ò…4T5#Sd³ôu³ÒÂ4T5#Sd³ôu³ÒÂ¢7W'"Òuô¤0¢ÆÅö¦2ÒµÐ¢ ¢f÷"v–æF÷r–â&ævRƒcB“ ¢F&ÆU÷rÒ²ƒÂÂ•Ð¢F&ÆU÷ræVæB†7W'"¢f÷"×VÇB–â&ævRƒ"Âb“ ¢F&ÆU÷ræVæB†¦6ö&–åöFB‡F&ÆU÷u²ÓÒÂ7W'"’¢ÆÅö¦2æVæB‡F&ÆU÷r¢f÷"ò–â&ævRƒB“ ¢7W'"Ò¦6ö&–åöF÷V&ÆR†7W'" ¢¥ö6ö÷&G2ÒµÐ¢f÷"r–â&ævRƒcB“ ¢f÷"×VÇB–â&ævRƒÂb“ ¢¥ö6ö÷&G2æVæB†ÆÅö¦5·uÕ¶×VÇEÕ³%Ò ¢–çe÷¢Ò&F6…ö–çb‡¥ö6ö÷&G2Â4T5#Sd³õ¢ ¢–G‚Ò ¢f÷"r–â&ævRƒcB“ ¢F&ÆUöfbÒ²ƒÂ•Ð¢f÷"×VÇB–â&ævRƒÂb“ ¢¦’Ò–çe÷¥¶–G…Ð¢–G‚³Ò¢¦“"Ò‡¦’¢¦’’R4T5#Sd³õ ¢¦“2Ò‡¦“"¢¦’’R4T5#Sd³õ ¢‚Â’ÂòÒÆÅö¦5·uÕ¶×VÇEÐ¢F&ÆUöfbæVæB‚‚…‚¢¦“"’R4T5#Sd³õÂ…’¢¦“2’R4T5#Sd³õ’¢ôuõ$T4ôÕôdd”äRæVæB‡F&ÆUöfb ¦FVb66Æ%ö×VÇEöuöf7B†³¢–çB’ÓâGWÆU¶–çBÂ–çEÓ ¢""$÷F–Ö—¦VBf—†VBÖ&6R66Æ"×VÇF—Æ–6F–öâ²¢rW6–ærBÖ&—Bff–æRv–æF÷rF&ÆRâ"" ¢²SÒ4T5#Sd³ôà¢–b²ÓÒ ¢&WGW&âƒÂ¢–bæ÷Bôuõ$T4ôÕôdd”äS ¢ö–æ—Eöu÷&V6ö×÷F&ÆR‚¢"ÒƒÂÂ¢f÷"v–æF÷r–â&ævRƒcB“ ¢fÂÒ†²ãâƒB¢v–æF÷r’’b„`¢–bfÂâ ¢"Ò¦6ö&–åöFEöÖ—†VB…"Âôuõ$T4ôÕôdd”äU·v–æF÷uÕ·fÅÒ¢&WGW&â¦6ö&–å÷Fõöff–æR…" ¦FVb6ö×WFUöæb†³¢–çB’ÓâÆ—7E¶–çEÓ ¢""$FW&—fW2æöâÔF¦6VçBf÷&Ò„äb’6–væVB&–æ'’&W&W6VçFF–öâf÷"66Æ"²â"" ¢–b²Â ¢&—6RfÇVTW'&÷"‚$äb–çWB×W7B&RæöâÖæVvF—fR"¢æbÒµÐ¢v†–ÆR²â ¢–b²R"ÓÒ ¢¶’Ò"Ò†²RB¢²ÓÒ¶¢VÇ6S ¢¶’Ò ¢æbæVæB†¶’¢²òóÒ ¢&WGW&âæ` ¦FVb66Æ%ö×VÇEöæeö¦6ö&–â†³¢–çBÂC¢GWÆU¶–çBÂ–çEÒ’ÓâGWÆU¶–çBÂ–çBÂ–çEÓ ¢""$×VÇF—Ç’â&&—G&'’ö–çBv—F†÷WB6öçfW'F–ærF†R&W7VÇBFòff–æRf÷&Òâ"" ¢–b²Â ¢&WGW&â66Æ%ö×VÇEöæeö¦6ö&–â‚Ö²Âö–çEöæVvFR‡B’¢²SÒ4T5#Sd³ôà¢–b²ÓÒ ¢&WGW&âƒÂÂ¢æbÒ6ö×WFUöæb†²¢ö¦2Ò‡E³ÒÂE³ÒÂ¢öæVuö¦2Ò‡E³ÒÂ‚×E³Ò’R4T5#Sd³õÂ¢%ö¦2ÒƒÂÂ¢ ¢f÷"fÂ–â&WfW'6VB†æb“ ¢%ö¦2Ò¦6ö&–åöF÷V&ÆR…%ö¦2¢–bfÂÓÒ ¢%ö¦2Ò¦6ö&–åöFB…%ö¦2Âö¦2¢VÆ–bfÂÓÒÓ ¢%ö¦2Ò¦6ö&–åöFB…%ö¦2ÂöæVuö¦2¢ ¢&WGW&â%ö¦0 ¦FVb66Æ%ö×VÇEöæb†³¢–çBÂC¢GWÆU¶–çBÂ–çEÒÒ4T5#Sd³ôr’ÓâGWÆU¶–çBÂ–çEÓ ¢""%W&f÷&×266Æ"ö–çB×VÇF—Æ–6F–öâ²¢W6–æräb÷"f7BF&ÆRÆöö·Wâ"" ¢–bBÓÒ4T5#Sd³ôræB²ãÒ ¢&WGW&â66Æ%ö×VÇEöuöf7B†²¢&WGW&â¦6ö&–å÷Fõöff–æR‡66Æ%ö×VÇEöæeö¦6ö&–â†²ÂB’ ¦FVb—5ööåö7W'fR‡C¢GWÆU¶–çBÂ–çEÒ’Óâ&ööÃ ¢‚Â’Ò@¢&WGW&âÃÒ‚Â4T5#Sd³õæBÃÒ’Â4T5#Sd³õæB‡’¢’Ò‚¢‚¢‚Òr’R4T5#Sd³õÓÒ  ¦FVbÆ–gE÷…öWfVâ‡ƒ¢–çB’ÓâGWÆU¶–çBÂ–çEÓ ¢""$FV6öFR$•Ó3C‚ÖöæÇ’V&Æ–2¶W’FòF†R7W'fRö–çBv—F‚WfVâ’â"" ¢–bæ÷BÃÒ‚Â4T5#Sd³õ ¢&—6RfÇVTW'&÷"‚'V&Æ–2Ö¶W’‚6ö÷&F–æFR—2÷WG6–FRF†Rf–VÆB"¢2Ò‡÷r‡‚Â2Â4T5#Sd³õ’²r’R4T5#Sd³õ ¢’Ò÷r†2Â…4T5#Sd³õ²’òòBÂ4T5#Sd³õ¢–b’¢’R4T5#Sd³õÒ3 ¢&—6RfÇVTW'&÷"‚'‚6ö÷&F–æFRFöW2æ÷BÆ–gBFò6V7#Sf³ö–çB"¢&WGW&â‡‚Â’–b’R"ÓÒVÇ6R4T5#Sd³õÒ’ ¦FVb'6U÷V&¶W’‡V&¶W•ö†Wƒ¢7G"’ÓâGWÆU¶–çBÂ–çEÓ ¢""%'6R3"Ö'—FR‚ÖöæÇ’÷"32Ö'—FR4T26ö×&W76VB6V7#Sf³V&Æ–2¶W’â"" ¢&rÒ'—FW2æg&öÖ†W‚‡V&¶W•ö†W‚ç&VÖ÷fW&Vf—‚‚#‚"’¢–bÆVâ‡&r’ÓÒ3# ¢&WGW&âÆ–gE÷…öWfVâ†–çBæg&öÕö'—FW2‡&rÂ&&–r"’¢–bÆVâ‡&r’Ò32÷"&u³Òæ÷B–âƒ"Â2“ ¢&—6RfÇVTW'&÷"‚'V&Æ–2¶W’×W7B&R3"Ö'—FR‚ÖöæÇ’÷"32Ö'—FR6ö×&W76VB4T2†W‚"¢‚Ò–çBæg&öÕö'—FW2‡&u³¥ÒÂ&&–r"¢BÒÆ–gE÷…öWfVâ‡‚¢&WGW&âB–b&u³ÒÓÒ"÷"E³ÒR"ÓÒVÇ6Rö–çEöæVvFR‡B ¦FVb7W'fU÷•÷&ö÷G2‡ƒ¢–çB’ÓâGWÆU¶–çBÂââåÓ ¢""%&WGW&âF†R7W'fRw2’Ö6ö÷&F–æFR&ö÷B‡2’f÷"‚Â÷"&—6R–b‚†2æòö–çBâ"" ¢–bæ÷BÃÒ‚Â4T5#Sd³õ ¢&—6RfÇVTW'&÷"‚'‚6ö÷&F–æFR×W7B&R–â³Â’"¢&‡2Ò‡÷r‡‚Â2Â4T5#Sd³õ’²r’R4T5#Sd³õ ¢’Ò÷r‡&‡2Â…4T5#Sd³õ²’òòBÂ4T5#Sd³õ¢–b’¢’R4T5#Sd³õÒ&‡3 ¢&—6RfÇVTW'&÷"‚'‚6ö÷&F–æFRFöW2æ÷BÆ–gBFò6V7#Sf³ö–çB"¢÷F†W"Ò‚×’’R4T5#Sd³õ ¢&WGW&â‡’Â’–b’ÓÒ÷F†W"VÇ6RGWÆR‡6÷'FVB‚‡’Â÷F†W"’’ ¦FVb66Æ%ö×VÇF—Æ–6F–öå÷G&6R†³¢–çBÂC¢GWÆU¶–çBÂ–çEÒÒ4T5#Sd³ôr’ÓâF–7E·7G"Âö&¦V7EÓ ¢""$VGV6F–öæÂÆVgB×Fò×&–v‡BF÷V&ÆRÖæBÖFBG&6Rf÷"æöææVvF—fR66Æ"â"" ¢–b²Â ¢&—6RfÇVTW'&÷"‚'66Æ"G&6R&WV—&W2æöææVvF—fR66Æ""¢–bæ÷B—5ööåö7W'fR‡B“ ¢&—6RfÇVTW'&÷"‚&–çWBö–çB—2æ÷Böâ6V7#Sf³"¢&W7VÇBÒƒÂÂ¢&÷w2ÒµÐ¢f÷"&—Eö–æFW‚Â&—B–âVçVÖW&FR†&–â†²•³#¥Ò–b²VÇ6R#"“ ¢&W7VÇBÒ¦6ö&–åöF÷V&ÆR‡&W7VÇB¢F–EöFBÒ&—BÓÒ# ¢–bF–EöFC ¢&W7VÇBÒ¦6ö&–åöFEöÖ—†VB‡&W7VÇBÂB¢&÷w2æVæB‡²&&—Eö–æFW‚#¢&—Eö–æFW‚Â&&—B#¢–çB†&—B’Â&FFVE÷ö–çB#¢F–EöFGÒ¢&WGW&â²'66Æ"#¢²Â&&—EöÆVæwF‚#¢²æ&—EöÆVæwF‚‚’Â&†ÖÖ–æu÷vV–v‡B#¢²æ&—Eö6÷VçB‚’À¢'&W7VÇB#¢¦6ö&–å÷Fõöff–æR‡&W7VÇB’Â'7FW2#¢&÷w7Ð ¦FVbÖöGVÆ%ö–çfW'6U÷&W÷'B‡fÇVS¢–çBÂÖöGVÇW3¢–çBÂÖWF†öC¢7G"Ò&'V–ÇF–â"’ÓâF–7E·7G"Â–çBÂ7G%Ó ¢""$6ö×WFRÖöGVÆ"–çfW'6Rv—F‚F†R6VÆV7FVBÖWF†öBæB&W÷'B—G26†V6²â"" ¢–bÖöGVÇW2ÃÒ ¢&—6RfÇVTW'&÷"‚&ÖöGVÇW2×W7B&Rw&VFW"F†â"¢v6E÷fÇVRÒÖF‚æv6B‡fÇVRÂÖöGVÇW2¢–bv6E÷fÇVRÒ ¢&—6RfÇVTW'&÷"†b&–çfW'6RFöW2æ÷BW†—7C¢v6B‡fÇVRÂÖöGVÇW2’Ò¶v6E÷fÇVWÒ"¢ÖWF†öG2Ò°¢&'V–ÇF–â#¢ÖöEö–çfW'6Uö'V–ÇF–âÀ¢&Vv6B#¢ÖöEö–çfW'6UöVv6BÀ¢&fW&ÖB#¢ÖöEö–çfW'6UöfW&ÖBÀ¢Ð¢G'“ ¢–çfW'6RÒÖWF†öG5¶ÖWF†öEÒ‡fÇVRÂÖöGVÇW2¢W†6WB¶W”W'&÷"2W†3 ¢&—6RfÇVTW'&÷"‚&ÖWF†öB×W7B&R'V–ÇF–âÂVv6BÂ÷"fW&ÖB"’g&öÒW†0¢&WGW&â²'fÇVR#¢fÇVRÂ&ÖöGVÇW2#¢ÖöGVÇW2Â&v6B#¢v6E÷fÇVRÂ&–çfW'6R#¢–çfW'6RÀ¢&6†V6²#¢‡fÇVR¢–çfW'6R’RÖöGVÇW2Â&ÖWF†öB#¢ÖWF†öGÐ ¦FVb7W'fUöFEövVöÖWG'’‡¢GWÆU¶–çBÂ–çEÒÂ#¢GWÆU¶–çBÂ–çEÒ’ÓâF–7E·7G"Âö&¦V7EÓ ¢""%&WGW&âF†R6V6çB÷FævVçBÆ–æRæBVÆÆ—F–2Ö7W'fR7VÒöbGvòö–çG2â"" ¢f÷"ö–çB–â‡Â"“ ¢–bö–çBÒƒÂ’æBæ÷B—5ööåö7W'fR‡ö–çB“ ¢&—6RfÇVTW'&÷"‚&&÷F‚–çWBö–çG2×W7B&Röâ6V7#Sf³‡W6RƒÃ’f÷"–æf–æ—G’’"¢–bÓÒƒÂ“ ¢&WGW&â²'6Æ÷R#¢æöæRÂ'F†—&Eö–çFW'6V7F–öâ#¢"Â'7VÒ#¢'Ð¢–b"ÓÒƒÂ“ ¢&WGW&â²'6Æ÷R#¢æöæRÂ'F†—&Eö–çFW'6V7F–öâ#¢Â'7VÒ#¢Ð¢ƒÂ“Ò¢ƒ"Â“"Ò ¢–bƒÓÒƒ"æB‡“²“"’R4T5#Sd³õÓÒ ¢&WGW&â²'6Æ÷R#¢æöæRÂ'F†—&Eö–çFW'6V7F–öâ#¢ƒÂ’Â'7VÒ#¢ƒÂ—Ð¢–bÓÒ# ¢–b“ÓÒ ¢&WGW&â²'6Æ÷R#¢æöæRÂ'F†—&Eö–çFW'6V7F–öâ#¢‡ƒÂ’Â'7VÒ#¢ƒÂ—Ð¢6Æ÷RÒƒ2¢ƒ¢ƒ¢ÖöEö–çfW'6Uö'V–ÇF–âƒ"¢“Â4T5#Sd³õ’’R4T5#Sd³õ ¢VÇ6S ¢6Æ÷RÒ‚‡“"Ò“’¢ÖöEö–çfW'6Uö'V–ÇF–â‡ƒ"ÒƒÂ4T5#Sd³õ’’R4T5#Sd³õ ¢ƒ2Ò‡6Æ÷R¢6Æ÷RÒƒÒƒ"’R4T5#Sd³õ ¢•öÆ–æRÒ‡6Æ÷R¢‡ƒ2Òƒ’²“’R4T5#Sd³õ ¢F†—&BÒ‡ƒ2Â•öÆ–æR¢F÷FÂÒ‡ƒ2Â‚×•öÆ–æR’R4T5#Sd³õ¢&WGW&â²'6Æ÷R#¢6Æ÷RÂ'F†—&Eö–çFW'6V7F–öâ#¢F†—&BÂ'7VÒ#¢F÷FÇÐ ¦FVb•öWVÇ5÷…÷&W÷'B‡ƒ¢–çB’ÓâF–7E·7G"Â–çBÂ&ööÅÓ ¢""$WfÇVFRF†R7W'fRWVF–öâgFW"7V'7F—GWF–ær“×‚Â–âF†R&6Rf–VÆBâ"" ¢‚SÒ4T5#Sd³õ ¢&W6–GVÂÒ‡÷r‡‚Â2Â4T5#Sd³õ’²rÒ÷r‡‚Â"Â4T5#Sd³õ’’R4T5#Sd³õ ¢&WGW&â²'‚#¢‚Â'&W6–GVÂ#¢&W6–GVÂÂ&—5ö7W'fU÷ö–çB#¢&W6–GVÂÓÒÐ ¦FVb'W76–åö–çFVvW%ö×VÇF—Ç’†¢–çBÂ#¢–çB’ÓâF–7E·7G"Âö&¦V7EÓ ¢""%G&6R&–æ'’6†–gBÖæBÖFB×VÇF—Æ–6F–öâÂ–æ6ÇVF–ær6–væVB÷W&æG2â"" ¢6–vâÒÓ–b†Â’â†"Â’VÇ6R¢×VÇF—Æ–6æBÂ×VÇF—Æ–W"Ò'2†’Â'2†"¢&÷w2ÂF÷FÂÒµÒÂ ¢v†–ÆR×VÇF—Æ–W# ¢&—BÒ×VÇF—Æ–W"b¢–b&—C ¢F÷FÂ³Ò×VÇF—Æ–6æ@¢&÷w2æVæB‡²&×VÇF—Æ–6æB#¢×VÇF—Æ–6æBÂ&×VÇF—Æ–W"#¢×VÇF—Æ–W"À¢&&—B#¢&—BÂ''F–Å÷7VÒ#¢F÷FÇÒ¢×VÇF—Æ–6æBÃÃÒ¢×VÇF—Æ–W"ããÒ¢&WGW&â²'&öGV7B#¢6–vâ¢F÷FÂÂ'7FW2#¢&÷w7Ð ¦FVb'W76–åöÖöGVÆ%ö×VÇF—Ç’†¢–çBÂ#¢–çBÂÖöGVÇW3¢–çB’ÓâF–7E·7G"Âö&¦V7EÓ ¢""$6ö×WFR¦"ÖöBÒ'’&–æ'’6†–gBÖæBÖFBv—F‚&÷VæFVB&W6–GVW2â"" ¢–bÖöGVÇW2ÃÒ ¢&—6RfÇVTW'&÷"‚&ÖöGVÇW2×W7B&R÷6—F—fR"¢6–vâÒÓ–b†Â’â†"Â’VÇ6R¢‚Â’Ò'2†’RÖöGVÇW2Â'2†"¢F÷FÂÂ&÷w2ÒÂµÐ¢v†–ÆR“ ¢&—BÒ’b¢–b&—C ¢F÷FÂÒ‡F÷FÂ²‚’RÖöGVÇW0¢&÷w2æVæB‡²&FFVæB#¢‚Â&×VÇF—Æ–W"#¢’Â&&—B#¢&—BÂ'&W6–GVR#¢F÷FÇÒ¢‚Òƒ"¢‚’RÖöGVÇW0¢’ããÒ¢&W7VÇBÒ‡6–vâ¢F÷FÂ’RÖöGVÇW0¢–b&W7VÇBÒ†¢"’RÖöGVÇW3 ¢&—6R&—F†ÖWF–4W'&÷"‚&ÖöGVÆ"×VÇF—Æ–6F–öâG&6RfW&–f–6F–öâf–ÆVB"¢&WGW&â²'&W7VÇB#¢&W7VÇBÂ'7FW2#¢&÷w2Â'fW&–f–VB#¢G'VWÐ ¦FVbfW&ÖEöf7F÷"†ã¢–çBÂÖ…÷7FW3¢–çBÒó’ÓâF–7E·7G"Âö&¦V7EÓ ¢""$&÷VæFVBfW&ÖB6V&6ƒ²7V66VVG2V–6¶Ç’öæÇ’v†VâöFBf7F÷'2&R6Æ÷6Râ"" ¢–bâÃÒ÷"âR"ÓÒ ¢&—6RfÇVTW'&÷"‚$fW&ÖB6V&6‚&WV—&W2âöFB–çFVvW"w&VFW"F†â"¢–bÖ…÷7FW2Â ¢&—6RfÇVTW'&÷"‚&Ö…÷7FW2×W7B&RæöææVvF—fR"¢ÒÖF‚æ—7'B†â¢–b¢Âã ¢³Ò¢f÷"7FW–â&ævR†Ö…÷7FW2²“ ¢FVÇFÒ¢Òà¢"ÒÖF‚æ—7'B†FVÇF¢–b"¢"ÓÒFVÇF ¢ÂÒÒ"Â² ¢–bâæB¢ÓÒã ¢&WGW&â²&f÷VæB#¢G'VRÂ'#¢Â'#¢Â'7FW2#¢7FWÐ¢³Ò¢&WGW&â²&f÷VæB#¢fÇ6RÂ'7FW2#¢Ö…÷7FW2Â&Æ–Ö—B#¢Ö…÷7FW7Ð ¦FVb'6öf7F÷%ö6æF–FFU÷&W÷'B†ã¢–çBÂ¢–çBÂ¢–çBÂS¢–çBÒcSS3r’ÓâF–7E·7G"Âö&¦V7EÓ ¢""$6†V6²&÷÷6VB%4f7F÷"—"æBW‡öæVçB6ö×F–&–Æ—G’â"" ¢–bâÃÒ÷"ÃÒ÷"ÃÒ÷"RÃÒ ¢&—6RfÇVTW'&÷"‚&âÂÂÂæBR×W7B&R–çFVvW'2w&VFW"F†â"¢&öGV7EöÖF6†W2Ò¢ÓÒà¢÷&ö&&ÆU÷&–ÖRÒö—5÷&ö&&ÆU÷&–ÖR‡’–b&öGV7EöÖF6†W2VÇ6RfÇ6P¢÷&ö&&ÆU÷&–ÖRÒö—5÷&ö&&ÆU÷&–ÖR‡’–b&öGV7EöÖF6†W2VÇ6RfÇ6P¢W‡öæVçEö6÷&–ÖRÒÖF‚æv6B†RÂÖF‚æÆ6Ò‡ÒÂÒ’’ÓÒ–b&öGV7EöÖF6†W2VÇ6RfÇ6P¢&WGW&â²'&öGV7EöÖF6†W2#¢&öGV7EöÖF6†W2Â'÷&ö&&ÆU÷&–ÖR#¢÷&ö&&ÆU÷&–ÖRÀ¢'÷&ö&&ÆU÷&–ÖR#¢÷&ö&&ÆU÷&–ÖRÂ&W‡öæVçEö6÷&–ÖU÷FõöÆÖ&F#¢W‡öæVçEö6÷&–ÖRÀ¢&6æF–FFU÷fÆ–B#¢&öGV7EöÖF6†W2æB÷&ö&&ÆU÷&–ÖRæB÷&ö&&ÆU÷&–ÖRæBW‡öæVçEö6÷&–ÖWÐ ¦FVb6ö×&W75÷V&¶W’‡C¢GWÆU¶–çBÂ–çEÒ’Óâ'—FW3 ¢""$FW&—fW232Ö'—FR4T26ö×&W76VBV&Æ–2¶W’'—FR'&’â"" ¢‚Â’Ò@¢&Vf—‚Ò"uÇƒ"r–b’R"ÓÒVÇ6R"uÇƒ2p¢&WGW&â&Vf—‚²‚çFõö'—FW2ƒ3"Âv&–rr ¦FVb&F6…ö¦6ö&–å÷Fõöff–æR‡ö–çG3¢Æ—7E·GWÆU¶–çBÂ–çBÂ–çEÕÒ’ÓâÆ—7E·GWÆU¶–çBÂ–çEÕÓ ¢""$6öçfW'BÖç’¦6ö&–âö–çG2v—F‚öæR&F6‚–çfW'6–öââ"" ¢–bæ÷Bö–çG3 ¢&WGW&âµÐ¢¥ö–çfW'6W2Ò&F6…ö–çb…·ö–çE³%Òf÷"ö–çB–âö–çG5ÒÂ4T5#Sd³õ¢&W7VÇBÒµÐ¢f÷"‡‚Â’Â¢’Â¥ö–çb–â¦—‡ö–çG2Â¥ö–çfW'6W2“ ¢–b¢ÓÒ ¢&W7VÇBæVæB‚ƒÂ’¢6öçF–çVP¢¥ö–çc"Ò¥ö–çb¢¥ö–çbR4T5#Sd³õ ¢¥ö–çc2Ò¥ö–çc"¢¥ö–çbR4T5#Sd³õ ¢&W7VÇBæVæB‚‡‚¢¥ö–çc"R4T5#Sd³õÂ’¢¥ö–çc2R4T5#Sd³õ’¢&WGW&â&W7VÇ@ ¦FVbGfæ6U÷V&Æ–5ö¶W’‡V&¶W•ö†Wƒ¢7G"Â7FW3¢–çBÒ’ÓâF–7E·7G"Âö&¦V7EÓ ¢""$Gfæ6RV&Æ–2ö–çB'’&WVFVFÇ’FF–ærrÂv—F‚&F6†VB÷WGWB6öçfW'6–öâà ¢F†—2—2V&Æ–2×ö–çB&—F†ÖWF–2ö’Òò†’Ó’²râ—B—2æ÷B$•3"FW&—fF–öâÀ¢æB—BFöW2æ÷B&V6÷fW"÷"&WfVÂ&—fFR¶W’à¢"" ¢–bæ÷BÃÒ7FW2ÃÒ ¢&—6RfÇVTW'&÷"‚'7FW2×W7B&R&WGvVVâæB"¢ö–çBÒ'6U÷V&¶W’‡V&¶W•ö†W‚¢7W'&VçBÒ‡ö–çE³ÒÂö–çE³ÒÂ¢vÆ¶VBÒµÐ¢f÷"ò–â&ævR‡7FW2“ ¢7W'&VçBÒ¦6ö&–åöFEöÖ—†VB†7W'&VçBÂ4T5#Sd³ôr¢vÆ¶VBæVæB†7W'&VçB¢ff–æU÷ö–çG2Ò&F6…ö¦6ö&–å÷Fõöff–æR‡vÆ¶VB¢&WGW&â°¢'7F'E÷V&¶W•ö†W‚#¢6ö×&W75÷V&¶W’‡ö–çB’æ†W‚‚’À¢'7FW2#¢°¢²&–æFW‚#¢–æFW‚Â'ö–çEöEö–æf–æ—G’#¢BÓÒƒÂ’À¢&6ö×&W76VE÷V&¶W•ö†W‚#¢æöæR–bBÓÒƒÂ’VÇ6R6ö×&W75÷V&¶W’‡B’æ†W‚‚—Ð¢f÷"–æFW‚ÂB–âVçVÖW&FR†ff–æU÷ö–çG2Â7F'CÓ¢ÒÀ¢Ð ¢2ÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÐ¢2$d2c“s’FWFW&Ö–æ—7F–2æöæ6RvVæW&F÷"Væv–æP¢2ÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÐ ¦FVb&f3c“s•öFWFW&Ö–æ—7F–5öæöæ6R‡&—f¶W•öC¢–çBÂ†6…÷£¢–çB’Óâ–çC ¢"" ¢FW&—fW2FWFW&Ö–æ—7F–2W†VÖW&Âæöæ6RW6–ærF†R$d2c“s’&ö6VGW&Rà¢F†R&W7VÇB—2&W&öGV6–&ÆRf÷"v—fVâ&—fFR¶W’æBÖW76vR†6‚à¢"" ¢–bG—R††6…÷¢’—2æ÷B–çC ¢&—6RfÇVTW'&÷"‚&ÖW76vR†6‚–çFVvW"—2&WV—&VB"¢F–vW7BÒ††6…÷¢R4T5#Sd³ôâ’çFõö'—FW2ƒ3"Â&&–r"¢&WGW&â&f3c“s•öæöæ6Uög&öÕöF–vW7B‡&—f¶W•öBÂF–vW7B ¦FVb&f3c“s•÷G&6R‡&—f¶W•öC¢–çBÂ×6u÷7G#¢7G"’ÓâF–7E·7G"Âö&¦V7EÓ ¢""%G&6W2$d2c“s’FWFW&Ö–æ—7F–2æöæ6RvVæW&F–öââ"" ¢¢Ò–çBæg&öÕö'—FW2††6†Æ–"ç6†#Sb†×6u÷7G"æVæ6öFR‚wWFbÓ‚r’’æF–vW7B‚’Âv&–rr¢µöFWBÒ&f3c“s•öFWFW&Ö–æ—7F–5öæöæ6R‡&—f¶W•öBÂ¢¢%÷BÒ66Æ%ö×VÇEöuöf7B†µöFWB¢&WGW&â°¢&×6uö–çWB#¢×6u÷7G"À¢&†6…÷¥ö†W‚#¢b#‡·££cG‡Ò"À¢'&f3c“s•öµö†W‚#¢b#‡¶µöFWC£cG‡Ò"À¢&W†VÖW&Åõ%öff–æR#¢%÷BÀ¢&FWFW&Ö–æ—7F–5öf÷%ö¶W•öæEö†6‚#¢G'VP¢Ð ¢2ÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÐ¢2$•Ó3C66†æ÷'"6–væGW&W2bF&ö÷BVæv–æP¢2ÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÐ ¦FVbFvvVEö†6‚‡Fs¢7G"Â×6uö'—FW3¢'—FW2’Óâ'—FW3 ¢""$6ö×WFW2$•Ó3CFvvVB†6ƒ¢4„#Sb…4„#Sb‡Fr’ÇÂ4„#Sb‡Fr’ÇÂ×6r’â"" ¢FuöF–vW7BÒ†6†Æ–"ç6†#Sb‡FræVæ6öFR‚wWFbÓ‚r’’æF–vW7B‚¢&WGW&â†6†Æ–"ç6†#Sb‡FuöF–vW7B²FuöF–vW7B²×6uö'—FW2’æF–vW7B‚ ¦FVb66†æ÷'%ö&—3C÷6–våöæE÷fW&–g•÷G&6R€¢&—f¶W•öC¢–çBÂ×6u÷7G#¢7G"ÂW…÷&æC¢'—FW2Ò"%Çƒ"¢3 ¢’ÓâF–7E·7G"Âö&¦V7EÓ ¢"" ¢W†V7WFW26ö×ÆWFR$•Ó3C66†æ÷'"6–væGW&RvVæW&F–öâæBfW&–f–6F–öâG&6S ¢âVæf÷&6W2‚ÖöæÇ’V&Æ–2¶W’†WfVâ’×&—G’’à¢"âvVæW&FW2F†R$•Ó3Cæöæ6RW6–ærFvvVBW‚æBæöæ6R†6†W2à¢2â6ö×WFW26†ÆÆVævRRf–FvvVB†6‚$•3Cö6†ÆÆVævRà¢Bâ6ö×WFW26–væGW&R2Ò†²²R¢B’ÖöBâà¢RâfW&–f–W22¢rÓÒ"²R¢F—&V7FÇ’„äò44Ä"”ådU%4”ôâ5âÓ$UT•$TB’à¢"" ¢–bæ÷BÃÒ&—f¶W•öBÂ4T5#Sd³ôã ¢&—6RfÇVTW'&÷"‚'&—fFR¶W’×W7B&R–â³ÂâÓÒ"¢–bÆVâ†W…÷&æB’Ò3# ¢&—6RfÇVTW'&÷"‚$$•Ó3CW†–Æ–'’&æFöÖæW72×W7B&RW†7FÇ’3"'—FW2"¢×6uö'—FW2Ò×6u÷7G"æVæ6öFR‚wWFbÓ‚r¢–bÆVâ†×6uö'—FW2’Ò3# ¢&—6RfÇVTW'&÷"‚$$•Ó3CÖW76vW2×W7B&RW†7FÇ’3"'—FW3²723"Ö'—FR†W‚ÖW76vRf–gWGW&R4Ä’÷F–öâ"¢ ¢Ò66Æ%ö×VÇEöuöf7B‡&—f¶W•öB¢BÒ&—f¶W•ö@¢–b³ÒR"Ò ¢BÒ4T5#Sd³ôâÒ@¢Òö–çEöæVvFR… ¢Eö'—FW2ÒBçFõö'—FW2ƒ3"Âv&–rr¢W…ö†6‚ÒFvvVEö†6‚‚$$•3CöW‚"ÂW…÷&æB¢BÒ'—FW2†â"f÷"Â"–â¦—†Eö'—FW2ÂW…ö†6‚’¢µö'—FW2ÒFvvVEö†6‚‚$$•3Cöæöæ6R"ÂB²³ÒçFõö'—FW2ƒ3"Âv&–rr’²×6uö'—FW2¢²Ò–çBæg&öÕö'—FW2†µö'—FW2Âv&–rr’R4T5#Sd³ôà¢–b²ÓÒ ¢&—6RfÇVTW'&÷"‚$–çfÆ–B¦W&òæöæ6RFW&—fVB" ¢"Ò66Æ%ö×VÇEöuöf7B†²¢–b%³ÒR"Ò ¢²Ò4T5#Sd³ôâÒ°¢"Òö–çEöæVvFR…" ¢Uö'—FW2ÒFvvVEö†6‚‚$$•3Cö6†ÆÆVævR"Â%³ÒçFõö'—FW2ƒ3"Âv&–rr’²³ÒçFõö'—FW2ƒ3"Âv&–rr’²×6uö'—FW2¢RÒ–çBæg&öÕö'—FW2†Uö'—FW2Âv&–rr’R4T5#Sd³ôà ¢2Ò†²²R¢B’R4T5#Sd³ôà ¢4rÒ66Æ%ö×VÇEöuöf7B‡2¢Uö¦2Ò66Æ%ö×VÇEöæeö¦6ö&–â†RÂ¢%÷ÇW5öUö¦2Ò¦6ö&–åöFB‚…%³ÒÂ%³ÒÂ’ÂUö¦2¢%÷ÇW5öUÒ¦6ö&–å÷Fõöff–æR…%÷ÇW5öUö¦2 ¢fW&–f–VBÒ‡4rÓÒ%÷ÇW5öU ¢&WGW&â°¢'…ööæÇ•÷V&¶W•õö†W‚#¢b#‡µ³Ó£cG‡Ò"À¢%÷•öWfVâ#¢…³ÒR"ÓÒ’À¢&×6uö–çWB#¢×6u÷7G"À¢&æöæ6Uöµö†W‚#¢b#‡¶³£cG‡Ò"À¢%%÷…ö†W‚#¢b#‡µ%³Ó£cG‡Ò"À¢&6†ÆÆVævUöUö†W‚#¢b#‡¶S£cG‡Ò"À¢'6–u÷5ö†W‚#¢b#‡·3£cG‡Ò"À¢'4uöff–æR#¢4rÀ¢%%÷ÇW5öUöff–æR#¢%÷ÇW5öUÀ¢'fW&–f–VB#¢fW&–f–VBÀ¢'¦W&õö–çfW'6–öç5÷&WV—&VB#¢G'VRÀ¢&W…÷&æEö†W‚#¢W…÷&æBæ†W‚‚’À¢Ð ¦FVbV6G6÷6–våöæE÷fW&–g•÷G&6R‡&—f¶W•öC¢–çBÂÖW76vS¢7G"’ÓâF–7E·7G"Âö&¦V7EÓ ¢""%6–vâFW‡B–ÆöB÷"‚×&Vf—†VB†6‚v—F‚$d2c“s’æBfW&–g’—Bâ"" ¢–bæ÷BÃÒ&—f¶W•öBÂ4T5#Sd³ôã ¢&—6RfÇVTW'&÷"‚'&—fFR¶W’×W7B&R–â³ÂâÓÒ"¢¢Ò–çB†ÖW76vRÂb’–bÖW76vRæÆ÷vW"‚’ç7F'G7v—F‚‚#‚"’VÇ6R–çBæg&öÕö'—FW2††6†Æ–"ç6†#Sb†ÖW76vRæVæ6öFR‚wWFbÓ‚r’’æF–vW7B‚’Âv&–rr¢²Ò&f3c“s•öFWFW&Ö–æ—7F–5öæöæ6R‡&—f¶W•öBÂ¢¢"Ò66Æ%ö×VÇEöuöf7B†²¢"Ò%³ÒR4T5#Sd³ôà¢–b"ÓÒ ¢&—6RfÇVTW'&÷"‚&–çfÆ–Bæöæ6R&öGV6VB"Ò"¢2Ò‡66Æ%ö–çb†²Â4T5#Sd³ôâ’¢‡¢²"¢&—f¶W•öB’’R4T5#Sd³ôà¢–b2ÓÒ ¢&—6RfÇVTW'&÷"‚&–çfÆ–B6–væGW&R&öGV6VB2Ò"¢Æ÷u÷5öæ÷&ÖÆ—¦VBÒ2â4T5#Sd³ôâòò ¢–bÆ÷u÷5öæ÷&ÖÆ—¦VC ¢2Ò4T5#Sd³ôâÒ0¢Ò66Æ%ö×VÇEöuöf7B‡&—f¶W•öB¢rÒ66Æ%ö–çb‡2Â4T5#Sd³ôâ¢SÂS"Ò¢¢rR4T5#Sd³ôâÂ"¢rR4T5#Sd³ôà¢SrÂS%Ò66Æ%ö×VÇEöuöf7B‡S’Â66Æ%ö×VÇEöæb‡S"Â¢%÷&–ÖRÒ¦6ö&–å÷Fõöff–æR†¦6ö&–åöFB‚‡Su³ÒÂSu³ÒÂ’Â‡S%³ÒÂS%³ÒÂ’’¢&WGW&â°¢'V&¶W•ö†W‚#¢6ö×&W75÷V&¶W’…’æ†W‚‚’À¢&†6…÷¥ö†W‚#¢b#‡·££cG‡Ò"À¢'6–u÷%ö†W‚#¢b#‡·#£cG‡Ò"À¢'6–u÷5ö†W‚#¢b#‡·3£cG‡Ò"À¢&Æ÷u÷5öæ÷&ÖÆ—¦VB#¢Æ÷u÷5öæ÷&ÖÆ—¦VBÀ¢'fW&–f–VB#¢%÷&–ÖRÒƒÂ’æB%÷&–ÖU³ÒR4T5#Sd³ôâÓÒ"À¢Ð ¦FVbV6G6öæöæ6U÷&WW6UöGF6µ÷G&6R‡&—f¶W•öC¢–çBÂ&WW6VEö³¢–çB’ÓâF–7E·7G"Âö&¦V7EÓ ¢""$VGV6F–öæÂFVÖöç7G&F–öã¢&WW6–ærâT4E4æöæ6RW‡÷6W2F†R6–væ–ær¶W’â"" ¢–bæ÷BÃÒ&—f¶W•öBÂ4T5#Sd³ôâ÷"æ÷BÃÒ&WW6VEö²Â4T5#Sd³ôã ¢&—6RfÇVTW'&÷"‚'&—fFR¶W’æBæöæ6R×W7B&R–â³ÂâÓÒ"¢£Ò–çBæg&öÕö'—FW2††6†Æ–"ç6†#Sb†"$æöæ6R&WW6RFVÖòÖW76vRöæR"’æF–vW7B‚’Âv&–rr¢£"Ò–çBæg&öÕö'—FW2††6†Æ–"ç6†#Sb†"$æöæ6R&WW6RFVÖòÖW76vRGvò"’æF–vW7B‚’Âv&–rr¢"Ò66Æ%ö×VÇEöuöf7B‡&WW6VEö²•³ÒR4T5#Sd³ôà¢3Ò66Æ%ö–çb‡&WW6VEö²Â4T5#Sd³ôâ’¢‡£²"¢&—f¶W•öB’R4T5#Sd³ôà¢3"Ò66Æ%ö–çb‡&WW6VEö²Â4T5#Sd³ôâ’¢‡£"²"¢&—f¶W•öB’R4T5#Sd³ôà¢&V6÷fW&VEö²Ò‡£Ò£"’¢66Æ%ö–çb‡3Ò3"Â4T5#Sd³ôâ’R4T5#Sd³ôà¢&V6÷fW&VEöBÒ‡3¢&V6÷fW&VEö²Ò£’¢66Æ%ö–çb‡"Â4T5#Sd³ôâ’R4T5#Sd³ôà¢&WGW&â²'6†&VE÷%ö†W‚#¢b#‡·#£cG‡Ò"Â&æöæ6U÷&V6÷fW&VB#¢&V6÷fW&VEö²ÓÒ&WW6VEö²Â'&—fFUö¶W•÷&V6÷fW&VB#¢&V6÷fW&VEöBÓÒ&—f¶W•öGÐ ¢2ÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÐ¢2†6‚×FòÔ7W'fRbfW&–f–&Ç’&æFöÒö–çBvVæW&F÷'0¢2ÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÐ ¦FVb†6…÷Fõö7W'fU÷G'•öæEö–æ7&VÖVçB‡6VVE÷7G#¢7G"’ÓâF–7E·7G"Âö&¦V7EÓ ¢"" ¢W‡W&–ÖVçFÂG'’ÖæBÖ–æ7&VÖVçBÖ–ærâF†—2—2æ÷B7FæF&F—¦VB†6‚×FòÖ7W'fP¢7V—FRæB×W7Bæ÷B&RW6VBFòFW&—fR&÷Fö6öÂ¶W—2à¢FW7G26æF–FFR‚Ö6ö÷&F–æFW2æB6ö×WFW2ÖöGVÆ"7V&R&ö÷B’Ò‡…ã2²r•â‚…³’óB’ÖöBà¢"" ¢6÷VçFW"Ò ¢v†–ÆRG'VS ¢6æF–FFUö'—FW2Ò†6†Æ–"ç6†#Sb‡6VVE÷7G"æVæ6öFR‚wWFbÓ‚r’²6÷VçFW"çFõö'—FW2ƒBÂv&–rr’’æF–vW7B‚¢…ö6æF–FFRÒ–çBæg&öÕö'—FW2†6æF–FFUö'—FW2Âv&–rr’R4T5#Sd³õ ¢&‡2Ò‡÷r‡…ö6æF–FFRÂ2Â4T5#Sd³õ’²r’R4T5#Sd³õ ¢ ¢2FW7Bf÷"VG&F–2&W6–GVP¢–b&‡2ÓÒ÷"÷r‡&‡2Â…4T5#Sd³õÒ’òò"Â4T5#Sd³õ’ÓÒ ¢•öWfVâÒ÷r‡&‡2Â…4T5#Sd³õ²’òòBÂ4T5#Sd³õ¢BÒ‡…ö6æF–FFRÂ•öWfVâ¢&WGW&â°¢'6VVB#¢6VVE÷7G"À¢'G&–W2#¢6÷VçFW"À¢'ö–çE÷…ö†W‚#¢b#‡·E³Ó£cG‡Ò"À¢'ö–çE÷•ö†W‚#¢b#‡·E³Ó£cG‡Ò"À¢&öåö7W'fR#¢÷r‡E³ÒÂ"Â4T5#Sd³õ’ÓÒ‡÷r‡E³ÒÂ2Â4T5#Sd³õ’²r’R4T5#Sd³õ ¢Ð¢6÷VçFW"³Ò ¦FVbfW&–f–&ÆU÷6WVF÷&æFöÕ÷ö–çB‡6VVE÷7G#¢7G"’ÓâF–7E·7G"Âö&¦V7EÓ ¢"" ¢FWFW&Ö–æ—7F–6ÆÇ’FW&—fW2Ò†6‚…ÇÂ6VVB’¢râF†—27W7FöÒ6öç7G'V7F–öà¢FöW2æ÷BW7F&Æ—6‚vVæW&Â&ööböbG&Fö÷"'6Væ6R÷"föÆÆ÷ræÖVB7FæF&Bà¢"" ¢ö'—FW2Ò4T5#Sd³ôu³ÒçFõö'—FW2ƒ3"Âv&–rr¢6VVEö'—FW2Ò6VVE÷7G"æVæ6öFR‚wWFbÓ‚r¢5ö†6‚Ò†6†Æ–"ç6†#Sb…ö'—FW2²6VVEö'—FW2’æF–vW7B‚¢5÷66Æ"Ò†–çBæg&öÕö'—FW2†5ö†6‚Âv&–rr’R…4T5#Sd³ôâÒ’’²¢ ¢÷BÒ66Æ%ö×VÇEöuöf7B†5÷66Æ"¢&WGW&â°¢'6VVB#¢6VVE÷7G"À¢&FW&—fVE÷66Æ%ö5ö†W‚#¢b#‡¶5÷66Æ#£cG‡Ò"À¢'fW&–f–&ÆU÷ö–çEõ÷…ö†W‚#¢b#‡µ÷E³Ó£cG‡Ò"À¢'fW&–f–&ÆU÷ö–çEõ÷•ö†W‚#¢b#‡µ÷E³Ó£cG‡Ò"À¢&6ö×&W76VE÷V&¶W•ö†W‚#¢6ö×&W75÷V&¶W’…÷B’æ†W‚‚’À¢'G'W7E÷&÷W'G’#¢%&W&öGV6–&Ç’FW&—fVBf–4„Ó#Sc²7W7FöÒ6öç7G'V7F–öâÂæ÷B&÷Fö6öÂ7FæF&B ¢Ð ¢2ÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÐ¢2æWr–âcs¢×U6–s"¶W’vw&VvF–öâÂF&ö÷BGvV¶–ærbÆöærÕW&–öBT2$äp¢2ÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÐ ¦FVb×W6–s%övw&VvFUö¶W—2‡V&¶W•ö†W…öÆ—7C¢Æ—7E·7G%Ò’ÓâF–7E·7G"Âö&¦V7EÓ ¢"" ¢×U6–s"¶W’vw&VvF–öâVæv–æS¢vw&VvFW2×VÇF—ÆR66†æ÷'"V&Æ–2¶W—2–çFò¦ö–çB¶W’övrà¢6Æ7VÆFW2¶W’6öVff–6–VçG2ö’Ò†6‚„¶W”vrÇÂóÇÂâââÇÂöâÇÂö’’f÷"Væf÷&vV&–Æ—G’à¢"" ¢–bÆVâ‡V&¶W•ö†W…öÆ—7B’Â# ¢&—6RfÇVTW'&÷"‚'&÷f–FRBÆV7BGvòV&Æ–2¶W—2"¢G2Ò¶Æ–gE÷…öWfVâ‡'6U÷V&¶W’‡ö†W‚•³Ò’f÷"ö†W‚–âV&¶W•ö†W…öÆ—7EÐ ¢26ö×WFR¶W”vrÆ—7BF–vW7@¢Æ—7Eö'—FW2Ò"""æ¦ö–â‡E³ÒçFõö'—FW2ƒ3"Âv&–rr’f÷"B–âG2¢Åö†6‚ÒFvvVEö†6‚‚$¶W”vröÆ—7B"ÂÆ—7Eö'—FW2 ¢26ö×WFR¶W’6öVff–6–VçG2ö’æB7VÒö’¢ö¢%övuö¦2ÒƒÂÂ¢6öVfg2ÒµÐ¢†¶W—2Ò·E³ÒçFõö'—FW2ƒ3"Âv&–rr’f÷"B–âG5Ð¢6V6öæE÷Væ—VRÒæW‡B‚†¶W’f÷"¶W’–â†¶W—5³¥Ò–b¶W’Ò†¶W—5³Ò’ÂæöæR¢f÷"BÂ¶W’–â¦—‡G2Â†¶W—2“ ¢2×U6–s"76–vç26öVff–6–VçBFòF†R6V6öæBF—7F–æ7B¶W’à¢ö’Ò–b¶W’ÓÒ6V6öæE÷Væ—VRVÇ6R–çBæg&öÕö'—FW2‡FvvVEö†6‚‚$¶W”vr6öVff–6–VçB"ÂÅö†6‚²¶W’’Âv&–rr’R4T5#Sd³ôà¢–bö’ÓÒ ¢&—6RfÇVTW'&÷"‚$×U6–s"¶W’6öVff–6–VçB—2¦W&ò"¢6öVfg2æVæB†b#‡¶ö“£cG‡Ò"¢ ¢ö•ö¦2Ò66Æ%ö×VÇEöæeö¦6ö&–â†ö’ÂB¢%övuö¦2Ò¦6ö&–åöFB…%övuö¦2Âö•ö¦2 ¢övrÒ¦6ö&–å÷Fõöff–æR…%övuö¦2¢&WGW&â°¢&–çWE÷V&¶W—5ö6÷VçB#¢ÆVâ‡V&¶W•ö†W…öÆ—7B’À¢&¶W•ö6öVff–6–VçG5öö’#¢6öVfg2À¢&vw&VvFVE÷ö–çE÷…ö†W‚#¢b#‡µövu³Ó£cG‡Ò"À¢&vw&VvFVE÷ö–çE÷•ö†W‚#¢b#‡µövu³Ó£cG‡Ò"À¢'…ööæÇ•övw&VvFVE÷V&¶W•ö†W‚#¢b#‡µövu³Ó£cG‡Ò ¢Ð ¦FVbF&ö÷E÷GvVµ÷V&¶W’†–çFW&æÅ÷V&¶W•÷…ö†Wƒ¢7G"ÂÖW&¶ÆU÷&ö÷Eö†Wƒ¢7G"Ò""’ÓâF–7E·7G"Âö&¦V7EÓ ¢"" ¢6ö×WFW2F&ö÷BGvV³¢Ò²B¤rÂv†W&RBÒFvvVD†6‚‚%FGvV²"Â÷‚ÇÂÖW&¶ÆU÷&ö÷B’à¢"" ¢ö–çFW&æÂÒÆ–gE÷…öWfVâ‡'6U÷V&¶W’†–çFW&æÅ÷V&¶W•÷…ö†W‚•³Ò ¢Õö'—FW2Ò'—FW2æg&öÖ†W‚†ÖW&¶ÆU÷&ö÷Eö†W‚ç&WÆ6R‚#‚"Â""’’–bÖW&¶ÆU÷&ö÷Eö†W‚VÇ6R"" ¢Eö'—FW2ÒFvvVEö†6‚‚%FGvV²"Âö–çFW&æÅ³ÒçFõö'—FW2ƒ3"Âv&–rr’²Õö'—FW2¢E÷66Æ"Ò–çBæg&öÕö'—FW2‡Eö'—FW2Âv&–rr¢–bE÷66Æ"ãÒ4T5#Sd³ôã ¢&—6RfÇVTW'&÷"‚%FGvV²†6‚—2÷WG6–FRF†R66Æ"&ævR" ¢DrÒ66Æ%ö×VÇEöuöf7B‡E÷66Æ"¢ö¦2Ò¦6ö&–åöFB‚…ö–çFW&æÅ³ÒÂö–çFW&æÅ³ÒÂ’Â‡Du³ÒÂDu³ÒÂ’¢÷F&ö÷BÒ¦6ö&–å÷Fõöff–æR…ö¦2¢–b÷F&ö÷BÓÒƒÂ“ ¢&—6RfÇVTW'&÷"‚%F&ö÷BGvV²&öGV6VBF†Rö–çBB–æf–æ—G’" ¢&WGW&â°¢&–çFW&æÅ÷V&¶W•÷…ö†W‚#¢b#‡µö–çFW&æÅ³Ó£cG‡Ò"À¢'F&ö÷E÷GvVµ÷Eö†W‚#¢b#‡·E÷66Æ#£cG‡Ò"À¢&÷WGWE÷F&ö÷E÷V&¶W•÷…ö†W‚#¢b#‡µ÷F&ö÷E³Ó£cG‡Ò"À¢&÷WGWE÷F&ö÷E÷V&¶W•÷•ö†W‚#¢b#‡µ÷F&ö÷E³Ó£cG‡Ò ¢Ð ¦FVbÆöæu÷W&–öEöV5÷&æuövVæW&F÷"‡6VVE÷7G#¢7G"ÂF–ÖVç6–öã¢–çBÒB’ÓâF–7E·7G"Âö&¦V7EÓ ¢"" ¢vVæW&FW2FWFW&Ö–æ—7F–2FVÖöç7G&F–öâ6WVVæ6RâF†—2Ä4rÖ&6VB6öç7G'V7F–öà¢—2æ÷B7'—Föw&†–6ÆÇ’6V7W&RæB—G2W&–öB—2æ÷BwV&çFVVBFòWVÂâà¢"" ¢–bæ÷BÃÒF–ÖVç6–öâÃÒ#C ¢&—6RfÇVTW'&÷"‚&F–ÖVç6–öâ×W7B&R&WGvVVâæB#B"¢6VVEö†6‚Ò†6†Æ–"ç6†#Sb‡6VVE÷7G"æVæ6öFR‚wWFbÓ‚r’’æF–vW7B‚¢7FFU÷66Æ"Ò–çBæg&öÕö'—FW2‡6VVEö†6‚Âv&–rr’R4T5#Sd³ôà ¢fV7F÷"ÒµÐ¢f÷"ò–â&ævR†F–ÖVç6–öâ“ ¢7FFU÷66Æ"Ò‡7FFU÷66Æ"¢ƒVFV6VS’²†"’R4T5#Sd³ôà¢BÒ66Æ%ö×VÇEöuöf7B‡7FFU÷66Æ"¢fV7F÷"æVæB‡°¢&6ö÷&E÷…ö†W‚#¢b#‡·E³Ó£cG‡Ò"À¢&6ö÷&E÷•ö†W‚#¢b#‡·E³Ó£cG‡Ò ¢Ò ¢&WGW&â°¢'6VVB#¢6VVE÷7G"À¢&F–ÖVç6–öâ#¢F–ÖVç6–öâÀ¢'6V7W&—G•öæ÷FR#¢$FVÖöç7G&F–öâöæÇ“²æ÷B7'—Föw&†–6ÆÇ’6V7W&R$är"À¢&vVæW&FVE÷6WVF÷&æFöÕ÷fV7F÷'2#¢fV7F÷ ¢Ð ¦FVb&V6ƒ3%÷öÇ–ÖöEöF–væ÷6R†FG&W73¢7G"’ÓâF–7E·7G"Âö&¦V7EÓ ¢""%fÆ–FFR&V6ƒ3"ô&V6ƒ3&Ò6†V6·7VÒæB&W÷'B—G2…%æBVæ6öF–ærf&–çBâ"" ¢–bæ÷B‚ÃÒÆVâ†FG&W72’ÃÒ“ ¢&—6RfÇVTW'&÷"‚$&V6ƒ3"FG&W72ÆVæwF‚×W7B&R&WGvVVâ‚æB“6†&7FW'2"¢–bFG&W72æÆ÷vW"‚’ÒFG&W72æBFG&W72çWW"‚’ÒFG&W73 ¢&—6RfÇVTW'&÷"‚$&V6ƒ3"7G&–æw26ææ÷BÖ—‚WW&66RæBÆ÷vW&66R"¢FG&W72ÒFG&W72æÆ÷vW"‚¢6W&F÷"ÒFG&W72ç&f–æB‚sr¢–b6W&F÷"Â÷"6W&F÷"²râÆVâ†FG&W72“ ¢&—6RfÇVTW'&÷"‚$&V6ƒ3"6W&F÷"÷"6†V6·7VÒ÷6—F–öâ—2–çfÆ–B"¢‡'ÂVæ6öFVBÒFG&W75³§6W&F÷%ÒÂFG&W75·6W&F÷"²¥Ð¢–bç’†æ÷B32ÃÒ÷&B†6‚’ÃÒ#bf÷"6‚–â‡'“ ¢&—6RfÇVTW'&÷"‚$&V6ƒ3"‡VÖâ×&VF&ÆR&Vf—‚×W7B6öçF–â&–çF&ÆR44”’"¢6†'6WBÒw§'“—ƒ†vc'GfGs36¦ãSF¶†6Sf×VvÂp¢G'“ ¢FFÒ¶6†'6WBæ–æFW‚†6†"’f÷"6†"–âVæ6öFVEÐ¢W†6WBfÇVTW'&÷"2W†3 ¢&—6RfÇVTW'&÷"‚$&V6ƒ3"FG&W726öçF–ç2â–çfÆ–BFF6†&7FW""’g&öÒW†0¢vVæW&F÷'2Òƒƒ6#fSv#"Âƒ#cS†SfBÂƒV–fÂƒ6CC#36FBÂƒ&Cc&#2¢6†V6²Ò¢fÇVW2Ò¶÷&B†6‚’ãâRf÷"6‚–â‡'Ò²³Ò²¶÷&B†6‚’b3f÷"6‚–â‡'Ò²FF¢f÷"fÇVR–âfÇVW3 ¢F÷Ò6†V6²ãâ#P¢6†V6²Ò‚†6†V6²bƒfffffb’ÃÂR’âfÇVP¢f÷"&—BÂvVæW&F÷"–âVçVÖW&FR†vVæW&F÷'2“ ¢–b‡F÷ãâ&—B’b ¢6†V6²ãÒvVæW&F÷ ¢f&–çBÒ&&V6ƒ3""–b6†V6²ÓÒVÇ6R&&V6ƒ3&Ò"–b6†V6²ÓÒƒ&&3ƒ32VÇ6R'Væ¶æ÷vâ ¢&WGW&â°¢õ×kh‘éì¶»§q«^t[™
+ÈœÝYÙHŽˆ”X›XÈÙ^HÈš]˜]HØØ[\ˆ‹œÝ]\ÈŽˆ››Ý™XXÚYÚ]Ý]HX›XËZÙ^HØ[™Y]H‹ˆ™]HŽˆHØ[™Y]HÚ[ÛÝ[Ý[™\]Z\™HÛÛš[™ÈHHÑËˆŸJBˆ[ÙN‚ˆ^Y\œË˜\[™
+ÈœÝYÙHŽˆ”™]™\œÙH]‹œÝ]\ÈŽˆœ^[ØY[˜]˜Z[X›H‹ˆ™]HŽˆÝŠ™\Ý[™Ù]
+›[Z]‹“›ÈX›XËZÙ^HÜˆ\Ú^[ØYØ\È^˜XÝYˆŠJ_JBˆ™\Ý[È›^Y\œÈ—HH^Y\œÂˆ™]\›ˆ™\Ý[‚‚™YˆÛÛ™WØÛ™ŠÛ]\Ù\Îˆ\ÝÛ\ÝÚ[WK˜\šXX›WØÛÝ[ˆ[›ÙWÛ[Z]ˆ[HLÌ
+HOˆXÝÜÝ‹Øš™XÝN‚ˆˆˆ‘\[™[˜ÞKYœ™YHÛÛ™\ˆÚ][š]›ÜYØ][Ûˆ[™\™K[]\˜[[[Z[˜][Û‹ˆˆˆ‚ˆYˆ˜\šXX›WØÛÝ[Üˆ›ÙWÛ[Z]N‚ˆ˜Z\ÙH˜[YQ\œ›ÜŠ˜\šXX›WØÛÝ[]\Ý™H›Û›™YØ]]™H[™›ÙWÛ[Z]ÜÚ]]™HŠBˆYˆ[žJ]OHÜˆXœÊ]
+Hˆ˜\šXX›WØÛÝ[›ÜˆÛ]\ÙH[ˆÛ]\Ù\È›Üˆ][ˆÛ]\ÙJN‚ˆ˜Z\ÙH˜[YQ\œ›ÜŠÓ‘ˆ]\˜[\È™\›ÈÜˆ^ÙYYÈHXÛ\™Y˜\šXX›HÛÝ[ŠBˆÝ]ÈHÈ™XÚ\Ú[ÛœÈŽˆœ›ÜYØ][ÛœÈŽˆ››Ù\ÈŽˆBˆYˆÙX\˜Ú
+\ÜÚYÛŽˆXÝÚ[›ÛÛJN‚ˆÝ]ÖÈ››Ù\È—H
+ÏHBˆYˆÝ]ÖÈ››Ù\È—Hˆ›ÙWÛ[Z]‚ˆ˜Z\ÙH[Y[Ý]\œ›Ü‚ˆÚ[HYN‚ˆ[™[™×ØÛ]\Ù\ÏV×NÈ[š]S›Û™NÈÛ\š]Y\Ï^ßBˆ›ÜˆÛ]\ÙH[ˆÛ]\Ù\Î‚ˆYˆ[žJ\ÜÚYÛ‹™Ù]
+XœÊ]
+JHOH
+]ˆ
+H›Üˆ][ˆÛ]\ÙHYˆXœÊ]
+H[ˆ\ÜÚYÛŠN‚ˆÛÛ[YBˆ[™[™ÏVÛ]›Üˆ][ˆÛ]\ÙHYˆXœÊ]
+H›Ý[ˆ\ÜÚYÛ—BˆYˆ›Ý[™[™Î‚ˆ™]\›ˆ›Û™Bˆ[™[™×ØÛ]\Ù\Ë˜\[™
+[™[™ÊBˆYˆ[Š[™[™ÊOOLN‚ˆ[š]\[™[™ÖÌNÈœ™XZÂˆ›Üˆ][ˆ[™[™Î‚ˆÛ\š]Y\ËœÙ]Y˜][
+XœÊ]
+KÙ]
+
+JK˜Y
+]ˆ
+BˆYˆ[š]\È›Ý›Û™N‚ˆ\ÜÚYÛ–ØXœÊ[š]
+WHH[š]ˆÈÝ]ÖÈœ›ÜYØ][ÛœÈ—H
+ÏHNÈÛÛ[YBˆYˆ›Ý[™[™×ØÛ]\Ù\Î‚ˆ™]\›ˆ\ÜÚYÛ‚ˆ\™O[™^
+
+
+‹™^
+]\ŠÚYÛœÊJJH›Üˆ‹ÚYÛœÈ[ˆÛ\š]Y\Ëš][\Ê
+HYˆ[ŠÚYÛœÊOOLJK›Û™JBˆYˆ\™N‚ˆ\ÜÚYÛ–Ü\™VÌWO\\™VÌWNÈÝ]ÖÈœ›ÜYØ][ÛœÈ—H
+ÏHNÈÛÛ[YBˆœ™XZÂˆœ™\O^ßBˆ›ÜˆÛ]\ÙH[ˆ[™[™×ØÛ]\Ù\Î‚ˆ›Üˆ][ˆÛ]\ÙNˆœ™\VØXœÊ]
+WOYœ™\K™Ù]
+XœÊ]
+K
+JÌBˆ˜\[X^
+œ™\KÙ^OYœ™\K™Ù]
+NÈÝ]ÖÈ™XÚ\Ú[ÛœÈ—H
+ÏHBˆ›Üˆ˜[[ˆ
+YK˜[ÙJN‚ˆœ˜[˜ÚYXÝ
+\ÜÚYÛŠNÈœ˜[˜ÚÝ˜\—O]˜[ˆ[œÝÙ\\ÙX\˜Ú
+œ˜[˜Ú
+BˆYˆ[œÝÙ\ˆ\È›Ý›Û™Nˆ™]\›ˆ[œÝÙ\‚ˆ™]\›ˆ›Û™BˆžN‚ˆ[Ù[\ÙX\˜Ú
+ßJNÈÝ]\ÏH”ÐUˆYˆ[Ù[\È›Ý›Û™H[ÙH•S”ÐU‚ˆ^Ù\[Y[Ý]\œ›ÜŽ‚ˆ[Ù[S›Û™NÈÝ]\ÏH•S’Ó“ÕÓˆ
+›ÙH[Z]™XXÚY
+H‚ˆ™]\›ˆÈœÝ]\ÈŽœÝ]\Ë›[Ù[Ž›[Ù[
+ŠœÝ]Ë˜Û]\Ù\ÈŽ›[ŠÛ]\Ù\ÊK˜\šXX›\ÈŽ˜\šXX›WØÛÝ[B‚‚™Yˆ\œÙWÙ[XXÜ×ØÛ™Š^ˆÝŠHOˆ\VÚ[\ÝÛ\ÝÚ[WWN‚ˆˆˆ”™XYHSPPÔÈÓ‘ˆ[œÝ[˜ÙKˆˆˆ‚ˆ˜\œÏ[˜Û]\Ù\ÏS›Û™NÈÛ]\Ù\ÏV×NÈ[™[™ÏV×Bˆ›Üˆ[™WÛ›Ë[™H[ˆ[[Y\˜]J^œÜ][™\Ê
+KJN‚ˆ[™O[[™KœÝš\
+
+BˆYˆ›Ý[™HÜˆ[™KœÝ\ÝÚ]
+	ØÉÊNˆÛÛ[YBˆšY[Ï[[™KœÜ]
+
+BˆYˆšY[ÖÌOOIÜ	Î‚ˆYˆ˜\œÈ\È›Ý›Û™HÜˆ[ŠšY[ÊHOMÜˆšY[ÖÌWHOIØÛ™‰Îˆ˜Z\ÙH˜[YQ\œ›ÜŠˆš[˜[YSPPÔÈXY\ˆ][™HÛ[™WÛ›ßHŠBˆ˜\œË˜Û]\Ù\ÏZ[
+šY[ÖÌ—JK[
+šY[ÖÌ×JNÈÛÛ[YBˆYˆ˜\œÈ\È›Û™Nˆ˜Z\ÙH˜[YQ\œ›ÜŠ‘SPPÔÈÛ]\Ù\È]\Ý›ÛÝÈHÛ™ˆXY\ˆŠBˆ›Üˆ˜[YH[ˆšY[Î‚ˆ]Z[
+˜[YJBˆYˆ]OLˆÛ]\Ù\Ë˜\[™
+[™[™ÊNÈ[™[™ÏV×Bˆ[ÙNˆ[™[™Ë˜\[™
+]
+BˆYˆ˜\œÈ\È›Û™HÜˆ[™[™ÈÜˆ[ŠÛ]\Ù\ÊHO[˜Û]\Ù\Îˆ˜Z\ÙH˜[YQ\œ›ÜŠ‘SPPÔÈXY\‹ØÛ]\ÙHÛÝ[Z\ÛX]ÚŠBˆYˆ[žJXœÊ]
+O›˜\œÈ›ÜˆÛ]\ÙH[ˆÛ]\Ù\È›Üˆ][ˆÛ]\ÙJNˆ˜Z\ÙH˜[YQ\œ›ÜŠ‘SPPÔÈ]\˜[Ý]ÚYHXÛ\™Y˜\šXX›H˜[™ÙHŠBˆ™]\›ˆ˜\œËÛ]\Ù\Â‚™Yˆ[—Ü\™›Ü›X[˜ÙWØ™[˜ÚX\šÊšX[Îˆ[H
+HOˆXÝÜÝ‹Øš™XÝN‚ˆˆˆÛÛ\\™HHÜ[Z^™Yš^YX˜\ÙH]Ú]Ù[™\šXÈQˆ[™[™\œÚ[Ûˆ]Ëˆˆˆ‚ˆYˆ›ÝHHšX[ÈHL‚ˆ˜Z\ÙH˜[YQ\œ›ÜŠ˜™[˜ÚX\šÈšX[È]\Ý™H™]ÙY[ˆH[™LŠBˆØØ[\œÈHÚ[™œ›ÛWØž]\Ê\ÚX‹œÚLMŠˆ˜™[˜ÚX\šÎžÚ_H‹™[˜ÛÙJ
+JK™YÙ\Ý
+
+K	ØšYÉÊH	HÑPÔM’ÌWÓˆ›ÜˆH[ˆ˜[™ÙJšX[ÊWBˆÈØ\›H\H^žH™XÛÛ\]][Ûˆ™Y›Ü™H[Z[™ÈZ]\ˆ]‚ˆØØ[\—Û][Ù×Ù˜\Ý
+ØØ[\œÖÌJBˆÝ\H[YKœ\™—ØÛÝ[\Š
+BˆÙ[™\šXÈHÚ˜XÛØšX[—Ý×ØY™š[™JØØ[\—Û][Û˜Y—Ú˜XÛØšX[ŠËÑPÔM’ÌWÑÊJH›ÜˆÈ[ˆØØ[\œ×BˆÙ[™\šX×ÜÙXÛÛ™ÈH[YKœ\™—ØÛÝ[\Š
+HHÝ\ˆÝ\H[YKœ\™—ØÛÝ[\Š
+BˆÜ[Z^™YHÜØØ[\—Û][Ù×Ù˜\Ý
+ÊH›ÜˆÈ[ˆØØ[\œ×BˆÜ[Z^™YÜÙXÛÛ™ÈH[YKœ\™—ØÛÝ[\Š
+HHÝ\ˆYˆÙ[™\šXÈOHÜ[Z^™Y‚ˆ˜Z\ÙH[[YQ\œ›ÜŠ˜™[˜ÚX\šÈ]È›ÙXÙYY™™\™[X›XÈÚ[ÈŠBˆ˜[Y\ÈHÚ[™œ›ÛWØž]\Ê\ÚX‹œÚLMŠˆš[™\œÙNžÚ_H‹™[˜ÛÙJ
+JK™YÙ\Ý
+
+K	ØšYÉÊH	HÑPÔM’ÌWÔÜˆH›ÜˆH[ˆ˜[™ÙJÌŠWBˆÝ\H[YKœ\™—ØÛÝ[\Š
+BˆÜÝÊ‹ÑPÔM’ÌWÔH‹ÑPÔM’ÌWÔ
+H›Üˆˆ[ˆ˜[Y\×Bˆ[™]šYX[ÜÙXÛÛ™ÈH[YKœ\™—ØÛÝ[\Š
+HHÝ\ˆÝ\H[YKœ\™—ØÛÝ[\Š
+Bˆ˜]ÚÚ[Š˜[Y\ËÑPÔM’ÌWÔ
+Bˆ˜]ÚÜÙXÛÛ™ÈH[YKœ\™—ØÛÝ[\Š
+HHÝ\ˆ™]\›ˆÂˆšX[ÈŽˆšX[Ëˆ™Ù[™\šX×Û˜Y—ÜÙXÛÛ™ÈŽˆÙ[™\šX×ÜÙXÛÛ™Ëˆ™š^YØ˜\ÙWÜÙXÛÛ™ÈŽˆÜ[Z^™YÜÙXÛÛ™Ëˆ™š^YØ˜\ÙWÜÜYY\Ü\˜Ù[Žˆ
+
+Ù[™\šX×ÜÙXÛÛ™ÈÈÜ[Z^™YÜÙXÛÛ™ÊHHJH
+ˆLYˆÜ[Z^™YÜÙXÛÛ™È[ÙHŒˆš[™]šYX[Ú[™\œÚ[Ûœ×ÜÙXÛÛ™ÈŽˆ[™]šYX[ÜÙXÛÛ™Ëˆ˜˜]ÚÚ[™\œÚ[Ûœ×ÜÙXÛÛ™ÈŽˆ˜]ÚÜÙXÛÛ™Ëˆ˜˜]ÚÚ[™\œÚ[Û—ÜÜYY\Ü\˜Ù[Žˆ
+
+[™]šYX[ÜÙXÛÛ™ÈÈ˜]ÚÜÙXÛÛ™ÊHHJH
+ˆLYˆ˜]ÚÜÙXÛÛ™È[ÙHŒˆœÚ[×ÛX]ÚŽˆYKˆB‚ˆÈOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOBˆÈ”ÐHÛÛÚ]ˆYXØ][Û˜[”ÐKSÐQT[™”ÐKTÔÈÜ\˜][ÛœÈ
+‘ÈMÊBˆÈOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOB‚™YˆÛYÙŒJÙYYˆž]\Ë[™Ýˆ[\ÚÙ›Z\ÚX‹œÚLMŠHOˆž]\Î‚ˆˆˆ“X\ÚÈÙ[™\˜][Ûˆ[˜Ý[ÛˆQÑŒKˆˆˆ‚ˆYˆ[™ÝÜˆ[™Ýˆ
+HÌŠH
+ˆ\ÚÙ›Š
+K™YÙ\ÝÜÚ^™N‚ˆ˜Z\ÙH˜[YQ\œ›ÜŠš[˜[YQÑŒHÝ]][™ÝŠBˆÝ]]Hž]X\œ˜^J
+Bˆ›ÜˆÛÝ[\ˆ[ˆ˜[™ÙJ
+[™Ý
+È\ÚÙ›Š
+K™YÙ\ÝÜÚ^™HHJHËÈ\ÚÙ›Š
+K™YÙ\ÝÜÚ^™JN‚ˆÝ]]™^[™
+\ÚÙ›ŠÙYY
+ÈÛÝ[\‹×Øž]\Ê	ØšYÉÊJK™YÙ\Ý
+
+JBˆ™]\›ˆž]\ÊÝ]]Î›[™ÝJB‚™YˆÚ\×Ü›Ø˜X›WÜš[YJŽˆ[›Ý[™Îˆ[HÌŠHOˆ›ÛÛ‚ˆˆˆ“Z[\‹T˜Xš[ˆ›Ø˜X›K\š[YHÚXÚÈÚ]ÛX[\š[YHšX[]š\Ú[Û‹ˆˆˆ‚ˆÛX[Üš[Y\ÈH
+‹ËKËLKLËMËNKŒËŽKÌKÍËKËÊBˆYˆˆŽ‚ˆ™]\›ˆ˜[ÙBˆ›Üˆš[YH[ˆÛX[Üš[Y\Î‚ˆYˆˆOHš[YN‚ˆ™]\›ˆYBˆYˆˆ	Hš[YHOH‚ˆ™]\›ˆ˜[ÙBˆÈHˆHKˆÚ[H	HˆOH‚ˆËÏH‚ˆÈ
+ÏHBˆ›ÜˆÈ[ˆ˜[™ÙJ›Ý[™ÊN‚ˆHHÙXÜ™]Ëœ˜[™™[ÝÊˆHÊH
+È‚ˆHÝÊKŠBˆYˆ[ˆ
+KˆHJN‚ˆÛÛ[YBˆ›ÜˆÈ[ˆ˜[™ÙJÈHJN‚ˆHÝÊ‹ŠBˆYˆOHˆHN‚ˆœ™XZÂˆ[ÙN‚ˆ™]\›ˆ˜[ÙBˆ™]\›ˆYB‚™YˆÙÙ[™\˜]WÜš[YJš]Îˆ[^Û™[ˆ[
+HOˆ[‚ˆÚ[HYN‚ˆØ[™Y]HHÙXÜ™]Ëœ˜[™š]Êš]ÊH
+H
+š]ÈHJJHBˆYˆX]™ØÙ
+Ø[™Y]HHK^Û™[
+HOHH[™Ú\×Ü›Ø˜X›WÜš[YJØ[™Y]JN‚ˆ™]\›ˆØ[™Y]B‚™YˆœØWÙÙ[™\˜]WÚÙ^\Z\Šš]Îˆ[HŒ^Û™[ˆ[HMLÍÊHOˆXÝÜÝ‹[N‚ˆˆˆ‘Ù[™\˜]H[ˆ”ÐHÙ^\Z\‹ˆYXØ][Û˜[[\[Y[][ÛŽÈ›ÝÛÛœÝ[][YKˆˆˆ‚ˆYˆ›ÝŒHš]ÈHMˆÜˆš]È	HŽ‚ˆ˜Z\ÙH˜[YQ\œ›ÜŠ””ÐH[Ù[\ÈÚ^™H]\Ý™H[ˆ]™[ˆ[X™\ˆœ›ÛHŒÈMˆš]ÈŠBˆYˆ^Û™[ÈÜˆ^Û™[	HˆOH‚ˆ˜Z\ÙH˜[YQ\œ›ÜŠ””ÐHX›XÈ^Û™[]\Ý™H[ˆÙ[YÙ\ˆHÈŠBˆ[ˆHš]ÈËÈ‚ˆÚ[HYN‚ˆHÙÙ[™\˜]WÜš[YJ[‹^Û™[
+BˆHHÙÙ[™\˜]WÜš[YJ[‹^Û™[
+BˆYˆOHN‚ˆÛÛ[YBˆˆH
+ˆBˆYˆ‹˜š]Û[™Ý
+
+HOHš]Î‚ˆÛÛ[YBˆ[HHX]›ÛJHKHHJBˆYˆX]™ØÙ
+^Û™[[JHOHN‚ˆH[ÙÚ[™\œÙWØZ[[Š^Û™[[JBˆ™]\›ˆÈ›ˆŽˆ‹™HŽˆ^Û™[™ŽˆœŽˆœHŽˆ_B‚™YˆœØWÚÙ^WÚ[™›ÊŽˆ[Nˆ[ˆ[›Û™HH›Û™Kˆ[›Û™HH›Û™KNˆ[›Û™HH›Û™JHOˆXÝÜÝ‹Øš™XÝN‚ˆˆˆ’[œÜXÝÝ\YY”ÐH\˜[Y]\œÈ[™™\ÜÛÛœÚ\Ý[˜ÞKØØ\XÚ]HÚXÚÜËˆˆˆ‚ˆYˆˆHÈÜˆˆ	HˆOH‚ˆ˜Z\ÙH˜[YQ\œ›ÜŠ””ÐH[Ù[\È]\Ý™HHÜÚ]]™HÙ[YÙ\ˆŠBˆYˆHÈÜˆHHˆÜˆH	HˆOH‚ˆ˜Z\ÙH˜[YQ\œ›ÜŠ””ÐHX›XÈ^Û™[]\Ý™H[ˆÙ[YÙ\ˆHÈŠBˆ˜XÝÜœ×ÛX]ÚH›Û™HYˆ\È›Û™HÜˆH\È›Û™H[ÙH
+ˆHOH‚ˆš]˜]WÙ^Û™[ØÛÛœÚ\Ý[H›Û™BˆYˆ\È›Ý›Û™H[™H\È›Ý›Û™H[™\È›Ý›Û™H[™˜XÝÜœ×ÛX]Ú‚ˆš]˜]WÙ^Û™[ØÛÛœÚ\Ý[H
+H
+ˆ
+H	HX]›ÛJHKHHJHOHBˆÙ^WØž]\ÈH
+‹˜š]Û[™Ý
+
+H
+ÈÊHËÈˆ™]\›ˆÂˆ›[Ù[\×Øš]ÈŽˆ‹˜š]Û[™Ý
+
+Kˆ›[Ù[\×Øž]\ÈŽˆÙ^WØž]\ËˆœX›X×Ù^Û™[ŽˆKˆ›ØY\ÜÚLM—ÛX^ÛY\ÜØYÙWØž]\ÈŽˆX^
+Ù^WØž]\ÈHˆ
+ˆ\ÚX‹œÚLMŠ
+K™YÙ\ÝÜÚ^™HHŠKˆ˜]ÛX\ÝÌŒØš]ÈŽˆ‹˜š]Û[™Ý
+
+HHŒˆ™˜XÝÜ—Ü›ÙXÝÛX]Ú\×Û[Ù[\ÈŽˆ˜XÝÜœ×ÛX]Úˆœš]˜]WÙ^Û™[ØÛÛœÚ\Ý[Žˆš]˜]WÙ^Û™[ØÛÛœÚ\Ý[ˆB‚™YˆœØWÛØY\Ù[˜Üž\
+Y\ÜØYÙNˆž]\ËŽˆ[Nˆ[X™[ˆž]\ÈHˆˆŠHOˆž]\Î‚ˆˆˆ‘[˜Üž\ž]\ÈÚ]”ÐQTËSÐQT\Ú[™ÈÒKLMˆ[™Hœ™\Ú˜[™ÛHÙYYˆˆˆ‚ˆYˆˆHÈÜˆˆ	HˆOHÜˆHÈÜˆHHˆÜˆH	HˆOH‚ˆ˜Z\ÙH˜[YQ\œ›ÜŠš[˜[Y”ÐHX›XÈÙ^HŠBˆÛ[ˆH\ÚX‹œÚLMŠ
+K™YÙ\ÝÜÚ^™BˆÈH
+‹˜š]Û[™Ý
+
+H
+ÈÊHËÈˆYˆÈˆ
+ˆÛ[ˆ
+ÈŽ‚ˆ˜Z\ÙH˜[YQ\œ›ÜŠ””ÐHÙ^H\ÈÛÈÛX[›ÜˆÐQTÔÒKLMˆŠBˆYˆ[ŠY\ÜØYÙJHˆÈHˆ
+ˆÛ[ˆHŽ‚ˆ˜Z\ÙH˜[YQ\œ›ÜŠˆ›Y\ÜØYÙHÛÈÛ™È›Üˆ\È”ÐHÙ^NÈX^[][H\ÈÚÈHˆ
+ˆÛ[ˆHŸHž]\ÈŠBˆÚ\ÚH\ÚX‹œÚLMŠX™[
+K™YÙ\Ý
+
+BˆˆHÚ\Ú
+È‰×	È
+ˆ
+ÈH[ŠY\ÜØYÙJHHˆ
+ˆÛ[ˆHŠH
+È‰×IÈ
+ÈY\ÜØYÙBˆÙYYHÙXÜ™]ËÚÙ[—Øž]\ÊÛ[ŠBˆ—ÛX\ÚÈHÛYÙŒJÙYYÈHÛ[ˆHJBˆX\ÚÙYÙˆHž]\ÊHˆˆ›ÜˆKˆ[ˆš\
+‹—ÛX\ÚÊJBˆÙYYÛX\ÚÈHÛYÙŒJX\ÚÙYÙ‹Û[ŠBˆX\ÚÙYÜÙYYHž]\ÊHˆˆ›ÜˆKˆ[ˆš\
+ÙYYÙYYÛX\ÚÊJBˆ[˜ÛÙYH‰×	È
+ÈX\ÚÙYÜÙYY
+ÈX\ÚÙYÙ‚ˆHH[™œ›ÛWØž]\Ê[˜ÛÙY	ØšYÉÊBˆYˆHHŽ‚ˆ˜Z\ÙH˜[YQ\œ›ÜŠ™[˜ÛÙYY\ÜØYÙH\ÈÝ]ÚYHH”ÐH[Ù[\ÈŠBˆ™]\›ˆÝÊKKŠK×Øž]\ÊË	ØšYÉÊB‚™YˆœØWÛØY\ÙXÜž\
+Ú\\^ˆž]\ËŽˆ[ˆ[X™[ˆž]\ÈHˆˆŠHOˆž]\Î‚ˆˆˆ‘XÜž\”ÐQTËSÐQTÔÒKLMˆž]\Ëˆ]ÛˆšYÈ[YÙ\œÈ\™H›ÝÛÛœÝ[][YKˆˆˆ‚ˆYˆˆHÈÜˆˆ	HˆOHÜˆ›ÝHHŽ‚ˆ˜Z\ÙH˜[YQ\œ›ÜŠš[˜[Y”ÐHš]˜]HÙ^HŠBˆÛ[ˆH\ÚX‹œÚLMŠ
+K™YÙ\ÝÜÚ^™BˆÈH
+‹˜š]Û[™Ý
+
+H
+ÈÊHËÈˆYˆÈˆ
+ˆÛ[ˆ
+ÈŽ‚ˆ˜Z\ÙH˜[YQ\œ›ÜŠ””ÐHÙ^H\ÈÛÈÛX[›ÜˆÐQTÔÒKLMˆŠBˆÈH[™œ›ÛWØž]\ÊÚ\\^	ØšYÉÊBˆYˆ[ŠÚ\\^
+HOHÈÜˆÈHŽ‚ˆ˜Z\ÙH˜[YQ\œ›ÜŠ˜Ú\\^\È[˜[Y[™ÝÜˆ˜[YHŠBˆ[˜ÛÙYHÝÊËŠK×Øž]\ÊË	ØšYÉÊBˆYˆ[˜ÛÙYÌHOH‚ˆ˜Z\ÙH˜[YQ\œ›ÜŠ“ÐQTXÛÙ[™È˜Z[YŠBˆX\ÚÙYÜÙYYH[˜ÛÙYÌNŒH
+ÈÛ[—BˆX\ÚÙYÙˆH[˜ÛÙYÌH
+ÈÛ[Ž—BˆÙYYÛX\ÚÈHÛYÙŒJX\ÚÙYÙ‹Û[ŠBˆÙYYHž]\ÊHˆˆ›ÜˆKˆ[ˆš\
+X\ÚÙYÜÙYYÙYYÛX\ÚÊJBˆ—ÛX\ÚÈHÛYÙŒJÙYYÈHÛ[ˆHJBˆˆHž]\ÊHˆˆ›ÜˆKˆ[ˆš\
+X\ÚÙYÙ‹—ÛX\ÚÊJBˆÚ\ÚH\ÚX‹œÚLMŠX™[
+K™YÙ\Ý
+
+BˆYˆ›ÝXXË˜ÛÛ\\™WÙYÙ\Ý
+–ÎšÛ[—KÚ\Ú
+N‚ˆ˜Z\ÙH˜[YQ\œ›ÜŠ“ÐQTXÛÙ[™È˜Z[YŠBˆ[[Z]\ˆH‹™š[™
+‰×IËÛ[ŠBˆYˆ[[Z]\ˆÜˆ[žJ–ÚÛ[Ž™[[Z]\—JN‚ˆ˜Z\ÙH˜[YQ\œ›ÜŠ“ÐQTXÛÙ[™È˜Z[YŠBˆ™]\›ˆ–Ù[[Z]\ˆ
+ÈN—B‚™YˆœØWÜÜ×ÜÚYÛŠY\ÜØYÙNˆž]\ËŽˆ[ˆ[Ø[Û[™Ýˆ[HÌŠHOˆž]\Î‚ˆˆˆ”ÚYÛˆž]\È\Ú[™È”ÐTÔÐKTÔËÔÒKLMˆ[™H˜[™ÛHØ[ˆˆˆ‚ˆYˆˆHÈÜˆˆ	HˆOHÜˆ›ÝHHŽ‚ˆ˜Z\ÙH˜[YQ\œ›ÜŠš[˜[Y”ÐHš]˜]HÙ^HŠBˆ[WØš]ÈH‹˜š]Û[™Ý
+
+HHBˆ[WÛ[ˆH
+[WØš]È
+ÈÊHËÈˆÛ[ˆH\ÚX‹œÚLMŠ
+K™YÙ\ÝÜÚ^™BˆYˆØ[Û[™ÝÜˆ[WÛ[ˆÛ[ˆ
+ÈØ[Û[™Ý
+ÈŽ‚ˆ˜Z\ÙH˜[YQ\œ›ÜŠ””ÐHÙ^H\ÈÛÈÛX[›ÜˆHÙ[XÝYÔÈØ[[™ÝŠBˆWÚ\ÚH\ÚX‹œÚLMŠY\ÜØYÙJK™YÙ\Ý
+
+BˆØ[HÙXÜ™]ËÚÙ[—Øž]\ÊØ[Û[™Ý
+BˆÝ˜[YHH\ÚX‹œÚLMŠ‰×	È
+ˆ
+ÈWÚ\Ú
+ÈØ[
+K™YÙ\Ý
+
+BˆˆH‰×	È
+ˆ
+[WÛ[ˆHÛ[ˆHØ[Û[™ÝHŠH
+È‰×IÈ
+ÈØ[ˆX\ÚÙYÙˆHž]X\œ˜^JHˆˆ›ÜˆKˆ[ˆš\
+‹ÛYÙŒJÝ˜[YK[WÛ[ˆHÛ[ˆHJJJBˆX\ÚÙYÙ–ÌH	H™ˆˆ
+
+ˆ[WÛ[ˆH[WØš]ÊBˆ[˜ÛÙYHž]\ÊX\ÚÙYÙŠH
+ÈÝ˜[YH
+È‰×˜ÉÂˆÚYÛ˜]\™HHÝÊ[™œ›ÛWØž]\Ê[˜ÛÙY	ØšYÉÊKŠBˆ™]\›ˆÚYÛ˜]\™K×Øž]\Ê
+‹˜š]Û[™Ý
+
+H
+ÈÊHËÈ	ØšYÉÊB‚™YˆœØWÜÜ×Ý™\šYžJY\ÜØYÙNˆž]\ËÚYÛ˜]\™Nˆž]\ËŽˆ[Nˆ[Ø[Û[™Ýˆ[HÌŠHOˆ›ÛÛ‚ˆˆˆ•™\šYžH”ÐTÔÐKTÔËÔÒKLMˆÚ]HÜXÚYšYYØ[[™Ýˆˆˆ‚ˆYˆˆHÈÜˆˆ	HˆOHÜˆHÈÜˆHHˆÜˆH	HˆOH‚ˆ™]\›ˆ˜[ÙBˆÈH
+‹˜š]Û[™Ý
+
+H
+ÈÊHËÈˆYˆ[ŠÚYÛ˜]\™JHOHÎ‚ˆ™]\›ˆ˜[ÙBˆÚY×Ý˜[YHH[™œ›ÛWØž]\ÊÚYÛ˜]\™K	ØšYÉÊBˆYˆÚY×Ý˜[YHHŽ‚ˆ™]\›ˆ˜[ÙBˆ[WØš]ÈH‹˜š]Û[™Ý
+
+HHBˆ[WÛ[ˆH
+[WØš]È
+ÈÊHËÈˆÛ[ˆH\ÚX‹œÚLMŠ
+K™YÙ\ÝÜÚ^™BˆYˆØ[Û[™ÝÜˆ[WÛ[ˆÛ[ˆ
+ÈØ[Û[™Ý
+ÈŽ‚ˆ™]\›ˆ˜[ÙBˆ[˜ÛÙYHÝÊÚY×Ý˜[YKKŠK×Øž]\ÊË	ØšYÉÊBˆYˆ[WÛ[ˆOH[Š[˜ÛÙY
+N‚ˆ[˜ÛÙYH[˜ÛÙYËY[WÛ[Ž—BˆYˆ[˜ÛÙYËLWHOH˜Î‚ˆ™]\›ˆ˜[ÙBˆX\ÚÙYÙ‹Ý˜[YHH[˜ÛÙYÎ™[WÛ[ˆHÛ[ˆHWK[˜ÛÙYÙ[WÛ[ˆHÛ[ˆHN‹LWBˆ[\ÙYØš]ÈH
+ˆ[WÛ[ˆH[WØš]ÂˆYˆ[\ÙYØš]È[™X\ÚÙYÙ–ÌHˆ
+H[\ÙYØš]ÊN‚ˆ™]\›ˆ˜[ÙBˆˆHž]X\œ˜^JHˆˆ›ÜˆKˆ[ˆš\
+X\ÚÙYÙ‹ÛYÙŒJÝ˜[YK[WÛ[ˆHÛ[ˆHJJJBˆ–ÌH	H™ˆˆ[\ÙYØš]ÂˆY[™×Û[ˆH[WÛ[ˆHÛ[ˆHØ[Û[™ÝH‚ˆYˆ[žJ–ÎœY[™×Û[—JHÜˆ–ÜY[™×Û[—HOHN‚ˆ™]\›ˆ˜[ÙBˆØ[Hž]\Ê–Ë\Ø[Û[™Ý—JHYˆØ[Û[™Ý[ÙH‰ÉÂˆ^XÝYH\ÚX‹œÚLMŠ‰×	È
+ˆ
+È\ÚX‹œÚLMŠY\ÜØYÙJK™YÙ\Ý
+
+H
+ÈØ[
+K™YÙ\Ý
+
+Bˆ™]\›ˆXXË˜ÛÛ\\™WÙYÙ\Ý
+Ý˜[YK^XÝY
+B‚™YˆœØWÙ[[Êš]Îˆ[HŒ
+HOˆXÝÜÝ‹Øš™XÝN‚ˆˆˆ”[ˆ\[Y\˜[ÐQT[˜Üž\[Û‹ÙXÜž\[Ûˆ[™ÔÈÚYÛš[™ËÝ™\šYšXØ][Û‹ˆˆˆ‚ˆÙ^HHœØWÙÙ[™\˜]WÚÙ^\Z\Šš]ÊBˆ[™›ÈHœØWÚÙ^WÚ[™›ÊÙ^VÉÛ‰×KÙ^VÉÙI×KÙ^VÉÙ	×KÙ^VÉÜ	×KÙ^VÉÜI×JBˆY\ÜØYÙHHˆ””ÐHÐQTÔÔÈ[[ÛœÝ˜][Ûˆ‚ˆÚ\\^HœØWÛØY\Ù[˜Üž\
+Y\ÜØYÙKÙ^VÉÛ‰×KÙ^VÉÙI×JBˆ™XÛÝ™\™YHœØWÛØY\ÙXÜž\
+Ú\\^Ù^VÉÛ‰×KÙ^VÉÙ	×JBˆÚYÛ˜]\™HHœØWÜÜ×ÜÚYÛŠY\ÜØYÙKÙ^VÉÛ‰×KÙ^VÉÙ	×JBˆ™]\›ˆÂˆšÙ^WÚ[™›ÈŽˆ[™›Ëˆ˜Ú\\^Ú^ŽˆÚ\\^š^
+
+Kˆ™XÜž\ÛX]Ú\ÈŽˆ™XÛÝ™\™YOHY\ÜØYÙKˆœÚYÛ˜]\™WÚ^ŽˆÚYÛ˜]\™Kš^
+
+KˆœÚYÛ˜]\™WÝ™\šYšYYŽˆœØWÜÜ×Ý™\šYžJY\ÜØYÙKÚYÛ˜]\™KÙ^VÉÛ‰×KÙ^VÉÙI×JKˆB‚ˆÈOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOBˆÈÓHXZ[ˆ[ž\Ú[ˆÈOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOB‚™Yˆš\ÍÛY\ÜØYÙWØ\™Ê˜[YNˆÝŠHOˆÝŽ‚ˆYˆ[Š˜[YK™[˜ÛÙJ	Ý]‹N	ÊJHOHÌŽ‚ˆ˜Z\ÙH\™Ü\œÙK\™Ý[Y[\Q\œ›ÜŠ’TLÍY\ÜØYÙH]\Ý[˜ÛÙHÈ^XÝHÌˆU‹Nž]\ÈŠBˆ™]\›ˆ˜[YB‚™YˆXZ[Š
+N‚ˆ\œÙ\ˆH\™Ü\œÙK\™Ý[Y[\œÙ\Š\ØÜš\[ÛH•[šYšYYÜž\[˜[]XËXYÛ›ÜÝXË][\XØ]]™KÙ[ÛY]žKØ[Ø˜XÚËÒQ‹PÑÐKØÚ›Üœ‹\›ÛÝ]TÚYÌ‹›Û˜ÙH	ˆÚ[Ù[™\˜][ÛˆÝZ]H
+ŒMÊHŠBˆ\œÙ\‹˜YØ\™Ý[Y[
+‹K\ÚYÛ‹[\ÙÈ‹\O\Ý‹Y]]˜\IÓTÑ×ÔÕ‰Ë[H”ÚYÛˆ^ÜˆH\™Yš^Y\Ú\Ú[™ÈHš^Y[[ÈÙ^HŠBˆ\œÙ\‹˜YØ\™Ý[Y[
+‹K[›Û˜ÙK\™]\ÙKX]XÚÈ‹XÝ[ÛHœÝÜ™WÝYH‹[H”[ˆ[ˆYXØ][Û˜[PÑÐH›Û˜ÙK\™]\ÙHÙ^K\™XÛÝ™\žH[[ÛœÝ˜][ÛˆŠBˆ\œÙ\‹˜YØ\™Ý[Y[
+‹K\XšÙ^KXY˜[˜ÙH‹\O\Ý‹Y]]˜\IÔP’ÑVWÒV	Ë[HY˜[˜ÙHH˜[YX›XÈÚ[žH™\X]YHY[™ÈÈŠBˆ\œÙ\‹˜YØ\™Ý[Y[
+‹K\Ý\È‹\OZ[Y˜][LL[H“[X™\ˆÙˆX›XË\Ú[Y][ÛœÈ
+HÈLÈY˜][ˆL
+HŠBˆ\œÙ\‹˜YØ\™Ý[Y[
+‹K]ÚYˆ‹\O\Ý‹Y]]˜\IÕÒQ‰Ë[H•˜[Y]HÒQˆ[™\š]™H]ÈX›XÈÙ^H[™Y™\ÜÙ\ÈŠBˆ\œÙ\‹˜YØ\™Ý[Y[
+‹KX™XÚÌ‹YXYÛ›ÜÙH‹\O\Ý‹Y]]˜\IÐQ‘TÔÉË[HÚXÚÈH™XÚÌˆÜˆ™XÚÌ›HÚXÚÜÝ[HŠBˆ\œÙ\‹˜YØ\™Ý[Y[
+‹K]Ø[Ø˜XÚË]˜XÙH‹\O\Ý‹Y]]˜\IÐQ‘TÔ×ÓÔ—ÒÑVIË[H”\œÙH[ˆY™\ÜËÜX›XÈÙ^H[™™\ÜÚ]Ø[ˆ™HÛ›ÝÛˆœ›ÛH]ŠBˆ\œÙ\‹˜YØ\™Ý[Y[
+‹KX™[˜ÚX\šË[][‹XÝ[ÛHœÝÜ™WÝYH‹[H™[˜ÚX\šÈÙ[™\šXÈQˆœÈš^YX˜\ÙH][\XØ][Ûˆ[™˜]Ú[™\œÚ[ÛœÈŠBˆ\œÙ\‹˜YØ\™Ý[Y[
+‹K[[ÙZ[ˆ‹˜\™ÜÏL‹\O[[X™H˜[YNˆ[
+˜[YK
+KY]]˜\J	ÕSQIË	ÓSÑSTÉÊK[HÛÛ\]HSQH[™\œÙH[Ù[ÈSÑSTÈ
+XÚ[X[Üˆ\™Yš^Y
+HŠBˆ\œÙ\‹˜YØ\™Ý[Y[
+‹K[[ÙZ[‹[Y]Ù‹ÚÚXÙ\ÏJ˜Z[[ˆ‹™YØÙ‹™™\›X]ŠKY˜][H˜Z[[ˆ‹[H’[™\œÙH[ÛÜš]NÈ™\›X]™\]Z\™\ÈHš[YH[Ù[\ÈŠBˆ\œÙ\‹˜YØ\™Ý[Y[
+‹K[][[™YËYÈ‹\O[[X™H˜[YNˆ[
+˜[YK
+KY]]˜\IÔÐÐST‰Ë[HÛÛ\]HHÜ›Ý\[™\œÙHJÐÐSTˆ
+ˆÊHŠBˆ\œÙ\‹˜YØ\™Ý[Y[
+‹K]˜XÙK\ØØ[\ˆ‹‹K\\ÜÚX[‹[][‹\ÝH˜XÙWÜØØ[\ˆ‹\O[[X™H˜[YNˆ[
+˜[YK
+KY]]˜\IÔÐÐST‰Ë[H•˜XÙHY]Ë\šYÚÝX›KX[™XYØØ[\ˆ][\XØ][ÛˆÙˆÈŠBˆ\œÙ\‹˜YØ\™Ý[Y[
+‹KYXÛÛ\™\ÜË^H‹\O[[X™H˜[YNˆ[
+˜[YK
+KY]]˜\IÖ	Ë[H“YÈH]™[‹^HÙXÜMšÌHÚ[ŠBˆ\œÙ\‹˜YØ\™Ý[Y[
+‹KZ[\œÙXÝ[Ûˆ‹\O[[X™H˜[YNˆ[
+˜[YK
+KY]]˜\IÖ	Ë[H‘š[™Ý\™HÚ[
+ÊH]
+[\œÙXÝ[ÛˆÚ]™\XØ[[™HV
+HŠBˆ\œÙ\‹˜YØ\™Ý[Y[
+‹K\ÝXœÝ]]K^K^‹˜\™ÜÏL‹\O[[X™H˜[YNˆ[
+˜[YK
+KY]]˜\J	Ö	Ë	ÖIÊK[HÚXÚÈÚ]\ˆ
+JHØ]\ÙšY\ÈWŒˆHŒÈ
+ÈÈ[ÙŠBˆ\œÙ\‹˜YØ\™Ý[Y[
+‹KXÝ\™KXY‹˜\™ÜÏL‹Y]]˜\J	ÔP’ÑVLWÒV	Ë	ÔP’ÑVL—ÒV	ÊK[H”ÚÝÈÙXØ[Ý[™Ù[Ù[ÛY]žH[™Ú[Ý[H›ÜˆÛÈÛÛ\™\ÜÙYÜˆ[Û›HÚ[ÈŠBˆ\œÙ\‹˜YØ\™Ý[Y[
+‹K^KY\]X[Ë^‹\O[[X™H˜[YNˆ[
+˜[YK
+KY]]˜\IÖ	Ë[H‘]˜[X]HO^[ˆHÙXÜMšÌHÝ\™H\]X][Ûˆ]ŠBˆ\œÙ\‹˜YØ\™Ý[Y[
+‹KZ[YÙ\‹[][‹˜\™ÜÏL‹\OZ[Y]]˜\J	ÐIË	Ð‰ÊK[H•˜XÙHÚYÛ™Y[YÙ\ˆÚYX[™XY][\XØ][ÛˆŠBˆ\œÙ\‹˜YØ\™Ý[Y[
+‹K[[Ù[][‹˜\™ÜÏLË\OZ[Y]]˜\J	ÐIË	Ð‰Ë	ÓSÑSTÉÊK[H•˜XÙHÚYX[™XY][\XØ][Ûˆ[Ù[ÈSÑSTÈŠBˆ\œÙ\‹˜YØ\™Ý[Y[
+‹K\ÚLM‹]˜XÙH‹\O\Ý‹Y]]˜\IÕV	Ë[H•˜XÙHHÝ[™\™^™Y›ÜØ\™ÒKLMˆÛÛ\™\ÜÚ[Ûˆ›Ý[™È›ÜˆU‹N^ŠBˆ\œÙ\‹˜YØ\™Ý[Y[
+‹K\ÚLM‹X˜XÚÝØ\™[YÙ\ˆ‹\O\Ý‹Y]]˜\IÑQÑTÕÒV	Ë[H‘^Ü™HÛÛ™][Û˜[ÒKLMˆ˜XÚÝØ\™Ý]H™XÛÝ™\žHœ›ÛHHÌ‹Xž]HYÙ\ÝŠBˆ\œÙ\‹˜YØ\™Ý[Y[
+‹K\ÚLM‹X›ØÚÈ‹\O\Ý‹Y]]˜\IÐ“ÐÒ×ÒV	Ë[H‘^XÝXž]Hš[˜[ÛÛ\™\ÜÚ[Ûˆ›ØÚÈ›ÜˆÛÛ\]H˜XÚÝØ\™™\šYšXØ][ÛˆŠBˆ\œÙ\‹˜YØ\™Ý[Y[
+‹K\Ø]XÛ™ˆ‹\O\Ý‹Y]]˜\IÑSPPÔ×Ñ’SIË[H”ÛÛ™HHSPPÔÈÓ‘ˆ[œÝ[˜ÙHÚ]HZ[Z[ˆÛÛ™\ˆŠBˆ\œÙ\‹˜YØ\™Ý[Y[
+‹K\Ø][›ÙK[[Z]‹\OZ[Y˜][LL[H‘ÙX\˜Ú›ÙH[Z]
+Y˜][ˆL
+HŠBˆ\œÙ\‹˜YØ\™Ý[Y[
+‹KZ›Ú[[ÛÚØZXY‹XÝ[ÛHœÝÜ™WÝYH‹[H”ÚÝÈH™\ÝÜ™Y[\Ý˜]]™HÍŒËÕÍŒˆÛÚØZXY[œÚ]HÝÙY\
+Þ[]XÈ\Ý[X]\Ë›ÝÛÛ™\ˆÝ]]
+HŠBˆ\œÙ\‹˜YØ\™Ý[Y[
+‹K\œØKY™\›X]Y˜XÝÜˆ‹\O[[X™H˜[YNˆ[
+˜[YK
+KY]]˜\IÓ‰Ë[H›Ý[™Y™\›X]˜XÝÜˆÙX\˜Ú›Üˆ[ˆÙ”ÐH[Ù[\È
+XÚ[X[Üˆ\™Yš^Y
+HŠBˆ\œÙ\‹˜YØ\™Ý[Y[
+‹K\œØK]™\šYžKY˜XÝÜœÈ‹˜\™ÜÏLË\O[[X™H˜[YNˆ[
+˜[YK
+KY]]˜\J	Ó‰Ë	Ô	Ë	ÔIÊK[H•™\šYžHØ[™Y]H”ÐH˜XÝÜœÈ[™X›XËY^Û™[ÛÛ\]Xš[]HŠBˆ\œÙ\‹˜YØ\™Ý[Y[
+‹KY™\›X]\Ý\È‹\OZ[Y˜][LL[H“X^[][H™\›X]ÙX\˜Ú]\˜][ÛœÈ
+Y˜][ˆL
+HŠBˆ\œÙ\‹˜YØ\™Ý[Y[
+‹K\œØKZÙ^YÙ[ˆ‹\OZ[Y]]˜\IÐ’UÉË[H‘Ù[™\˜]H”ÐH\˜[Y]\œÈ
+ŒÈMˆš]ÊH[™\Ü^H[HŠBˆ\œÙ\‹˜YØ\™Ý[Y[
+‹K\œØKY[[È‹˜\™ÜÏIÏÉË\OZ[ÛÛœÝLŒY]]˜\IÐ’UÉË[H”[ˆ\[Y\˜[”ÐKSÐQT[˜Üž\[Ûˆ[™”ÐKTÔÈÚYÛ˜]\™H[[ÈŠBˆ\œÙ\‹˜YØ\™Ý[Y[
+‹K\œØKZ[™›È‹XÝ[ÛHœÝÜ™WÝYH‹[H”™\Ü[™›Ü›X][ÛˆX›Ý]K\œØK[ˆ[™K\œØKYHŠBˆ\œÙ\‹˜YØ\™Ý[Y[
+‹K\œØKY[˜Üž\‹\O\Ý‹Y]]˜\IÕV	Ë[H‘[˜Üž\U‹N^Ú]”ÐKSÐQTÔÒKLMˆŠBˆ\œÙ\‹˜YØ\™Ý[Y[
+‹K\œØKYXÜž\‹\O\Ý‹Y]]˜\IÐÒTT•VÒV	Ë[H‘XÜž\^Ú\\^Ú]”ÐKSÐQTÔÒKLMˆŠBˆ\œÙ\‹˜YØ\™Ý[Y[
+‹K\œØK\ÚYÛˆ‹\O\Ý‹Y]]˜\IÕV	Ë[H”ÚYÛˆU‹N^Ú]”ÐKTÔËÔÒKLMˆŠBˆ\œÙ\‹˜YØ\™Ý[Y[
+‹K\œØK]™\šYžH‹˜\™ÜÏL‹Y]]˜\J	ÕV	Ë	ÔÒQÓUT‘WÒV	ÊK[H•™\šYžH[ˆ”ÐKTÔËÔÒKLMˆÚYÛ˜]\™HŠBˆ\œÙ\‹˜YØ\™Ý[Y[
+‹K\œØK[ˆ‹\O\Ý‹Y]]˜\IÓSÑST×ÒV	Ë[H””ÐH[Ù[\È›Üˆ”ÐHÜ\˜][ÛœÈŠBˆ\œÙ\‹˜YØ\™Ý[Y[
+‹K\œØKYH‹\OZ[Y˜][MMLÍËY]]˜\IÑVÓ‘S•	Ë[H””ÐHX›XÈ^Û™[
+Y˜][MLÍÊHŠBˆ\œÙ\‹˜YØ\™Ý[Y[
+‹K\œØKY‹\O\Ý‹Y]]˜\IÔ’UUWÑVÓ‘S•ÒV	Ë[H””ÐHš]˜]H^Û™[›ÜˆXÜž\ÜÚYÛˆŠBˆ\œÙ\‹˜YØ\™Ý[Y[
+‹K[]\ÚYÌ‹XYÙÜ™YØ]H‹˜\™ÜÏIÊÉËY]]˜\IÔP’ÑVWÒV	Ë[HYÙÜ™YØ]H][\HØÚ›ÜœˆX›XÈÙ^\È[ÈH›Ú[Ù^HØYÙÈŠBˆ\œÙ\‹˜YØ\™Ý[Y[
+‹K]\›ÛÝ]ÙXZÈ‹˜\™ÜÏLKY]]˜\IÔP’ÑVWÖÒV	Ë[HÛÛ\]H\›ÛÝÝ]]Ù^HHH
+È
+‘ÈŠBˆ\œÙ\‹˜YØ\™Ý[Y[
+‹KYXË\›™È‹\O\Ý‹Y]]˜\IÔÑQQÔÕ‰Ë[H‘Ù[™\˜]H]\›Z[š\ÝXÈ[[ÛœÝ˜][ÛˆÚ[È
+›ÝHÙXÝ\™H“‘ÊHŠBˆ\œÙ\‹˜YØ\™Ý[Y[
+‹K\™˜ÍŽMÎK]˜XÙH‹\O\Ý‹Y]]˜\IÓTÑ×ÔÕ‰Ë[H•˜XÙH‘ÈŽMÎH]\›Z[š\ÝXÈ›Û˜ÙH\š]˜][ÛˆŠBˆ\œÙ\‹˜YØ\™Ý[Y[
+‹K\ØÚ›Üœ‹]˜XÙH‹\OXš\ÍÛY\ÜØYÙWØ\™ËY]]˜\IÓTÑ×ÌÌ—Ð–UTÉË[H•˜XÙH’TLÍ\Ú[™È[ˆ^XÝHÌ‹Xž]HU‹NY\ÜØYÙHŠBˆ\œÙ\‹˜YØ\™Ý[Y[
+‹KX]^\˜[™‹\OXž]\Ë™œ›ÛZ^Y]]˜\IÒVÌ‰Ë[HŒÌ‹Xž]H’TLÍ]^[X\žH˜[™Û[™\ÜÈ\È^Ú\˜XÝ\œÈ
+Y˜][ˆ[^™\›È™XÝÜˆÙ][™ÊHŠBˆ\œÙ\‹˜YØ\™Ý[Y[
+‹KZ\Ú]ËXÝ\™H‹\O\Ý‹Y]]˜\IÔÑQQÔÕ‰Ë[H“X\\˜š]˜\žHÙYYÝš[™ÈÈ˜[YÙXÜMšÌHÚ[ŠBˆ\œÙ\‹˜YØ\™Ý[Y[
+‹K]™\šYšXX›K\Ú[‹\O\Ý‹Y]]˜\IÔÑQQÔÕ‰Ë[H‘Ù[™\˜]HH]\›Z[š\ÝXØ[H\š]™YÚ[\Ú[™ÈHÝ\ÝÛHÛÛœÝXÝ[ÛˆŠBˆ\œÙ\‹˜YØ\™Ý[Y[
+‹KX[‹XÝ[ÛHœÝÜ™WÝYH‹[H”[ˆÛÛ\]HÝZ]HŠBˆˆ\™ÜÈH\œÙ\‹œ\œÙWØ\™ÜÊ
+B‚ˆYˆ\™ÜËœÝ\ÈOHL[™›Ý\™ÜËœXšÙ^WØY˜[˜ÙN‚ˆ\œÙ\‹™\œ›ÜŠ‹K\Ý\È™\]Z\™\ÈK\XšÙ^KXY˜[˜ÙHŠBˆYˆ\™ÜË›[ÙÚ[—ÛY]ÙOH˜Z[[ˆˆ[™›Ý\™ÜË›[ÙÚ[Ž‚ˆ\œÙ\‹™\œ›ÜŠ‹K[[ÙZ[‹[Y]Ù™\]Z\™\ÈK[[ÙZ[ˆŠBˆœØWØXÝ[ÛœÈH
+\™ÜËœœØWÚÙ^YÙ[ˆ\È›Ý›Û™K\™ÜËœœØWÙ[[È\È›Ý›Û™K\™ÜËœœØWÚ[™›Ë\™ÜËœœØWÙ[˜Üž\\È›Ý›Û™K\™ÜËœœØWÙXÜž\\È›Ý›Û™K\™ÜËœœØWÜÚYÛˆ\È›Ý›Û™K\™ÜËœœØWÝ™\šYžH\È›Ý›Û™JBˆYˆÝ[JœØWØXÝ[ÛœÊHˆN‚ˆ\œÙ\‹™\œ›ÜŠ˜ÚÛÜÙHÛ™H”ÐHÜ\˜][Ûˆ\ˆ[›ØØ][ÛˆŠBˆYˆ
+\™ÜËœœØWÛˆÜˆ\™ÜËœœØWÙ
+H[™›Ý[žJœØWØXÝ[ÛœÊN‚ˆ\œÙ\‹™\œ›ÜŠ‹K\œØK[ˆ[™K\œØKY]\Ý™H\ÙYÚ][ˆ”ÐHÜ\˜][ÛˆŠBˆYˆ\™ÜËœÚLM—Ø›ØÚÈ[™›Ý\™ÜËœÚLM—Ø˜XÚÝØ\™ÛYÙ\Ž‚ˆ\œÙ\‹™\œ›ÜŠ‹K\ÚLM‹X›ØÚÈ™\]Z\™\ÈK\ÚLM‹X˜XÚÝØ\™[YÙ\ˆŠBˆYˆ\™ÜË˜]^Ü˜[™\È›Ý›Û™H[™[Š\™ÜË˜]^Ü˜[™
+HOHÌŽ‚ˆ\œÙ\‹™\œ›ÜŠ‹KX]^\˜[™]\Ý[˜ÛÙH^XÝHÌˆž]\È
+^Ú\˜XÝ\œÊHŠBˆYˆ\™ÜË˜]^Ü˜[™\È›Ý›Û™H[™›Ý
+\™ÜËœØÚ›Üœ—Ý˜XÙHÜˆ\™ÜË˜[
+N‚ˆ\œÙ\‹™\œ›ÜŠ‹KX]^\˜[™™\]Z\™\ÈK\ØÚ›Üœ‹]˜XÙHÜˆKX[ŠBˆYˆ›Ý
+\™ÜËœÚYÛ—Û\ÙÈÜˆ\™ÜË››Û˜ÙWÜ™]\ÙWØ]XÚÈÜˆ\™ÜËœXšÙ^WØY˜[˜ÙHÜˆ\™ÜËÚYˆÜˆ\™ÜË˜™XÚÌ—ÙXYÛ›ÜÙHÜˆ\™ÜËØ[Ø˜XÚ×Ý˜XÙHÜˆ\™ÜË˜™[˜ÚX\š×Û][Üˆ\™ÜË›[ÙÚ[ˆÜˆ\™ÜË›][Û™Y×ÙÈ\È›Ý›Û™HÜˆ\™ÜË˜XÙWÜØØ[\ˆ\È›Ý›Û™HÜˆ\™ÜË™XÛÛ\™\Ü×ÞH\È›Ý›Û™HÜˆ\™ÜËš[\œÙXÝ[Ûˆ\È›Ý›Û™HÜˆ\™ÜËœÝXœÝ]]WÞWÞÜˆ\™ÜË˜Ý\™WØYÜˆ\™ÜËžWÙ\]X[×Þ\È›Ý›Û™HÜˆ\™ÜËš[YÙ\—Û][Üˆ\™ÜË›[ÙÛ][Üˆ\™ÜËœÚLM—Ý˜XÙH\È›Ý›Û™HÜˆ\™ÜËœÚLM—Ø˜XÚÝØ\™ÛYÙ\ˆ\È›Ý›Û™HÜˆ\™ÜËš›Ú[ÛÛÚØZXYÜˆ\™ÜËœØ]ØÛ™ˆÜˆ\™ÜËœœØWÙ™\›X]Ù˜XÝÜˆ\È›Ý›Û™HÜˆ\™ÜËœœØWÝ™\šYžWÙ˜XÝÜœÈÜˆ[žJœØWØXÝ[ÛœÊHÜˆ\™ÜË›]\ÚYÌ—ØYÙÜ™YØ]HÜˆ\™ÜË\›ÛÝÝÙXZÈÜˆ\™ÜË™X×Ü›™ÈÜˆ\™ÜËœ™˜ÍŽMÎWÝ˜XÙHÜˆ\™ÜËœØÚ›Üœ—Ý˜XÙHÜˆ\™ÜËš\ÚÝ×ØÝ\™HÜˆ\™ÜË™\šYšXX›WÜÚ[Üˆ\™ÜË˜[
+N‚ˆ\œÙ\‹œš[Ú[
+
+Bˆ™]\›‚‚ˆYˆ\™ÜËœØ]Û›ÙWÛ[Z]N‚ˆ\œÙ\‹™\œ›ÜŠ‹K\Ø][›ÙK[[Z]]\Ý™HÜÚ]]™HŠBˆYˆ\™ÜËœØ]ØÛ™Ž‚ˆžN‚ˆÚ]Ü[Š\™ÜËœØ]ØÛ™‹œˆ‹[˜ÛÙ[™ÏH]‹NŠH\ÈÛ™—Ùš[N‚ˆ˜\šXX›WØÛÝ[Û]\Ù\ÈH\œÙWÙ[XXÜ×ØÛ™ŠÛ™—Ùš[Kœ™XY
+
+JBˆØ]Ü™\Ý[HÛÛ™WØÛ™ŠÛ]\Ù\Ë˜\šXX›WØÛÝ[\™ÜËœØ]Û›ÙWÛ[Z]
+Bˆ^Ù\
+ÔÑ\œ›Ü‹˜[YQ\œ›ÜŠH\È^Î‚ˆ\œÙ\‹™\œ›ÜŠÝŠ^ÊJBˆš[
+ˆ–ÑÐUHÜØ]Ü™\Ý[ÉÜÝ]\É×_H˜\šXX›\Ï^ÜØ]Ü™\Ý[ÉÝ˜\šXX›\É×_HÛ]\Ù\Ï^ÜØ]Ü™\Ý[ÉØÛ]\Ù\É×_HXÚ\Ú[ÛœÏ^ÜØ]Ü™\Ý[ÉÙXÚ\Ú[ÛœÉ×_H›ÜYØ][ÛœÏ^ÜØ]Ü™\Ý[ÉÜ›ÜYØ][ÛœÉ×_H›Ù\Ï^ÜØ]Ü™\Ý[ÉÛ›Ù\É×_HŠBˆYˆØ]Ü™\Ý[È›[Ù[—H\È›Ý›Û™N‚ˆš[
+ˆ[Ù[ˆ‹ˆ‹š›Ú[ŠˆžÝˆYˆš][ÙH]ŸHˆ›Üˆ‹š][ˆÛÜY
+Ø]Ü™\Ý[È›[Ù[—Kš][\Ê
+JJKŒŠBˆ™]\›‚‚ˆš[
+Hˆ
+ˆ
+Bˆš[
+•S’Q’QQÔ–TSSUPËPQÓ“ÔÕPËUSTPÐUU‘KÑSÓQU–KÐSÐPÒËÒQ‹ÐÒ“Ô”ˆ	ˆ“ÓÑHÕRUH
+ŒMÊHŠBˆš[
+Hˆ
+ˆ
+B‚ˆžN‚ˆYˆ\™ÜË›[ÙÚ[Ž‚ˆ˜[YK[Ù[\ÈH\™ÜË›[ÙÚ[‚ˆ[ˆH[Ù[\—Ú[™\œÙWÜ™\Ü
+˜[YK[Ù[\Ë\™ÜË›[ÙÚ[—ÛY]Ù
+Bˆš[
+ˆ—–Ó[Ù[\ˆ[™\œÙNˆÚ[–ÉÛY]Ù	×_WHÚ[–ÉÝ˜[YI×_WŠLJH[ÙÚ[–ÉÛ[Ù[\É×_HHÚ[–ÉÚ[™\œÙI×_H
+ÚXÚÏ^Ú[–ÉØÚXÚÉ×_JHŠBˆYˆ\™ÜË›][Û™Y×ÙÈ\È›Ý›Û™N‚ˆØØ[\ˆH\™ÜË›][Û™Y×ÙÂˆÚ[HØØ[\—Û][Ù×Ù˜\Ý
+ØØ[\ŠBˆ™YØ]YH
+
+HYˆÚ[OH
+
+H[ÙHÚ[Û™YØ]JÚ[
+Bˆš[
+ˆ—–ÑÜ›Ý\[™\œÙWHJÜØØ[\ŸH
+ˆÊHHÊ	ÜÚ[][™š[š]IÈYˆ™YØ]YOH
+
+H[ÙH‰ÊÛ™YØ]YÌNŒKÛ™YØ]YÌWNŒJIÊ_HŠBˆYˆ\™ÜË˜XÙWÜØØ[\ˆ\È›Ý›Û™N‚ˆ˜XÙHHØØ[\—Û][\XØ][Û—Ý˜XÙJ\™ÜË˜XÙWÜØØ[\ŠBˆš[
+ˆ—–ÔØØ[\ˆ˜XÙWHÏ^Ý˜XÙVÉÜØØ[\‰×_Hš]Ï^Ý˜XÙVÉØš]Û[™Ý	×_H[[Z[™×ÝÙZYÚ^Ý˜XÙVÉÚ[[Z[™×ÝÙZYÚ	×_HŠBˆ›Üˆ›ÝÈ[ˆ˜XÙVÉÜÝ\É×N‚ˆš[
+ˆˆš]Ü›ÝÖÉØš]Ú[™^	×NŒßNˆÜ›ÝÖÉØš]	×_HÝX›KÉØYÉÈYˆ›ÝÖÉØYYÜÚ[	×H[ÙH	Û›ÈY	ßHŠBˆ™\Ý[H˜XÙVÉÜ™\Ý[	×Bˆš[
+ˆˆ™\Ý[ˆÉÜÚ[][™š[š]IÈYˆ™\Ý[OH
+
+H[ÙH‰ÊÜ™\Ý[ÌNŒKÜ™\Ý[ÌWNŒJIßHŠBˆYˆ\™ÜË™XÛÛ\™\Ü×ÞH\È›Ý›Û™N‚ˆH\™ÜË™XÛÛ\™\Ü×ÞBˆHHÝ\™WÞWÜ›ÛÝÊ
+VÌBˆš[
+ˆ—–ÔÚ[YHLÞŒHOˆ]™[ˆOLÞNŒHŠBˆYˆ\™ÜËš[\œÙXÝ[Ûˆ\È›Ý›Û™N‚ˆH\™ÜËš[\œÙXÝ[Û‚ˆ›ÛÝÈHÝ\™WÞWÜ›ÛÝÊ
+Bˆš[
+ˆ—–ÐÝ\™H[\œÙXÝ[Û—H™\XØ[[™HLÞŒNˆÛ[Š›ÛÝÊ_HÚ[
+ÊHŠBˆ›ÜˆH[ˆ›ÛÝÎ‚ˆš[
+ˆˆ
+ÞŒKÞNŒJHŠBˆYˆ\™ÜËœÝXœÝ]]WÞWÞ‚ˆHH\™ÜËœÝXœÝ]]WÞWÞˆ˜[YH\×ÛÛ—ØÝ\™J
+JJBˆš[
+ˆ—–ÐÝ\™HÝXœÝ]][Û—H
+ÞKÞ_JH\ÈÉÛÛ‰ÈYˆ˜[Y[ÙH	Û›ÝÛ‰ßHÙXÜMšÌHŠBˆYˆ\™ÜË˜Ý\™WØY‚ˆÚ[KÚ[ˆH
+\œÙWÜXšÙ^JÙ^JH›ÜˆÙ^H[ˆ\™ÜË˜Ý\™WØY
+BˆÙ[ÛHHÝ\™WØYÙÙ[ÛY]žJÚ[KÚ[ŠBˆ›]ÜÚ[H[X™HˆœÚ[][™š[š]HˆYˆOH
+
+H[ÙHˆŠÜÌNŒKÜÌWNŒJH‚ˆÛÜWÝ^H[™Yš[™YˆYˆÙ[ÛVÈœÛÜH—H\È›Û™H[ÙHˆŒÙÙ[ÛVÉÜÛÜI×NŒH‚ˆš[
+—–ÐÝ\™HY][ÛˆÙ[ÛY]žWHŠBˆš[
+ˆˆÛÜH[X™HˆÜÛÜWÝ^HŠBˆš[
+ˆˆ\™[\œÙXÝ[ÛˆˆÙ›]ÜÚ[
+Ù[ÛVÉÝ\™Ú[\œÙXÝ[Û‰×J_HŠBˆš[
+ˆˆÜ›Ý\Ý[HH
+ÈˆˆÙ›]ÜÚ[
+Ù[ÛVÉÜÝ[I×J_HŠBˆYˆ\™ÜËžWÙ\]X[×Þ\È›Ý›Û™N‚ˆ™\ÜHWÙ\]X[×ÞÜ™\Ü
+\™ÜËžWÙ\]X[×Þ
+Bˆš[
+ˆ—–ÞO^ÝXœÝ]][Û—H™\ÚYX[HÜ™\ÜÉÜ™\ÚYX[	×NŒNÈÝ\™HÚ[ˆÜ™\ÜÉÚ\×ØÝ\™WÜÚ[	×_HŠBˆYˆ\™ÜËš[YÙ\—Û][‚ˆ™\Ý[H\ÜÚX[—Ú[YÙ\—Û][\J
+˜\™ÜËš[YÙ\—Û][
+Bˆš[
+ˆ—–Ò[YÙ\ˆÚYX[™PYHØ\™ÜËš[YÙ\—Û][Ì_H
+ˆØ\™ÜËš[YÙ\—Û][ÌW_HHÜ™\Ý[ÉÜ›ÙXÝ	×_HŠBˆ›Üˆ[™^›ÝÈ[ˆ[[Y\˜]J™\Ý[ÉÜÝ\É×JN‚ˆš[
+ˆˆš]Ú[™^ŒßNˆ][\Y\^Ü›ÝÖÉÛ][\Y\‰×_Hš]^Ü›ÝÖÉØš]	×_H\X[ÜÝ[O^Ü›ÝÖÉÜ\X[ÜÝ[I×_HŠBˆYˆ\™ÜË›[ÙÛ][‚ˆK‹[Ù[\ÈH\™ÜË›[ÙÛ][ˆ™\Ý[H\ÜÚX[—Û[Ù[\—Û][\JK‹[Ù[\ÊBˆš[
+ˆ—–Ó[Ù[\ˆÚYX[™PYH
+Ø_H
+ˆØŸJH[ÙÛ[Ù[\ßHHÜ™\Ý[ÉÜ™\Ý[	×_H
+™\šYšYY^Ü™\Ý[ÉÝ™\šYšYY	×_JHŠBˆ›Üˆ[™^›ÝÈ[ˆ[[Y\˜]J™\Ý[ÉÜÝ\É×JN‚ˆš[
+ˆˆš]Ú[™^ŒßNˆ][\Y\^Ü›ÝÖÉÛ][\Y\‰×_Hš]^Ü›ÝÖÉØš]	×_H™\ÚYYO^Ü›ÝÖÉÜ™\ÚYYI×_HŠBˆYˆ\™ÜËœÚLM—Ý˜XÙH\È›Ý›Û™N‚ˆ™\Ý[HÚLM—ØÛÛ\™\ÜÚ[Û—Ý˜XÙJ\™ÜËœÚLM—Ý˜XÙK™[˜ÛÙJ	Ý]‹N	ÊJBˆš[
+ˆ—–ÔÒKLMˆ›ÜØ\™ÛÛ\™\ÜÚ[Ûˆ˜XÙWHYÙ\Ý^Ü™\Ý[ÉÙYÙ\ÝÚ^	×_H™\šYšYY^Ü™\Ý[ÉÛX]Ú\×Ú\ÚX‰×_HŠBˆ›Üˆ›ØÚÈ[ˆ™\Ý[ÉÜYYØ›ØÚÜÉ×N‚ˆš[
+ˆˆ›ØÚÈØ›ØÚÖÉØ›ØÚ×Ú[™^	×_H[œ]Ý]HˆÉÈ	Ëš›Ú[Š›ØÚÖÉÚ[œ]ÜÝ]I×J_HŠBˆ›Üˆ›Ý[™Ú[™^Ý]H[ˆ[[Y\˜]J›ØÚÖÉÜ›Ý[™ÜÝ]\É×JN‚ˆš[
+ˆˆ›Ý[™Ü›Ý[™Ú[™^ŒŸNˆÉÈ	Ëš›Ú[ŠÝ]J_HŠBˆš[
+ˆˆ›ØÚÈØ›ØÚÖÉØ›ØÚ×Ú[™^	×_HÝ]]Ý]NˆÉÈ	Ëš›Ú[Š›ØÚÖÉÛÝ]]ÜÝ]I×J_HŠBˆYˆ\™ÜËœÚLM—Ø˜XÚÝØ\™ÛYÙ\ˆ\È›Ý›Û™N‚ˆYÙ\ˆHÚLM—Ø˜XÚÝØ\™ÛYÙ\Š\™ÜËœÚLM—Ø˜XÚÝØ\™ÛYÙ\‹\™ÜËœÚLM—Ø›ØÚÊBˆš[
+—–ÔÒKLMˆ˜XÚÝØ\™YÙ\—HŠBˆš[
+ˆˆ\ÜÝ[\[ÛˆˆÛYÙ\–ÉØ\ÜÝ[\[Û‰×_HŠBˆš[
+ˆˆš[˜[ÛÜšÚ[™ÈÝ]HˆÉÈ	Ëš›Ú[ŠYÙ\–ÉÙš[˜[ÝÛÜšÚ[™×ÜÝ]I×J_HŠBˆš[
+ˆˆ[H™]™\œÙYˆÛYÙ\–ÉÙ[WÜ™]™\œÙY	×_HŠBˆš[
+ˆˆ›Ý[™\žHˆÛYÙ\–ÉØ›Ý[™\žI×_HŠBˆYˆYÙ\–ÉÙ[WÜ™]™\œÙY	×N‚ˆš[
+ˆˆ™XÛÝ™\™Y[š]X[ˆÉÈ	Ëš›Ú[ŠYÙ\–ÉÜ™XÛÝ™\™YÚ[š]X[ÜÝ]I×J_HŠBˆš[
+ˆˆX]Ú\ÈÝ[™\™UˆˆÛYÙ\–ÉÛX]Ú\×ÜÝ[™\™Ú]‰×_HŠBˆ[ÙN‚ˆ›Üˆ˜[YK˜[YH[ˆYÙ\–ÉÛ\ÝÜ›Ý[™Ü™XÛÝ™\™YÜÝ]I×Kš][\Ê
+N‚ˆš[
+ˆˆÛ˜[YNŒŒŸNˆÝ˜[Y_HŠBˆ›Üˆ˜[YK˜[YH[ˆYÙ\–ÉÜÝ]WØÛ\ÜÚYšXØ][Û‰×Kš][\Ê
+N‚ˆš[
+ˆˆÛ\ÜÚYšXØ][ÛˆÛ˜[YNŒŒNˆÝ˜[Y_HŠBˆYˆ\™ÜËš›Ú[ÛÛÚØZXY‚ˆš[
+—–ÕÍŒËÕÍŒˆ›Ú[ÛÚØZXY[œÚ]HÝÙY\HŠBˆš[
+ˆÞ[]XÈ[›š[™È\Ý[X]\ÈÛ›NÈ\ÈÙ\È›Ý[ˆÐUÜˆÓ‘ˆÛÛš[™ËˆŠBˆ›Üˆ›ÝÈ[ˆ[—Ù^[™YÚ›Ú[ÛÛÚØZXYÜÝÙY\
+
+N‚ˆš[
+ˆˆ\^Ü›ÝÖÉØÝX™WÙ\Øš]É×NŒŸH˜\œÏ^Ü›ÝÖÉÜ™[XZ[š[™×Ý˜\œÉ×NŒßHÛ]\Ù\Ï^Ü›ÝÖÉÜ™[XZ[š[™×ØÛ]\Ù\É×NŒßH[œÚ]O^Ü›ÝÖÉØÛ]\ÙWÙ[œÚ]WØ[I×N‹ŸH[\Ý˜]]™K\›ÜYØ][Û^Ü›ÝÖÉÚ[\Ý˜]]™WÝ[š]Ü›ÜYØ][Û—Ü˜]WÜÝ	×N‹ŒYŸIHŠBˆYˆ\™ÜËœœØWÙ™\›X]Ù˜XÝÜˆ\È›Ý›Û™N‚ˆ˜XÝÜ—Ü™\Ý[H™\›X]Ù˜XÝÜŠ\™ÜËœœØWÙ™\›X]Ù˜XÝÜ‹\™ÜË™™\›X]ÜÝ\ÊBˆYˆ˜XÝÜ—Ü™\Ý[ÉÙ›Ý[™	×N‚ˆš[
+ˆ—–Ð›Ý[™Y™\›X]ÙX\˜ÚH˜XÝÜœÈ›Ý[™[ˆÙ˜XÝÜ—Ü™\Ý[ÉÜÝ\É×_HÝ\
+ÊNˆŠBˆš[
+ˆˆHÙ˜XÝÜ—Ü™\Ý[ÉÜ	×_WˆHHÙ˜XÝÜ—Ü™\Ý[ÉÜI×_HŠBˆ[ÙN‚ˆš[
+ˆ—–Ð›Ý[™Y™\›X]ÙX\˜ÚH›È˜XÝÜœÈ›Ý[™Ú][ˆÙ˜XÝÜ—Ü™\Ý[ÉÜÝ\É×_HÝ\
+ÊHŠBˆYˆ\™ÜËœœØWÝ™\šYžWÙ˜XÝÜœÎ‚ˆ‹HH\™ÜËœœØWÝ™\šYžWÙ˜XÝÜœÂˆ™\ÜHœØWÙ˜XÝÜ—ØØ[™Y]WÜ™\Ü
+‹K\™ÜËœœØWÙJBˆš[
+—–Ô”ÐH˜XÝÜˆØ[™Y]HÚXÚ×HŠBˆ›Üˆ˜[YK˜[YH[ˆ™\Üš][\Ê
+N‚ˆš[
+ˆˆÛ˜[YNŒÌŸNˆÝ˜[Y_HŠBˆ^Ù\
+˜[YQ\œ›Ü‹Ý™\™›ÝÑ\œ›ÜŠH\È^Î‚ˆ\œÙ\‹™\œ›ÜŠÝŠ^ÊJB‚ˆžN‚ˆœØWÛˆH[
+\™ÜËœœØWÛ‹œ™[[Ý™\™Yš^
+ŒŠKMŠHYˆ\™ÜËœœØWÛˆ[ÙH›Û™BˆœØWÙH[
+\™ÜËœœØWÙœ™[[Ý™\™Yš^
+ŒŠKMŠHYˆ\™ÜËœœØWÙ[ÙH›Û™BˆYˆ\™ÜËœœØWÚÙ^YÙ[ˆ\È›Ý›Û™N‚ˆÙ[™\˜]YHœØWÙÙ[™\˜]WÚÙ^\Z\Š\™ÜËœœØWÚÙ^YÙ[ŠBˆš[
+—–Ô”ÐWHÙ[™\˜]YYXØ][Û˜[”ÐHÙ^H
+š]˜]H˜[Y\ÈÚÝÛˆ™XØ]\ÙHK\œØKZÙ^YÙ[ˆØ\È^XÚ]
+NˆŠBˆ›Üˆ˜[YH[ˆ
+›ˆ‹™H‹™‹œ‹œHŠN‚ˆš[
+ˆˆÛ˜[YNŒŸHHÙÙ[™\˜]YÛ˜[YWNžHŠBˆ[Yˆ\™ÜËœœØWÙ[[È\È›Ý›Û™N‚ˆ™\Ý[HœØWÙ[[Ê\™ÜËœœØWÙ[[ÊBˆš[
+—–Ô”ÐWHÐQTÔÔÈ[[ÛœÝ˜][Ûˆ
+\[Y\˜[Ù^NÈš]˜]H˜[Y\È›Ýš[Y
+NˆŠBˆš[
+ˆˆ[Ù[\ÈÚ^™HˆÜ™\Ý[ÉÚÙ^WÚ[™›É×VÉÛ[Ù[\×Øš]É×_Hš]ÈŠBˆš[
+ˆˆÐQTXÜž\X]Ú\ÈˆÜ™\Ý[ÉÙXÜž\ÛX]Ú\É×_HŠBˆš[
+ˆˆÔÈÚYÛ˜]\™H™\šYšY\ÎˆÜ™\Ý[ÉÜÚYÛ˜]\™WÝ™\šYšYY	×_HŠBˆ[Yˆ\™ÜËœœØWÚ[™›Î‚ˆYˆœØWÛˆ\È›Û™N‚ˆ\œÙ\‹™\œ›ÜŠ‹K\œØKZ[™›È™\]Z\™\ÈK\œØK[ˆŠBˆ[™›ÈHœØWÚÙ^WÚ[™›ÊœØWÛ‹\™ÜËœœØWÙKœØWÙ
+Bˆš[
+—–Ô”ÐWHX›XËZÙ^H[˜[\Ú\ÎˆŠBˆ›Üˆ˜[YK˜[YH[ˆ[™›Ëš][\Ê
+N‚ˆš[
+ˆˆÛ˜[YNŒÌŸNˆÝ˜[Y_HŠBˆ[Yˆ\™ÜËœœØWÙ[˜Üž\\È›Ý›Û™N‚ˆYˆœØWÛˆ\È›Û™N‚ˆ\œÙ\‹™\œ›ÜŠ‹K\œØKY[˜Üž\™\]Z\™\ÈK\œØK[ˆŠBˆÚ\\^HœØWÛØY\Ù[˜Üž\
+\™ÜËœœØWÙ[˜Üž\™[˜ÛÙJ	Ý]‹N	ÊKœØWÛ‹\™ÜËœœØWÙJBˆš[
+ˆ—–Ô”ÐWHÐQTÚ\\^^ˆØÚ\\^š^
+
+_HŠBˆ[Yˆ\™ÜËœœØWÙXÜž\\È›Ý›Û™N‚ˆYˆœØWÛˆ\È›Û™HÜˆœØWÙ\È›Û™N‚ˆ\œÙ\‹™\œ›ÜŠ‹K\œØKYXÜž\™\]Z\™\ÈK\œØK[ˆ[™K\œØKYŠBˆZ[^HœØWÛØY\ÙXÜž\
+ž]\Ë™œ›ÛZ^
+\™ÜËœœØWÙXÜž\
+KœØWÛ‹œØWÙ
+BˆžN‚ˆš[
+ˆ—–Ô”ÐWHÐQTZ[^ˆÜZ[^™XÛÙJ	Ý]‹N	Ê_HŠBˆ^Ù\[šXÛÙQXÛÙQ\œ›ÜŽ‚ˆš[
+ˆ—–Ô”ÐWHÐQTZ[^^ˆÜZ[^š^
+
+_HŠBˆ[Yˆ\™ÜËœœØWÜÚYÛˆ\È›Ý›Û™N‚ˆYˆœØWÛˆ\È›Û™HÜˆœØWÙ\È›Û™N‚ˆ\œÙ\‹™\œ›ÜŠ‹K\œØK\ÚYÛˆ™\]Z\™\ÈK\œØK[ˆ[™K\œØKYŠBˆÚYÛ˜]\™HHœØWÜÜ×ÜÚYÛŠ\™ÜËœœØWÜÚYÛ‹™[˜ÛÙJ	Ý]‹N	ÊKœØWÛ‹œØWÙ
+Bˆš[
+ˆ—–Ô”ÐWHÔÈÚYÛ˜]\™H^ˆÜÚYÛ˜]\™Kš^
+
+_HŠBˆ[Yˆ\™ÜËœœØWÝ™\šYžH\È›Ý›Û™N‚ˆYˆœØWÛˆ\È›Û™N‚ˆ\œÙ\‹™\œ›ÜŠ‹K\œØK]™\šYžH™\]Z\™\ÈK\œØK[ˆŠBˆY\ÜØYÙKÚYÛ˜]\™WÚ^H\™ÜËœœØWÝ™\šYžBˆ™\šYšYYHœØWÜÜ×Ý™\šYžJY\ÜØYÙK™[˜ÛÙJ	Ý]‹N	ÊKž]\Ë™œ›ÛZ^
+ÚYÛ˜]\™WÚ^
+KœØWÛ‹\™ÜËœœØWÙJBˆš[
+ˆ—–Ô”ÐWHÔÈÚYÛ˜]\™H˜[YˆÝ™\šYšYYHŠBˆ^Ù\
+˜[YQ\œ›Ü‹Ý™\™›ÝÑ\œ›ÜŠH\È^Î‚ˆ\œÙ\‹™\œ›ÜŠÝŠ^ÊJB‚ˆ[[×Üš]šÙ^HHYŒLLŒ˜XNLNYXŽLLMŽŽL™MLŒXØMNŒXNNMÎMÍNÍL™YLŒŒL˜‚‚ˆYˆ\™ÜËœÚYÛ—Û\ÙÎ‚ˆÚYÛ™YHXÙØWÜÚYÛ—Ø[™Ý™\šYžWÝ˜XÙJ[[×Üš]šÙ^K\™ÜËœÚYÛ—Û\ÙÊBˆš[
+—–ÌHPÑÐHÝ\ÝÛHY\ÜØYÙH[[È
+š^Y[[ÈÙ^JNˆŠBˆš[
+ˆˆX›XÈÙ^HˆÜÚYÛ™YÉÜXšÙ^WÚ^	×_HŠBˆš[
+ˆˆY\ÜØYÙH\ÚˆˆÜÚYÛ™YÉÚ\ÚÞ—Ú^	×_HŠBˆš[
+ˆˆÚYÛ˜]\™HˆˆÜÚYÛ™YÉÜÚY×Ü—Ú^	×_HŠBˆš[
+ˆˆÚYÛ˜]\™HÈˆÜÚYÛ™YÉÜÚY×Ü×Ú^	×_HŠBˆš[
+ˆˆÝËTÈ›Ü›X[^™YˆÜÚYÛ™YÉÛÝ×Ü×Û›Ü›X[^™Y	×_HŠBˆš[
+ˆˆ™\šYšXØ][ÛˆˆÜÚYÛ™YÉÝ™\šYšYY	×_HŠB‚ˆYˆ\™ÜËœXšÙ^WØY˜[˜ÙHÜˆ\™ÜË˜[‚ˆ[[×ÜXšÙ^HHÛÛ\™\Ü×ÜXšÙ^JØØ[\—Û][Ù×Ù˜\Ý
+[[×Üš]šÙ^JJKš^
+
+BˆÝ\ÚÙ^HH\™ÜËœXšÙ^WØY˜[˜ÙHYˆ\™ÜËœXšÙ^WØY˜[˜ÙH[ÙH[[×ÜXšÙ^BˆY˜[˜ÙHHY˜[˜ÙWÜX›X×ÚÙ^JÝ\ÚÙ^K\™ÜËœÝ\ÈYˆ\™ÜËœXšÙ^WØY˜[˜ÙH[ÙHL
+Bˆš[
+—–ÌWH›ÜØ\™X›XËTÚ[Ø[È
+WÚHHWÊKLJH
+ÈÊNˆŠBˆš[
+ˆˆÝ\[™ÈX›XÈÙ^HˆØY˜[˜ÙVÉÜÝ\ÜXšÙ^WÚ^	×_HŠBˆš[
+ˆˆÝ\ÈˆÛ[ŠY˜[˜ÙVÉÜÝ\É×J_HŠBˆ›Üˆ][H[ˆY˜[˜ÙVÉÜÝ\É×N‚ˆÙ^HH][VÉØÛÛ\™\ÜÙYÜXšÙ^WÚ^	×HÜˆœÚ[][™š[š]H‚ˆš[
+ˆˆÝ\Ú][VÉÚ[™^	×NHˆÚÙ^_HŠB‚ˆYˆ\™ÜËÚYˆÜˆ\™ÜË˜[‚ˆ[[×ÝÚYˆH’ÝÒŽÑÐ•]V[]X[USŽT•ÖŽ˜ŒMÝÎQ‘ÝÍ˜LMÞÔˆ‚ˆXÛÙYHXÛÙWÝÚYŠ\™ÜËÚYˆYˆ\™ÜËÚYˆ[ÙH[[×ÝÚYŠBˆš[
+—–Ì×HÒQˆ›ÜØ\™\š]˜][ÛŽˆŠBˆš[
+ˆˆ™]ÛÜšÈˆÙXÛÙYÉÛ™]ÛÜšÉ×_HŠBˆš[
+ˆˆš]˜]HØØ[\ˆˆÙXÛÙYÉÜš]˜]WÚÙ^WÚ^	×HYˆ\™ÜËÚYˆ[ÙH	ÖÜ™YXÝY[[ÈÙ^WIßHŠBˆš[
+ˆˆX›XÈÙ^HˆÙXÛÙYÉÜX›X×ÚÙ^WÚ^	×_HŠBˆš[
+ˆˆ\ÚMŒˆÙXÛÙYÉÚ\ÚMŒÚ^	×_HŠBˆš[
+ˆˆYØXÞH”ÒˆÙXÛÙYÉÛYØXÞWÜœÚ	×_HŠBˆš[
+ˆˆ˜]]™HÙYÕÚ]ˆÙXÛÙYÉÛ˜]]™WÜÙYÝÚ]	×HÜˆ	Ý[˜]˜Z[X›H›Üˆ[˜ÛÛ\™\ÜÙYÙ^\ÉßHŠB‚ˆYˆ\™ÜË˜™XÚÌ—ÙXYÛ›ÜÙHÜˆ\™ÜË˜[‚ˆY™\ÜÈH\™ÜË˜™XÚÌ—ÙXYÛ›ÜÙHYˆ\™ÜË˜™XÚÌ—ÙXYÛ›ÜÙH[ÙH˜˜Ì\NMM™Ž\šÌØY]Ûž\žL^^˜MÙ^Ü›ˆ‚ˆXYÈH™XÚÌ—ÜÛ[[ÙÙXYÛ›ÜÙJY™\ÜÊBˆš[
+—–ÌH™XÚÌˆÚXÚÜÝ[HXYÛ›ÜÚ\ÎˆŠBˆš[
+ˆˆY™\ÜÈˆÙXYÖÉØY™\ÜÉ×_HŠBˆš[
+ˆˆ”ˆÙXYÖÉÚœ	×_HŠBˆš[
+ˆˆÚXÚÜÝ[H˜\šX[ˆÙXYÖÉØÚXÚÜÝ[WÝ˜\šX[	×_HŠBˆš[
+ˆˆÛ[[Ù™\ÚYX[ˆÙXYÖÉÜÛ[[ÙÜ™\ÚYX[	×_HŠBˆš[
+ˆˆ˜[YÚXÚÜÝ[HˆÙXYÖÉÝ˜[YØÚXÚÜÝ[I×_HŠB‚ˆYˆ\™ÜËØ[Ø˜XÚ×Ý˜XÙHÜˆ\™ÜË˜[‚ˆ\™Ù]H\™ÜËØ[Ø˜XÚ×Ý˜XÙHYˆ\™ÜËØ[Ø˜XÚ×Ý˜XÙH[ÙH˜˜Ì\NMM™Ž\šÌØY]Ûž\žL^^˜MÙ^Ü›ˆ‚ˆžN‚ˆ˜XÙHHØ[Ø˜XÚ×Ý˜XÙJ\™Ù]
+Bˆ^Ù\˜[YQ\œ›Üˆ\È^Î‚ˆ\œÙ\‹™\œ›ÜŠÝŠ^ÊJBˆš[
+—–Ì—HY™\ÜËÔX›XËRÙ^HØ[Ø˜XÚÎˆŠBˆš[
+ˆˆ[œ]ˆÝ˜XÙVÉÚ[œ]	×_HŠBˆš[
+ˆˆ\œÙY\ÈˆÝ˜XÙVÉÝ\I×_HŠBˆYˆ˜XÙK™Ù]
+	Ú\ÚMŒÚ^	ÊN‚ˆš[
+ˆˆTÒMŒˆÝ˜XÙVÉÚ\ÚMŒÚ^	×_HŠBˆYˆ˜XÙK™Ù]
+	ÝÚ]™\Ü×Ü›ÙÜ˜[WÚ^	ÊN‚ˆš[
+ˆˆÚ]™\ÜÈ›ÙÜ˜[HˆÝ˜XÙVÉÝÚ]™\Ü×Ü›ÙÜ˜[WÚ^	×_HŠBˆYˆ˜XÙK™Ù]
+	ÜX›X×ÚÙ^WÚ^	ÊN‚ˆš[
+ˆˆX›XÈÙ^HˆÝ˜XÙVÉÜX›X×ÚÙ^WÚ^	×_HŠBˆš[
+ˆˆš]˜]HÙ^H™XÛÝ™\žHˆÝ˜XÙVÉÜš]˜]WÚÙ^WÜ™XÛÝ™\˜X›I×_HŠBˆš[
+ˆˆ[Z]ˆÝ˜XÙVÉÛ[Z]	×_HŠBˆš[
+ˆ™]™\œÙH^Y\œÎˆŠBˆ›Üˆ^Y\ˆ[ˆ˜XÙVÈ›^Y\œÈ—N‚ˆš[
+ˆˆÛ^Y\–ÉÜÝYÙI×_HÞÛ^Y\–ÉÜÝ]\É×_WHŠBˆš[
+ˆˆÛ^Y\–ÉÙ]I×_HŠB‚ˆYˆ\™ÜË˜™[˜ÚX\š×Û][Üˆ\™ÜË˜[‚ˆ™[˜ÚH[—Ü\™›Ü›X[˜ÙWØ™[˜ÚX\šÊ
+Bˆš[
+—–ÌWH\™›Ü›X[˜ÙH™[˜ÚX\šÈ
+Ú[È\™HÚXÚÙY›Üˆ\]X[]JNˆŠBˆš[
+ˆˆšX[ÈˆØ™[˜ÚÉÝšX[É×_HŠBˆš[
+ˆˆÙ[™\šXÈQˆˆØ™[˜ÚÉÙÙ[™\šX×Û˜Y—ÜÙXÛÛ™É×N‹Ÿ\ÈŠBˆš[
+ˆˆš^YX˜\ÙHˆØ™[˜ÚÉÙš^YØ˜\ÙWÜÙXÛÛ™É×N‹Ÿ\È
+Ø™[˜ÚÉÙš^YØ˜\ÙWÜÜYY\Ü\˜Ù[	×N‹ŒYŸIH˜\Ý\ŠHŠBˆš[
+ˆˆ[™]šYX[[™\œÚ[ÛœÈˆØ™[˜ÚÉÚ[™]šYX[Ú[™\œÚ[Ûœ×ÜÙXÛÛ™É×N‹Ÿ\ÈŠBˆš[
+ˆˆ˜]Ú[™\œÚ[ÛœÈˆØ™[˜ÚÉØ˜]ÚÚ[™\œÚ[Ûœ×ÜÙXÛÛ™É×N‹Ÿ\È
+Ø™[˜ÚÉØ˜]ÚÚ[™\œÚ[Û—ÜÜYY\Ü\˜Ù[	×N‹ŒYŸIH˜\Ý\ŠHŠB‚ˆYˆ\™ÜË››Û˜ÙWÜ™]\ÙWØ]XÚÈÜˆ\™ÜË˜[‚ˆ]XÚÈHXÙØWÛ›Û˜ÙWÜ™]\ÙWØ]XÚ×Ý˜XÙJˆ[[×Üš]šÙ^KˆNÍMÌŒLX˜ÙYŽNÍMÌŒLX˜ÙYŽNÍMÌŒLX˜ÙYŽNÍMÌŒLX˜ÙY‹ˆ
+Bˆš[
+—–Ì—HPÑÐH›Û˜ÙKT™]\ÙH[[ÛœÝ˜][ÛŽˆŠBˆš[
+ˆˆÚ\™YˆˆØ]XÚÖÉÜÚ\™YÜ—Ú^	×_HŠBˆš[
+ˆˆ›Û˜ÙH™XÛÝ™\™YˆØ]XÚÖÉÛ›Û˜ÙWÜ™XÛÝ™\™Y	×_HŠBˆš[
+ˆˆš]˜]HÙ^H™XÛÝ™\™YˆØ]XÚÖÉÜš]˜]WÚÙ^WÜ™XÛÝ™\™Y	×_HŠB‚ˆÈÓHÛÛ[X[™Nˆ‘ÈŽMÎH›Û˜ÙBˆYˆ\™ÜËœ™˜ÍŽMÎWÝ˜XÙHÜˆ\™ÜË˜[‚ˆ\Ù×ÜÝˆH\™ÜËœ™˜ÍŽMÎWÝ˜XÙHYˆ\™ÜËœ™˜ÍŽMÎWÝ˜XÙH[ÙH”‘ÈŽMÎH]\›Z[š\ÝXÈ›Û˜ÙH\Ý^[ØY‚ˆš]—ÙH[[×Üš]šÙ^Bˆ™\ÈH™˜ÍŽMÎWÝ˜XÙJš]—Ù\Ù×ÜÝŠBˆš[
+—–ÌWH‘ÈŽMÎH]\›Z[š\ÝXÈ›Û˜ÙH\š]˜][Ûˆ[™Ú[™NˆŠBˆš[
+ˆš]˜]HÙ^HˆÜ™YXÝY[[ÈÙ^WHŠBˆš[
+ˆˆY\ÜØYÙH^[ØYˆžÜ™\ÖÉÛ\Ù×Ú[œ]	×_WˆŠBˆš[
+ˆˆY\ÜØYÙHÒKLMˆ\ÚŽˆÜ™\ÖÉÚ\ÚÞ—Ú^	×_HŠBˆš[
+ˆˆ]\›Z[š\ÝXÈ›Û˜ÙHÈˆÜ™\ÖÉÜ™˜ÍŽMÎWÚ×Ú^	×_HŠBˆš[
+ˆˆ\[Y\˜[Ú[ˆˆ
+Ü™\ÖÉÙ\[Y\˜[Ô—ØY™š[™I×VÌNŒKÜ™\ÖÉÙ\[Y\˜[Ô—ØY™š[™I×VÌWNŒJHŠBˆš[
+ˆ›Ü\Hˆ]\›Z[š\ÝXÈ›Üˆ\ÈÙ^H[™Y\ÜØYÙH\ÚˆŠB‚ˆÈÓHÛÛ[X[™Žˆ’TLÍØÚ›Üœˆ˜XÙBˆYˆ\™ÜËœØÚ›Üœ—Ý˜XÙHÜˆ\™ÜË˜[‚ˆ\Ù×ÜÝˆH\™ÜËœØÚ›Üœ—Ý˜XÙHYˆ\™ÜËœØÚ›Üœ—Ý˜XÙH[ÙH•\›ÛÝ^[ØY‹›\Ý
+Ì‹ˆŠBˆš]—ÙH[[×Üš]šÙ^Bˆ™\ÈHØÚ›Üœ—Øš\ÍÜÚYÛ—Ø[™Ý™\šYžWÝ˜XÙJˆš]—Ù\Ù×ÜÝ‹]^Ü˜[™X\™ÜË˜]^Ü˜[™Üˆˆ—ˆ
+ˆÌ‚ˆ
+Bˆš[
+—–Ì—H’TLÍØÚ›ÜœˆÚYÛ˜]\™H	ˆ\›ÛÝ™\šYšXØ][Ûˆ˜XÙNˆŠBˆš[
+ˆš]˜]HÙ^HˆÜ™YXÝY[[ÈÙ^WHŠBˆš[
+ˆˆSÛ›HX›XÈÙ^HÞˆÜ™\ÖÉÞÛÛ›WÜXšÙ^WÔÚ^	×_H
+H]™[ŽˆÜ™\ÖÉÔÞWÙ]™[‰×_JHŠBˆš[
+ˆˆ]\›Z[š\ÝXÈ›Û˜ÙHÈˆÜ™\ÖÉÛ›Û˜ÙWÚ×Ú^	×_HŠBˆš[
+ˆˆ\[Y\˜[Ú[—ÞˆÜ™\ÖÉÔ—ÞÚ^	×_HŠBˆš[
+ˆˆÚ[[™ÙH\ÚHˆÜ™\ÖÉØÚ[[™ÙWÙWÚ^	×_HŠBˆš[
+ˆˆÚYÛ˜]\™HØØ[\ˆÈˆÜ™\ÖÉÜÚY×Ü×Ú^	×_HŠBˆš[
+ˆˆÈ
+ˆÈY™š[™HÚ[ˆ
+Ü™\ÖÉÜÑ×ØY™š[™I×VÌNŒKÜ™\ÖÉÜÑ×ØY™š[™I×VÌWNŒJHŠBˆš[
+ˆˆˆ
+ÈJ”Y™š[™HÚ[ˆ
+Ü™\ÖÉÔ—Ü\×ÙTØY™š[™I×VÌNŒKÜ™\ÖÉÔ—Ü\×ÙTØY™š[™I×VÌWNŒJHŠBˆš[
+ˆˆ™\šYšXØ][ÛˆÝ]\Èˆ™\šYšYYOˆÜ™\ÖÉÝ™\šYšYY	×_HŠBˆš[
+ˆ™\šYšXØ][Ûˆ›Ü\HˆÈ
+ˆÈOHˆ
+ÈH
+ˆ
+™\›ÈØØ[\ˆ[™\œÚ[ÛœÈ™\]Z\™Y
+HŠB‚ˆÈÓHÛÛ[X[™Îˆ\Ú]ËPÝ\™BˆYˆ\™ÜËš\ÚÝ×ØÝ\™HÜˆ\™ÜË˜[‚ˆÙYYÜÝˆH\™ÜËš\ÚÝ×ØÝ\™HYˆ\™ÜËš\ÚÝ×ØÝ\™H[ÙH”ÑTÔZÙWØÝ\™WÜÚ[ÜÙYY‚ˆ˜ÈH\ÚÝ×ØÝ\™WÝžWØ[™Ú[˜Ü™[Y[
+ÙYYÜÝŠBˆš[
+—–Ì×H\Ú]ËPÝ\™HžKX[™R[˜Ü™[Y[[™Ú[™H
+ÙXÜMšÌJNˆŠBˆš[
+ˆˆÙYYÝš[™È[œ]ˆžÚ˜ÖÉÜÙYY	×_WˆŠBˆš[
+ˆˆšY\È[[ÛÛ][ÛˆˆÚ˜ÖÉÝšY\É×_HŠBˆš[
+ˆˆ\š]™YÚ[ÞˆÚ˜ÖÉÜÚ[ÞÚ^	×_HŠBˆš[
+ˆˆ\š]™YÚ[ÞHˆÚ˜ÖÉÜÚ[ÞWÚ^	×_HŠBˆš[
+ˆˆÝ\™H™\šYšXØ][ÛˆˆWŒˆOHŒÈ
+ÈÈ[ÙOˆÚ˜ÖÉÛÛ—ØÝ\™I×_HŠB‚ˆÈÓHÛÛ[X[™ˆ™\šYšXX›HÚ[ˆYˆ\™ÜË™\šYšXX›WÜÚ[Üˆ\™ÜË˜[‚ˆÙYYÜÝˆH\™ÜË™\šYšXX›WÜÚ[Yˆ\™ÜË™\šYšXX›WÜÚ[[ÙH’TÓ×ÒQP×ÌMNM—ÍWÜÙYY‚ˆœH™\šYšXX›WÜÙ]YÜ˜[™ÛWÜÚ[
+ÙYYÜÝŠBˆš[
+—–ÍH]\›Z[š\ÝXØ[H\š]™YÚ[Ù[™\˜]ÜŽˆŠBˆš[
+ˆˆÙYYÝš[™È[œ]ˆžÝœÉÜÙYY	×_WˆŠBˆš[
+ˆˆ\š]™YØØ[\ˆÈˆÝœÉÙ\š]™YÜØØ[\—Ø×Ú^	×_HŠBˆš[
+ˆˆ\š]™YÚ[WÞˆÝœÉÝ™\šYšXX›WÜÚ[ÔWÞÚ^	×_HŠBˆš[
+ˆˆ\š]™YÚ[WÞHˆÝœÉÝ™\šYšXX›WÜÚ[ÔWÞWÚ^	×_HŠBˆš[
+ˆˆ\š]˜][Ûˆ›ÝHˆÝœÉÝ\ÝÜ›Ü\I×_HŠB‚ˆÈÓHÛÛ[X[™Nˆ]TÚYÌˆÙ^HYÙÜ™YØ][Û‚ˆYˆ\™ÜË›]\ÚYÌ—ØYÙÜ™YØ]HÜˆ\™ÜË˜[‚ˆÙ^\ÈH\™ÜË›]\ÚYÌ—ØYÙÜ™YØ]HYˆ\™ÜË›]\ÚYÌ—ØYÙÜ™YØ]H[ÙHÂˆŒÎX™MÙYŽYØ˜˜XÍMXLŒŽMXÙNÌŒÌŽX™˜ÙŒ™ÙLŽMNYŒŽMXŒM™ŽMÎN‹ˆŒŒÎ˜™™MYŒ˜LMÎY˜™NMÍÍ™MYŽM™XMÌÍØ™MY˜™XŒLXØÎLL˜Ì˜MH‚ˆBˆ]\ÚYÈH]\ÚYÌ—ØYÙÜ™YØ]WÚÙ^\ÊÙ^\ÊBˆš[
+—–ÍWH]TÚYÌˆ][KT\HÙ^HYÙÜ™YØ][Ûˆ[™Ú[™NˆŠBˆš[
+ˆˆYÙÜ™YØ]YÙ^\ÈÛÝ[ˆÛ]\ÚYÖÉÚ[œ]ÜXšÙ^\×ØÛÝ[	×_HŠBˆš[
+ˆˆÙ^HÛÙY™šXÚY[ÈWÚHˆÛ]\ÚYÖÉÚÙ^WØÛÙY™šXÚY[×ØWÚI×_HŠBˆš[
+ˆˆYÙÜ™YØ]YÚ[ØYÙÎˆ
+Û]\ÚYÖÉØYÙÜ™YØ]YÜÚ[ÞÚ^	×_KÛ]\ÚYÖÉØYÙÜ™YØ]YÜÚ[ÞWÚ^	×_JHŠB‚ˆÈÓHÛÛ[X[™Žˆ\›ÛÝÙXZÂˆYˆ\™ÜË\›ÛÝÝÙXZÈÜˆ\™ÜË˜[‚ˆ×ÞH\™ÜË\›ÛÝÝÙXZÖÌHYˆ\™ÜË\›ÛÝÝÙXZÈ[ÙHŒÎ˜™™MYŒ˜LMÎY˜™NMÍÍ™MYŽM™XMÌÍØ™MY˜™XŒLXØÎLL˜Ì˜MH‚ˆÙXZÈH\›ÛÝÝÙXZ×ÜXšÙ^J×Þ
+Bˆš[
+—–Í—H\›ÛÝÙXZÈ[™Ú[™H
+HH
+È
+‘ÊNˆŠBˆš[
+ˆˆ[\›˜[X’Ù^HÞˆÝÙXZÖÉÚ[\›˜[ÜXšÙ^WÞÚ^	×_HŠBˆš[
+ˆˆ\›ÛÝÙXZÈˆÝÙXZÖÉÝ\›ÛÝÝÙXZ×ÝÚ^	×_HŠBˆš[
+ˆˆÝ]]\›ÛÝÙ^HWÞˆÝÙXZÖÉÛÝ]]Ý\›ÛÝÜXšÙ^WÞÚ^	×_HŠB‚ˆÈÓHÛÛ[X[™ÎˆÛ™È\š[Ù“‘ÂˆYˆ\™ÜË™X×Ü›™ÈÜˆ\™ÜË˜[‚ˆÙYYÜÝˆH\™ÜË™X×Ü›™ÈYˆ\™ÜË™X×Ü›™È[ÙHšYÚÙ[WÜÚ[][][Û—ÜÙYY‚ˆ›™ÈHÛ™×Ü\š[ÙÙX×Ü›™×ÙÙ[™\˜]ÜŠÙYYÜÝŠBˆš[
+—–Í×HÛ™ËT\š[Ù[\XÈÝ\™H“‘È™XÝÜˆÙ[™\˜]ÜŽˆŠBˆš[
+ˆˆÙYYÝš[™È[œ]ˆžÜ›™ÖÉÜÙYY	×_WˆŠBˆš[
+ˆˆÙXÝ\š]H›ÝHˆÜ›™ÖÉÜÙXÝ\š]WÛ›ÝI×_HŠBˆš[
+ˆÙ[™\˜]Y“‘È™XÝÜœÎˆŠBˆ›ÜˆY™XÈ[ˆ[[Y\˜]J›™ÖÉÙÙ[™\˜]YÜÙ]YÜ˜[™ÛWÝ™XÝÜœÉ×JN‚ˆš[
+ˆˆ[HÚY
+Ì_HˆÝ™XÖÉØÛÛÜ™ÞÚ^	×VÎŒN_K‹‹ˆNˆÝ™XÖÉØÛÛÜ™ÞWÚ^	×VÎŒN_K‹‹ˆŠB‚ˆš[
+Hˆ
+ˆ
+B‚šYˆ×Û˜[YW×ÈOH—×ÛXZ[—×ÈŽ‚ˆXZ[Š
+B

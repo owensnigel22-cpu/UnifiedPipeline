@@ -2,15 +2,16 @@
 
 from __future__ import annotations
 
+import math
 from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from itertools import product
+from threading import Event
 
 from keylab.sat.solver import SolverResult, run_solver
 
 _MAX_CUBE_DEPTH = 16
-_WORKER_DIMACS: _PreparedDIMACS | None = None
 
 
 @dataclass(frozen=True)
@@ -67,41 +68,52 @@ def generate_cubes(variables: tuple[int, ...], depth: int) -> tuple[tuple[int, .
 
 def _prepare_dimacs(dimacs: str) -> _PreparedDIMACS:
     """Validate a DIMACS formula and retain its reusable clause body."""
-    lines = dimacs.splitlines()
-    header_index = next(
-        (index for index, line in enumerate(lines) if line.strip().startswith("p ")),
-        None,
-    )
-    if header_index is None:
-        raise ValueError("DIMACS input must contain a problem header")
+    from io import StringIO
 
-    header = lines[header_index].split()
-    if len(header) != 4 or header[1] != "cnf":
-        raise ValueError("DIMACS header must have the form 'p cnf VARIABLES CLAUSES'")
-    try:
-        variable_count, clause_count = int(header[2]), int(header[3])
-    except ValueError as exc:
-        raise ValueError("DIMACS header variable and clause counts must be integers") from exc
-    if variable_count < 0 or clause_count < 0:
-        raise ValueError("DIMACS header counts must be nonnegative")
-
-    tokens: list[int] = []
-    body_lines = []
-    for line in lines[header_index + 1 :]:
+    preamble_lines: list[str] = []
+    body_lines: list[str] = []
+    variable_count: int | None = None
+    clause_count: int | None = None
+    clause_terminators = 0
+    last_literal: int | None = None
+    for raw_line in StringIO(dimacs):
+        line = raw_line.rstrip("\r\n")
         stripped = line.strip()
+        if variable_count is None:
+            if stripped.startswith("p "):
+                header = stripped.split()
+                if len(header) != 4 or header[1] != "cnf":
+                    raise ValueError("DIMACS header must have the form 'p cnf VARIABLES CLAUSES'")
+                try:
+                    variable_count, clause_count = int(header[2]), int(header[3])
+                except ValueError as exc:
+                    raise ValueError("DIMACS header variable and clause counts must be integers") from exc
+                if variable_count < 0 or clause_count < 0:
+                    raise ValueError("DIMACS header counts must be nonnegative")
+                continue
+            preamble_lines.append(line)
+            continue
+
         body_lines.append(line)
         if not stripped or stripped.startswith("c"):
             continue
-        try:
-            tokens.extend(int(token) for token in stripped.split())
-        except ValueError as exc:
-            raise ValueError("DIMACS clauses must contain integer literals") from exc
-    if clause_count != tokens.count(0) or (tokens and tokens[-1] != 0):
-        raise ValueError("DIMACS clause data does not match the declared clause count")
-    if any(literal != 0 and abs(literal) > variable_count for literal in tokens):
-        raise ValueError("DIMACS clause references an unallocated variable")
+        for token in stripped.split():
+            try:
+                literal = int(token)
+            except ValueError as exc:
+                raise ValueError("DIMACS clauses must contain integer literals") from exc
+            last_literal = literal
+            if literal == 0:
+                clause_terminators += 1
+            elif abs(literal) > variable_count:
+                raise ValueError("DIMACS clause references an unallocated variable")
 
-    preamble = "\n".join(lines[:header_index])
+    if variable_count is None or clause_count is None:
+        raise ValueError("DIMACS input must contain a problem header")
+    if clause_count != clause_terminators or (last_literal is not None and last_literal != 0):
+        raise ValueError("DIMACS clause data does not match the declared clause count")
+
+    preamble = "\n".join(preamble_lines)
     if preamble:
         preamble += "\n"
     body = "\n".join(body_lines)
@@ -115,22 +127,18 @@ def dimacs_with_assumptions(dimacs: str, assumptions: tuple[int, ...]) -> str:
     return _prepare_dimacs(dimacs).with_assumptions(assumptions)
 
 
-def _initialize_cube_worker(dimacs: _PreparedDIMACS) -> None:
-    global _WORKER_DIMACS
-    _WORKER_DIMACS = dimacs
-
-
 def _solve_one_cube(
+    dimacs: _PreparedDIMACS,
     executable: str,
     cube: tuple[int, ...],
     timeout: float,
+    cancel_event: Event,
 ) -> tuple[tuple[int, ...], SolverResult]:
-    if _WORKER_DIMACS is None:
-        raise RuntimeError("cube worker was not initialized with a DIMACS formula")
     return cube, run_solver(
         executable,
-        _WORKER_DIMACS.with_assumptions(cube),
+        dimacs.with_assumptions(cube),
         timeout=timeout,
+        cancel_event=cancel_event,
     )
 
 
@@ -151,29 +159,31 @@ def solve_parallel_cubes(
     the aggregate is UNKNOWN if any cube timed out or returned UNKNOWN, and
     UNSAT only if every cube proved UNSAT.
     """
-    if workers < 1:
+    if type(workers) is not int or workers < 1:
         raise ValueError("workers must be positive")
-    if timeout <= 0:
+    if type(timeout) not in (int, float) or not math.isfinite(timeout) or timeout <= 0:
         raise ValueError("timeout must be positive")
     _validate_cube_inputs(variables, depth)
     cube_iterator = iter(_iter_cubes(variables, depth))
     total_cubes = 1 << depth
     # Parse and validate once; worker processes receive the formula only at startup.
     base_dimacs = _prepare_dimacs(dimacs)
+    worker_count = min(workers, total_cubes)
+    cancel_event = Event()
 
     completed = 0
     saw_unknown = False
     with ThreadPoolExecutor(
-        max_workers=workers,
-        initializer=_initialize_cube_worker,
-        initargs=(base_dimacs,),
+        max_workers=worker_count,
     ) as executor:
         pending = {}
-        for _ in range(workers):
+        for _ in range(worker_count):
             cube = next(cube_iterator, None)
             if cube is None:
                 break
-            future = executor.submit(_solve_one_cube, executable, cube, timeout)
+            future = executor.submit(
+                _solve_one_cube, base_dimacs, executable, cube, timeout, cancel_event
+            )
             pending[future] = cube
 
         while pending:
@@ -182,6 +192,7 @@ def solve_parallel_cubes(
             cube, result = future.result()
             completed += 1
             if result.status == "SATISFIABLE":
+                cancel_event.set()
                 for outstanding in pending:
                     outstanding.cancel()
                 return ParallelCubeResult(
@@ -198,9 +209,11 @@ def solve_parallel_cubes(
             if next_cube is not None:
                 next_future = executor.submit(
                     _solve_one_cube,
+                    base_dimacs,
                     executable,
                     next_cube,
                     timeout,
+                    cancel_event,
                 )
                 pending[next_future] = next_cube
 

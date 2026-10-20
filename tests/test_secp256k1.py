@@ -14,6 +14,7 @@ from keylab.ec.secp256k1 import (
     decompress_pubkey,
     ecdsa_sign_digest,
     ecdsa_verify_digest,
+    glv_decompose,
     is_on_curve,
     point_add,
     point_add_affine,
@@ -22,6 +23,7 @@ from keylab.ec.secp256k1 import (
     point_negate_affine,
     public_key_from_private_scalar,
     scalar_mult,
+    wnaf_digits,
 )
 
 
@@ -103,6 +105,35 @@ def test_windowed_generator_multiplication_matches_double_and_add() -> None:
 
     for scalar in scalars:
         assert scalar_mult(scalar) == _double_and_add_reference(scalar)
+
+
+def test_glv_split_and_joint_multiplication_match_reference() -> None:
+    rng = random.Random(0x61A)
+    scalars = [0, 1, 2, N - 1, N, N + 1]
+    scalars.extend(rng.randrange(N) for _ in range(24))
+    for scalar in scalars:
+        k1, k2 = glv_decompose(scalar)
+        assert (k1 + 0x5363AD4CC05C30E0A5261C028812645A122E22EA20816678DF02967C1B23BD72 * k2 - scalar) % N == 0
+        assert scalar_mult(scalar, backend="python-glv") == scalar_mult(scalar, backend="python")
+
+
+def test_fixed_base_wnaf_matches_reference_and_reconstructs_scalar() -> None:
+    rng = random.Random(0x574E4146)
+    scalars = [0, 1, 2, 3, 15, 16, N - 1]
+    scalars.extend(rng.randrange(N) for _ in range(12))
+    for scalar in scalars:
+        digits = wnaf_digits(scalar)
+        assert sum(digit << bit for bit, digit in enumerate(digits)) == scalar
+        assert all(digit == 0 or digit & 1 for digit in digits)
+        assert scalar_mult(scalar, backend="python-wnaf") == scalar_mult(scalar, backend="python")
+
+
+def test_full_affine_window_backend_matches_reference() -> None:
+    rng = random.Random(0xAFF1AE)
+    scalars = [0, 1, 2, 15, 16, N - 1, N, N + 1]
+    scalars.extend(rng.randrange(N) for _ in range(12))
+    for scalar in scalars:
+        assert scalar_mult(scalar, backend="python-affine-window") == scalar_mult(scalar, backend="python")
 
 
 def test_arbitrary_point_scalar_multiplication_still_uses_correct_group_result() -> None:
