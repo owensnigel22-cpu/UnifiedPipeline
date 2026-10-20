@@ -49,7 +49,12 @@ from keylab.hashes.sha256_cnf import (
     sha256_secret_prefix_cnf,
 )
 from keylab.numtheory.core import euler_check, extended_gcd, fermat_check, totient
-from keylab.numtheory.rsa import batch_gcd, hastad_broadcast, rsa_exponentiation_roundtrip
+from keylab.numtheory.rsa import (
+    batch_gcd,
+    hastad_broadcast,
+    pollard_rho_factor,
+    rsa_exponentiation_roundtrip,
+)
 from keylab.sat.anf import MQCNFEncoder
 from keylab.sat.backends import solve_cnf
 from keylab.sat.diagnostics import write_formula_diagnostics
@@ -122,6 +127,37 @@ def _rsa_batch_gcd(args: argparse.Namespace, parser: argparse.ArgumentParser) ->
         )
     )
     return 0
+
+
+def _rsa_pollard_rho(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
+    try:
+        result = pollard_rho_factor(
+            args.modulus,
+            max_iterations=args.max_iterations,
+            batch_size=args.batch_size,
+            max_attempts=args.max_attempts,
+            seed=args.seed,
+        )
+    except ValueError as exc:
+        parser.error(str(exc))
+    print(
+        json.dumps(
+            {
+                "mode": "bounded-rsa-pollard-brent-factor-search",
+                "factor": result.factor,
+                "cofactor": result.cofactor,
+                "success": result.success,
+                "iterations": result.iterations,
+                "attempts": result.attempts,
+                "warning": (
+                    "Educational bounded factor search; Pollard rho is not practical "
+                    "for properly generated standard-size RSA moduli."
+                ),
+            },
+            sort_keys=True,
+        )
+    )
+    return 0 if result.success else 1
 
 
 def _rsa_hastad_broadcast(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
@@ -1686,6 +1722,15 @@ def build_parser() -> argparse.ArgumentParser:
         required=True,
         help="RSA modulus to compare; repeat for each modulus",
     )
+    rsa_rho = commands.add_parser(
+        "rsa-pollard-rho",
+        help="run a bounded Pollard–Brent factor search on a toy RSA modulus",
+    )
+    rsa_rho.add_argument("--modulus", type=int, required=True)
+    rsa_rho.add_argument("--max-iterations", type=int, default=1_000_000)
+    rsa_rho.add_argument("--batch-size", type=int, default=128)
+    rsa_rho.add_argument("--max-attempts", type=int, default=16)
+    rsa_rho.add_argument("--seed", type=int, help="optional nonnegative seed for reproducible runs")
     majority = commands.add_parser(
         "sha256-maj-invert",
         help="invert one unknown word in a 32-bit SHA majority operation",
@@ -2102,6 +2147,8 @@ def main(argv: list[str] | None = None) -> int:
         return _rsa_hastad_broadcast(args, parser)
     if args.command == "rsa-batch-gcd":
         return _rsa_batch_gcd(args, parser)
+    if args.command == "rsa-pollard-rho":
+        return _rsa_pollard_rho(args, parser)
     if args.command == "sha256-maj-invert":
         return _sha256_majority_invert(args, parser)
     if args.command == "sha256-ch-invert":

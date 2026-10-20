@@ -154,4 +154,3 @@ def verify_taproot_script_path(output_key_x: bytes, script: bytes, control_block
 
 __all__ = ["TaprootOutput", "lift_x", "tagged_hash", "tapbranch_hash", "tapleaf_hash",
            "taproot_control_block", "taproot_output", "taproot_output_from_point", "verify_taproot_script_path"]
-
