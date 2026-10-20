@@ -80,6 +80,12 @@ model, solves it with an installed in-process SAT backend, and checks the
 candidate by forward hashing. It is a small circuit-wiring check, not a claim
 of full SHA-256 inversion.
 
+`keylab.sat.BitVec32` supports concrete folding for ROTR, XOR, AND, OR, SHA-256
+small sigma0, and ADD32. Fully concrete operations allocate no SAT variables or
+clauses; symbolic words use Keylab's CNF gates and can be recovered from a SAT
+model. `add` is explicitly modulo 2^32 and drops carry-out. It is intended for
+SHA-256 word arithmetic, not RSA or general wide-integer multiplication.
+
 `keylab.sat.cryptominisat.CryptoMiniSatFormula` writes CryptoMiniSat's extended
 DIMACS rows for native XOR constraints. That format is solver-specific; the
 standard-CNF parallel cube solver does not accept native XOR rows. XOR rows
