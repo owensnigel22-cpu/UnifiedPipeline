@@ -37,6 +37,17 @@ the Python reference implementation, and never prints the fixture WIF or
 scalar. Throughput is machine-dependent; remeasure before citing it.
 The benchmark includes fixed-base width-5 wNAF and an experimental GLV
 implementation alongside the default Python path and available native backends.
+Use `keylab benchmark-ec` for a matched ECC-only comparison. By default it uses
+the same 12 deterministic full-width scalars for the package Python, affine
+window, GLV, wNAF, the v65 fixed-base window algorithm, and each installed native
+backend. It verifies every result against the Python reference, warms backends
+before timing, randomizes method order per repetition, and reports median
+keys/second across five repetitions. `--count`, `--seed`, `--repetitions`, and
+`--backend` make the run reproducible or narrower. The v65 table setup cost is
+reported separately and excluded from operation timing; its table algorithm
+is ported into Keylab's Jacobian primitives, so this compares algorithms rather
+than importing and executing the attachment as a module. The benchmark omits
+all scalar values.
 Use `keylab benchmark-wifs --count 1000 --backend all` for a randomly generated
 multi-key corpus, or `keylab benchmark-wifs --wif-file path-to-wifs.txt` for a
 local file with one WIF per line. The file and synthetic corpus are processed
@@ -58,7 +69,7 @@ input WIF. The WIF is the value you enter; the tool does not generate or save a
 new one. Use `--wif` only for throwaway/test keys because command-line
 arguments may be recorded in shell history or process listings.
 
-Run `keylab feature-audit` to see which feature implementation and test-source
+Run `keylab audit` (or `keylab feature-audit`) to see which feature implementation and test-source
 files are present. It distinguishes file presence from tests that actually
 passed and benchmarks that were actually run. `keylab hash-cnf-selftest` runs
 known-input solve-and-forward-verification when a supported external SAT solver

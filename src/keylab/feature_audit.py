@@ -27,6 +27,7 @@ _FEATURES = (
     FeatureEvidence("Taproot script tree and control blocks", "src/keylab/encoding/taproot.py", "tests/test_taproot.py"),
     FeatureEvidence("secp256k1 GLV experimental multiplier", "src/keylab/ec/secp256k1.py", "tests/test_secp256k1.py", "keylab benchmark-pubkey --backend all", "Experimental Python implementation; benchmark before choosing it."),
     FeatureEvidence("fixed-base width-5 wNAF multiplier", "src/keylab/ec/secp256k1.py", "tests/test_secp256k1.py", "keylab benchmark-pubkey --backend all", "Experimental Python implementation; compare on the current machine."),
+    FeatureEvidence("reproducible ECC backend benchmark", "src/keylab/benchmarks.py", "tests/test_pubkey_benchmark.py", "keylab benchmark-ec", "Uses a shared seeded scalar corpus, correctness checks, warmup exclusion, randomized method order, and median timings; v65 window algorithm is ported for comparison."),
     FeatureEvidence("SHA-256 CNF model and known-input solve verification", "src/keylab/hashes/sha256_cnf.py", "tests/test_sha256_cnf.py", "keylab hash-cnf-selftest"),
     FeatureEvidence("SHA-256 CNF XOR encoding comparison", "src/keylab/hashes/sha256_cnf.py", "tests/test_sha256_cnf.py", "keylab sha256-cnf-benchmark"),
     FeatureEvidence("Parallel SAT cube solving", "src/keylab/sat/parallel.py", "tests/test_parallel_sat.py", "keylab sat-throughput-benchmark"),

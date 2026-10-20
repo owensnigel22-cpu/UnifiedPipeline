@@ -4,14 +4,27 @@ from __future__ import annotations
 
 import hashlib
 import platform
+import random
 import secrets
 import sys
 from collections.abc import Iterable
+from functools import lru_cache
 from importlib.util import find_spec
 from pathlib import Path
 from time import perf_counter_ns
 
-from keylab.ec.secp256k1 import N, compress_pubkey, is_on_curve, scalar_mult
+from keylab.ec.secp256k1 import (
+    _INFINITY,
+    G,
+    N,
+    _to_affine,
+    _to_jacobian,
+    compress_pubkey,
+    is_on_curve,
+    point_add,
+    point_double,
+    scalar_mult,
+)
 from keylab.encoding.address import (
     hash160,
     p2pkh_address,
@@ -21,6 +34,128 @@ from keylab.encoding.address import (
 )
 from keylab.encoding.wif import decode as decode_wif
 from keylab.encoding.wif import encode as encode_wif
+
+
+@lru_cache(maxsize=1)
+def _v65_fixed_base_table() -> tuple[tuple[tuple[int, int, int], ...], ...]:
+    """Build the 64-window Jacobian table used by the attached v65 script."""
+    windows = []
+    base = _to_jacobian(G)
+    for _ in range(64):
+        multiples = [_INFINITY]
+        current = base
+        for _digit in range(1, 16):
+            multiples.append(current)
+            current = point_add(current, base)
+        windows.append(tuple(multiples))
+        for _ in range(4):
+            base = point_double(base)
+    return tuple(windows)
+
+
+def _v65_fixed_base_mult(scalar: int) -> tuple[int, int] | None:
+    """Run v65's precomputed, low-nibble-first fixed-base window algorithm."""
+    result = _INFINITY
+    for window_index, multiples in enumerate(_v65_fixed_base_table()):
+        digit = (scalar >> (4 * window_index)) & 0xF
+        if digit:
+            result = point_add(result, multiples[digit])
+    return _to_affine(result)
+
+
+def benchmark_ec(
+    *,
+    count: int = 12,
+    seed: int = 20261020,
+    repetitions: int = 5,
+    backend: str = "all",
+) -> dict[str, object]:
+    """Compare generator multiplication on one seeded corpus with median timings.
+
+    The ``v65-windowed`` method ports the attached monolith's 64-position,
+    4-bit Jacobian table algorithm into this benchmark. Setup and correctness
+    checks are excluded from measured repetitions. No scalars are returned.
+    """
+    if type(count) is not int or count < 1:
+        raise ValueError("count must be a positive integer")
+    if type(seed) is not int or seed < 0:
+        raise ValueError("seed must be a nonnegative integer")
+    if type(repetitions) is not int or repetitions < 1:
+        raise ValueError("repetitions must be a positive integer")
+    available = ("python", "python-affine-window", "python-glv", "python-wnaf", "v65-windowed") + tuple(
+        name for name in ("coincurve", "fastecdsa") if find_spec(name) is not None
+    )
+    methods = available if backend == "all" else (backend,)
+    if backend != "all" and backend not in available:
+        raise ValueError(f"unsupported or unavailable backend {backend!r}; choose from {available}")
+
+    rng = random.Random(seed)
+    scalars = tuple(rng.randrange(1, N) for _ in range(count))
+    references = tuple(scalar_mult(scalar, backend="python") for scalar in scalars)
+    if any(point is None for point in references):
+        raise ArithmeticError("reference multiplication unexpectedly produced infinity")
+
+    _v65_fixed_base_table.cache_clear()
+    setup_started = perf_counter_ns()
+    _v65_fixed_base_table()
+    v65_table_setup_ms = (perf_counter_ns() - setup_started) / 1_000_000
+
+    functions = {
+        "v65-windowed": _v65_fixed_base_mult,
+        **{name: (lambda scalar, name=name: scalar_mult(scalar, backend=name)) for name in available if name != "v65-windowed"},
+    }
+    warmup_ms: dict[str, float] = {}
+    for name in methods:
+        started = perf_counter_ns()
+        # Warm lazy tables/native imports, then verify output for the full shared corpus.
+        functions[name](scalars[0])
+        warmup_ms[name] = (perf_counter_ns() - started) / 1_000_000
+        for scalar, reference in zip(scalars, references, strict=True):
+            if functions[name](scalar) != reference:
+                raise ArithmeticError(f"{name} produced a public point different from the Python reference")
+
+    elapsed_by_method: dict[str, list[int]] = {name: [] for name in methods}
+    order_rng = random.Random(seed ^ 0x4B65794C61624543)
+    for _ in range(repetitions):
+        method_order = list(methods)
+        order_rng.shuffle(method_order)
+        for name in method_order:
+            started = perf_counter_ns()
+            for scalar in scalars:
+                functions[name](scalar)
+            elapsed_by_method[name].append(perf_counter_ns() - started)
+
+    rows = []
+    for name in methods:
+        samples = sorted(elapsed_by_method[name])
+        middle = len(samples) // 2
+        median_ns = (
+            samples[middle]
+            if len(samples) % 2
+            else (samples[middle - 1] + samples[middle]) / 2
+        )
+        rows.append(
+            {
+                "method": name,
+                "median_ms_per_corpus": median_ns / 1_000_000,
+                "median_keys_per_second": count * 1_000_000_000 / median_ns,
+                "samples_ms": [elapsed / 1_000_000 for elapsed in elapsed_by_method[name]],
+                "warmup_ms_excluded": warmup_ms[name],
+                "outputs_match_reference": True,
+            }
+        )
+    return {
+        "benchmark": "secp256k1-generator-scalar-multiplication",
+        "count": count,
+        "seed": seed,
+        "repetitions": repetitions,
+        "timing_statistic": "median elapsed time over the same scalar corpus",
+        "v65_table_setup_ms_excluded": v65_table_setup_ms,
+        "methods": rows,
+        "machine": platform.platform(),
+        "python_version": sys.version.split()[0],
+        "note": "The v65-windowed row is the v65 algorithm ported into Keylab's Jacobian primitives; scalar values are intentionally omitted.",
+    }
 
 
 def benchmark_wif_to_pubkey(
@@ -331,6 +466,7 @@ def benchmark_wif_file(
 
 __all__ = [
     "available_scalar_backends",
+    "benchmark_ec",
     "benchmark_hash160_only",
     "benchmark_multiple_wifs",
     "benchmark_synthetic_wifs",

@@ -1,6 +1,7 @@
 import pytest
 
 from keylab.benchmarks import (
+    benchmark_ec,
     benchmark_hash160_only,
     benchmark_multiple_wifs,
     benchmark_synthetic_wifs,
@@ -110,3 +111,34 @@ def test_hash160_cli_emits_json(capsys) -> None:
     output = capsys.readouterr().out
     assert '"keys_processed": 3' in output
     assert '"benchmark": "hash160-compressed-public-keys"' in output
+
+
+def test_ec_benchmark_uses_one_corpus_and_checks_v65_windowed_backend() -> None:
+    report = benchmark_ec(count=3, seed=1234, repetitions=3, backend="v65-windowed")
+    assert report["count"] == 3
+    assert report["seed"] == 1234
+    assert report["repetitions"] == 3
+    assert report["timing_statistic"].startswith("median")
+    row = report["methods"][0]
+    assert row["method"] == "v65-windowed"
+    assert row["outputs_match_reference"] is True
+    assert len(row["samples_ms"]) == 3
+    assert row["median_keys_per_second"] > 0
+    assert "scalars" not in str(report)
+
+
+def test_ec_benchmark_cli_prints_reproducibility_metadata(capsys) -> None:
+    assert main([
+        "benchmark-ec", "--count", "2", "--seed", "7", "--repetitions", "3", "--backend", "v65-windowed"
+    ]) == 0
+    output = capsys.readouterr().out
+    assert "scalars=2" in output
+    assert "seed=7" in output
+    assert "repetitions=3" in output
+    assert "v65-windowed" in output
+    assert "Correctness:" in output
+
+
+def test_audit_alias_runs_feature_audit(capsys) -> None:
+    assert main(["audit"]) == 0
+    assert '"audit"' in capsys.readouterr().out
