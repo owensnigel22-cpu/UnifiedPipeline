@@ -30,6 +30,8 @@ _FEATURES = (
     FeatureEvidence("fixed-base width-5 wNAF multiplier", "src/keylab/ec/secp256k1.py", "tests/test_secp256k1.py", "keylab benchmark-pubkey --backend all", "Experimental Python implementation; compare on the current machine."),
     FeatureEvidence("candidate public-key to address consistency check", "src/keylab/encoding/address.py", "tests/test_address.py", notes="Forward candidate verification only; does not recover a public key from an address."),
     FeatureEvidence("BIP-340 official signing known-answer vector", "src/keylab/ec/schnorr.py", "tests/test_schnorr.py"),
+    FeatureEvidence("RFC 6979 deterministic ECDSA nonce generation", "src/keylab/ec/secp256k1.py", "tests/test_advanced_suite.py", notes="The advanced suite retains a nonce derivation trace for educational inspection."),
+    FeatureEvidence("Taproot tweak multiplication backend dispatch", "src/keylab/encoding/taproot.py", "tests/test_taproot.py", "keylab benchmark-wifs --backend auto", "Generator multiplication uses native backends when installed, otherwise the fixed-base window table."),
     FeatureEvidence("reproducible ECC backend benchmark", "src/keylab/benchmarks.py", "tests/test_pubkey_benchmark.py", "keylab benchmark-ec", "Uses a shared seeded scalar corpus, correctness checks, warmup exclusion, randomized method order, and median timings; v65 window algorithm is ported for comparison."),
     FeatureEvidence("SHA-256 CNF model and known-input solve verification", "src/keylab/hashes/sha256_cnf.py", "tests/test_sha256_cnf.py", "keylab hash-cnf-selftest"),
     FeatureEvidence("reduced-round symbolic SHA-256 SAT roundtrip", "src/keylab/hashes/sha256_cnf.py", "tests/test_feature_audit.py", "keylab sha256-symbolic-roundtrip", "A circuit/solver wiring test, not full SHA-256 inversion."),
@@ -60,3 +62,4 @@ def feature_audit() -> list[dict[str, object]]:
 
 
 __all__ = ["FeatureEvidence", "feature_audit"]
+
