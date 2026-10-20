@@ -516,6 +516,12 @@ built-in inverse for the exponent modulo the RSA totient; secp256k1 affine
 conversion and the advanced point-addition trace use it for field inverses.
 Fermat's method is only appropriate when the modulus is known prime.
 
+`keylab rsa-pollard-rho --modulus 8051 --seed 7` runs the bounded
+Pollard–Brent factor search and reports its factor pair and work counters. Use
+`--max-iterations`, `--batch-size`, and `--max-attempts` to control the budget;
+`--seed` makes experiments repeatable. This probabilistic method is practical
+only for small or deliberately weak toy moduli, not normal RSA keys.
+
 ```powershell
 keylab-advanced --mod-inv 3 40
 keylab-advanced --mod-inv 3 40 --mod-inv-method egcd

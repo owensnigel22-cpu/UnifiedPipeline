@@ -103,9 +103,9 @@ def verify_pubkey_from_address(address: str, public_key: bytes) -> bool:
         if version == 0 and len(program) == 20:
             return program == hash160(public_key)
         if version == 1 and len(program) == 32:
-            from keylab.encoding.taproot import taproot_output
+            from keylab.encoding.taproot import taproot_output_from_point
 
-            output_key = taproot_output(point[0].to_bytes(32, "big"), network=network).output_key_x
+            output_key = taproot_output_from_point(point, network=network).output_key_x
             return program == output_key
         return False
 
@@ -123,7 +123,7 @@ def verify_pubkey_from_address(address: str, public_key: bytes) -> bool:
 
 def derive_addresses_from_wif(wif: str, *, reveal_private: bool = False) -> dict[str, object]:
     """Derive addresses from WIF; include private hex only when explicitly requested."""
-    from keylab.encoding.taproot import taproot_output
+    from keylab.encoding.taproot import taproot_output_from_point
     from keylab.encoding.wif import decode
 
     key_bytes, compressed, network = decode(wif)
@@ -139,7 +139,7 @@ def derive_addresses_from_wif(wif: str, *, reveal_private: bool = False) -> dict
         "p2pkh": p2pkh_address(public_key, network),
         "p2sh_p2wpkh": p2sh_p2wpkh_address(public_key, network) if compressed else None,
         "p2wpkh": p2wpkh_address(public_key, network) if compressed else None,
-        "p2tr": taproot_output(point[0].to_bytes(32, "big"), network=network).address,
+        "p2tr": taproot_output_from_point(point, network=network).address,
     }
     if reveal_private:
         result["private_key_hex"] = key_bytes.hex()

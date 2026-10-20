@@ -425,6 +425,8 @@ def scalar_mult(
                     return operation(scalar, point)
                 except (ImportError, OSError):
                     continue
+        if point == G:
+            return _scalar_mult_generator_affine_window(scalar)
         return _scalar_mult_python(scalar, point)
     if backend == "coincurve":
         try:

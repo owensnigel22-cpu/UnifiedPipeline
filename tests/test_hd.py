@@ -53,5 +53,5 @@ def test_batched_account_derivation_matches_independent_paths() -> None:
 def test_bip86_derives_key_path_only_taproot_address() -> None:
     result = derive_bip86_p2tr(mnemonic_to_seed(MNEMONIC), 0, 0)
     assert result.path == "m/86'/0'/0'/0/0"
-    assert result.address.startswith("bc1p")
+    assert result.address == "bc1p5cyxnuxmeuwuvkwfem96lqzszd02n6xdcjrs20cac6yqjjwudpxqkedrcr"
 

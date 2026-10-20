@@ -1,9 +1,10 @@
-from keylab.ec.secp256k1 import public_key_from_private_scalar
+from keylab.ec.secp256k1 import P, public_key_from_private_scalar
 from keylab.encoding.address import address_to_target_hash, p2tr_address
 from keylab.encoding.taproot import (
     tapleaf_hash,
     taproot_control_block,
     taproot_output,
+    taproot_output_from_point,
     verify_taproot_script_path,
 )
 
@@ -29,6 +30,16 @@ def test_taproot_key_only_output_uses_empty_merkle_root() -> None:
     assert output.address == "bc1p2wsldez5mud2yam29q22wgfh9439spgduvct83k3pm50fcxa5dps59h4z5"
     assert p2tr_address(internal_x) == output.address
     assert address_to_target_hash(output.address) == output.output_key_x
+
+
+def test_taproot_known_point_path_matches_x_only_and_normalizes_y() -> None:
+    point = public_key_from_private_scalar(3)
+    x_only = point[0].to_bytes(32, "big")
+    negative_point = (point[0], (-point[1]) % P)
+
+    expected = taproot_output(x_only)
+    assert taproot_output_from_point(point) == expected
+    assert taproot_output_from_point(negative_point) == expected
 
 
 def test_taproot_matches_bip341_script_path_vector() -> None:

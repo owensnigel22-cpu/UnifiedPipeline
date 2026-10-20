@@ -136,6 +136,14 @@ def test_full_affine_window_backend_matches_reference() -> None:
         assert scalar_mult(scalar, backend="python-affine-window") == scalar_mult(scalar, backend="python")
 
 
+def test_auto_uses_fixed_generator_window_when_native_backends_are_absent(monkeypatch) -> None:
+    from keylab.ec import secp256k1
+
+    monkeypatch.setattr(secp256k1, "find_spec", lambda _name: None)
+    scalar = 0x123456789ABCDEF
+    assert scalar_mult(scalar, backend="auto") == scalar_mult(scalar, backend="python-affine-window")
+
+
 def test_arbitrary_point_scalar_multiplication_still_uses_correct_group_result() -> None:
     point = scalar_mult(2)
     for scalar in (0, 1, 2, 3, 19):

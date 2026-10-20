@@ -147,9 +147,9 @@ def derive_bip86_p2tr(seed: bytes, account: int, address_index: int,
     if point is None:
         raise ValueError("derived public key is point at infinity")
     internal_x = point[0].to_bytes(32, "big")
-    from keylab.encoding.taproot import taproot_output
+    from keylab.encoding.taproot import taproot_output_from_point
 
-    output = taproot_output(internal_x, network=network)
+    output = taproot_output_from_point(point, network=network)
     return DerivedTaprootAddress(account, address_index, path, internal_x,
                                  output.output_key_x, output.address)
 

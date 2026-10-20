@@ -10,6 +10,7 @@ from keylab.numtheory.rsa import (
     batch_gcd,
     fermat_factor,
     hastad_broadcast,
+    pollard_rho_factor,
     recover_rsa_private_key,
     rsa_exponentiation_roundtrip,
     wiener_attack,
@@ -118,6 +119,37 @@ def test_fermat_factor_is_bounded_and_rejects_invalid_inputs() -> None:
         fermat_factor(1)
     with pytest.raises(ValueError, match="max_iterations"):
         fermat_factor(15, max_iterations=-1)
+
+
+def test_pollard_brent_rho_finds_factor_reproducibly_with_batched_gcd() -> None:
+    first = pollard_rho_factor(83 * 97, seed=7, batch_size=8, max_iterations=10_000)
+    second = pollard_rho_factor(83 * 97, seed=7, batch_size=8, max_iterations=10_000)
+
+    assert first.success
+    assert (first.factor, first.cofactor) == (83, 97)
+    assert first == second
+    assert 0 < first.iterations <= 10_000
+    assert first.attempts >= 1
+
+
+def test_pollard_rho_is_bounded_and_handles_easy_factors() -> None:
+    assert not pollard_rho_factor(2).success
+    easy = pollard_rho_factor(2 * 101)
+    assert (easy.factor, easy.cofactor) == (2, 101)
+    result = pollard_rho_factor(101, seed=1, max_iterations=20, max_attempts=2)
+    assert not result.success
+    assert result.iterations <= 20
+    assert result.attempts <= 2
+    with pytest.raises(ValueError, match="batch_size"):
+        pollard_rho_factor(8051, batch_size=0)
+
+
+def test_pollard_rho_cli_reports_factor_and_work(capsys) -> None:
+    assert main(["rsa-pollard-rho", "--modulus", "8051", "--seed", "7", "--batch-size", "8"]) == 0
+    output = json.loads(capsys.readouterr().out)
+    assert output["success"] is True
+    assert output["factor"] * output["cofactor"] == 8051
+    assert output["iterations"] > 0
 
 
 def test_fermat_rsa_recovery_verifies_factors_and_private_exponent() -> None:

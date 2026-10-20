@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
 from math import gcd, isqrt
+from random import Random, SystemRandom
 
 from keylab.backends import integer_nth_root, modular_pow
 from keylab.numtheory.core import mod_inverse_builtin
@@ -43,6 +44,21 @@ class SharedFactorFinding:
     first_index: int
     second_index: int
     common_divisor: int
+
+
+@dataclass(frozen=True)
+class PollardRhoResult:
+    """Result and work counters from bounded Pollard–Brent factor search."""
+
+    factor: int | None
+    cofactor: int | None
+    iterations: int
+    attempts: int
+
+    @property
+    def success(self) -> bool:
+        """Whether a proper factor pair was found."""
+        return self.factor is not None and self.cofactor is not None
 
 
 def rsa_exponentiation_roundtrip(
@@ -88,6 +104,92 @@ def batch_gcd(moduli: Iterable[int]) -> tuple[SharedFactorFinding, ...]:
                     SharedFactorFinding(first_index, second_index, common_divisor)
                 )
     return tuple(findings)
+
+
+def pollard_rho_factor(
+    modulus: int,
+    *,
+    max_iterations: int = 1_000_000,
+    batch_size: int = 128,
+    max_attempts: int = 16,
+    seed: int | None = None,
+) -> PollardRhoResult:
+    """Find a nontrivial factor with bounded Pollard–Brent rho iterations.
+
+    Brent's cycle schedule batches several differences into one GCD, with a
+    single-step fallback when a batch collapses to the whole modulus. A fixed
+    ``seed`` makes toy experiments reproducible; otherwise a system-seeded
+    generator selects fresh polynomials. This probabilistic method is useful
+    for small/research semiprimes, not standard-size RSA moduli.
+    """
+    if type(modulus) is not int or modulus <= 1:
+        raise ValueError("modulus must be an integer greater than 1")
+    if type(max_iterations) is not int or max_iterations < 0:
+        raise ValueError("max_iterations must be a nonnegative integer")
+    if type(batch_size) is not int or batch_size < 1:
+        raise ValueError("batch_size must be a positive integer")
+    if type(max_attempts) is not int or max_attempts < 1:
+        raise ValueError("max_attempts must be a positive integer")
+    if seed is not None and (type(seed) is not int or seed < 0):
+        raise ValueError("seed must be a nonnegative integer or None")
+
+    if modulus == 2:
+        return PollardRhoResult(None, None, 0, 0)
+    if modulus % 2 == 0:
+        return PollardRhoResult(2, modulus // 2, 0, 0)
+    for small_prime in (3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37):
+        if modulus % small_prime == 0:
+            if modulus == small_prime:
+                return PollardRhoResult(None, None, 0, 0)
+            return PollardRhoResult(small_prime, modulus // small_prime, 0, 0)
+
+    rng = Random(seed) if seed is not None else SystemRandom()
+    total_iterations = 0
+    attempts = 0
+    while total_iterations < max_iterations and attempts < max_attempts:
+        attempts += 1
+        y = rng.randrange(1, modulus)
+        constant = rng.randrange(1, modulus)
+        factor = 1
+        cycle_length = 1
+        x = 0
+        saved_y = 0
+
+        while factor == 1 and total_iterations < max_iterations:
+            x = y
+            advance = min(cycle_length, max_iterations - total_iterations)
+            for _ in range(advance):
+                y = (y * y + constant) % modulus
+            total_iterations += advance
+            if advance < cycle_length:
+                break
+
+            offset = 0
+            while offset < cycle_length and factor == 1 and total_iterations < max_iterations:
+                saved_y = y
+                block_size = min(batch_size, cycle_length - offset, max_iterations - total_iterations)
+                product = 1
+                for _ in range(block_size):
+                    y = (y * y + constant) % modulus
+                    product = product * abs(x - y) % modulus
+                total_iterations += block_size
+                factor = gcd(product, modulus)
+                offset += block_size
+            cycle_length <<= 1
+
+        if factor == modulus:
+            factor = 1
+            while factor == 1 and total_iterations < max_iterations:
+                saved_y = (saved_y * saved_y + constant) % modulus
+                total_iterations += 1
+                factor = gcd(abs(x - saved_y), modulus)
+
+        if 1 < factor < modulus:
+            first, second = sorted((factor, modulus // factor))
+            if first * second == modulus:
+                return PollardRhoResult(first, second, total_iterations, attempts)
+
+    return PollardRhoResult(None, None, total_iterations, attempts)
 
 
 def _integer_nth_root(value: int, exponent: int) -> int | None:
@@ -285,12 +387,14 @@ def wiener_attack(modulus: int, public_exponent: int) -> WienerRecovery | None:
 
 
 __all__ = [
+    "PollardRhoResult",
     "RSAExponentiationResult",
     "SharedFactorFinding",
     "WienerRecovery",
     "batch_gcd",
     "fermat_factor",
     "hastad_broadcast",
+    "pollard_rho_factor",
     "recover_rsa_private_key",
     "rsa_exponentiation_roundtrip",
     "wiener_attack",

@@ -38,6 +38,7 @@ _FEATURES = (
     FeatureEvidence("Native CryptoMiniSat XOR DIMACS export", "src/keylab/sat/cryptominisat.py", "tests/test_cryptominisat_dimacs.py"),
     FeatureEvidence("BitVec32 concrete folding and symbolic ADD32", "src/keylab/sat/bitvec32.py", "tests/test_bitvec32.py", notes="Concrete operations allocate no CNF structure; symbolic addition is modulo 2^32 and discards carry-out."),
     FeatureEvidence("RFC 5869 HKDF-SHA256/SHA512", "src/keylab/crypto.py", "tests/test_hkdf.py"),
+    FeatureEvidence("Bounded Pollard–Brent rho factor search", "src/keylab/numtheory/rsa.py", "tests/test_rsa.py", "keylab rsa-pollard-rho", "Probabilistic educational factorization with bounded iterations, restart limits, and batched GCD."),
     FeatureEvidence("Walkback SHA-256 state trace", "src/keylab/hashes/reduced.py", "tests/test_hashes.py"),
 )
 

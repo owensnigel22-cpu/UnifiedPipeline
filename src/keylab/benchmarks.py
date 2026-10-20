@@ -29,9 +29,9 @@ from keylab.encoding.address import (
     hash160,
     p2pkh_address,
     p2sh_p2wpkh_address,
-    p2tr_address,
     p2wpkh_address,
 )
+from keylab.encoding.taproot import taproot_output_from_point
 from keylab.encoding.wif import decode as decode_wif
 from keylab.encoding.wif import encode as encode_wif
 
@@ -338,7 +338,7 @@ def benchmark_multiple_wifs(
                 address_counts["p2wpkh"] += 1
             if "p2tr" in selected_address_types:
                 t0 = perf_counter_ns()
-                p2tr_address(point[0].to_bytes(32, "big"), network=network)
+                taproot_output_from_point(point, network=network)
                 address_stages["p2tr"] += perf_counter_ns() - t0
                 address_count += 1
                 address_counts["p2tr"] += 1

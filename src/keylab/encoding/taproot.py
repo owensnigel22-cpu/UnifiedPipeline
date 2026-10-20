@@ -10,7 +10,7 @@ import hashlib
 from collections.abc import Sequence
 from dataclasses import dataclass
 
-from keylab.ec.secp256k1 import G, N, P, point_add_affine, scalar_mult
+from keylab.ec.secp256k1 import G, N, P, is_on_curve, point_add_affine, scalar_mult
 from keylab.encoding.bech32 import encode_segwit_address
 
 
@@ -66,12 +66,12 @@ class TaprootOutput:
     address: str
 
 
-def taproot_output(internal_key_x: bytes, merkle_root: bytes = b"", *, network: str = "mainnet") -> TaprootOutput:
-    """Compute BIP-341 Q=P+tG and its witness-v1 Bech32m address.
-
-    ``merkle_root`` must be empty for key-path-only outputs or 32 bytes for a
-    script tree. Internal keys are x-only; the even-y lift is used by BIP-341.
-    """
+def _taproot_output(
+    internal_key_x: bytes,
+    internal: tuple[int, int],
+    merkle_root: bytes,
+    network: str,
+) -> TaprootOutput:
     if len(internal_key_x) != 32:
         raise ValueError("internal x-only key must be 32 bytes")
     if merkle_root and len(merkle_root) != 32:
@@ -79,7 +79,6 @@ def taproot_output(internal_key_x: bytes, merkle_root: bytes = b"", *, network: 
     hrp = {"mainnet": "bc", "testnet": "tb", "regtest": "bcrt"}.get(network)
     if hrp is None:
         raise ValueError("network must be mainnet, testnet, or regtest")
-    internal = lift_x(int.from_bytes(internal_key_x, "big"))
     tweak_bytes = tagged_hash("TapTweak", internal_key_x + merkle_root)
     tweak = int.from_bytes(tweak_bytes, "big")
     if tweak >= N:
@@ -91,6 +90,37 @@ def taproot_output(internal_key_x: bytes, merkle_root: bytes = b"", *, network: 
     x_bytes = output_x.to_bytes(32, "big")
     return TaprootOutput(internal_key_x, merkle_root, tweak, x_bytes, output_y & 1,
                          encode_segwit_address(hrp, 1, x_bytes))
+
+
+def taproot_output(internal_key_x: bytes, merkle_root: bytes = b"", *, network: str = "mainnet") -> TaprootOutput:
+    """Compute BIP-341 Q=P+tG from an x-only internal key.
+
+    ``merkle_root`` must be empty for key-path-only outputs or 32 bytes for a
+    script tree. Internal keys are lifted to their even-y point. Callers that
+    already have the full point can avoid the square-root lift with
+    :func:`taproot_output_from_point`.
+    """
+    if not isinstance(internal_key_x, bytes) or len(internal_key_x) != 32:
+        raise ValueError("internal x-only key must be 32 bytes")
+    internal = lift_x(int.from_bytes(internal_key_x, "big"))
+    return _taproot_output(internal_key_x, internal, merkle_root, network)
+
+
+def taproot_output_from_point(
+    internal_point: tuple[int, int],
+    merkle_root: bytes = b"",
+    *,
+    network: str = "mainnet",
+) -> TaprootOutput:
+    """Compute Taproot output data from a known point, avoiding a redundant lift_x.
+
+    The x-only internal key uses the even-y representative mandated by BIP-341.
+    """
+    if not isinstance(internal_point, tuple) or len(internal_point) != 2 or not is_on_curve(internal_point):
+        raise ValueError("internal_point must be a valid secp256k1 affine point")
+    x, y = internal_point
+    normalized = (x, y if y % 2 == 0 else P - y)
+    return _taproot_output(x.to_bytes(32, "big"), normalized, merkle_root, network)
 
 
 def taproot_control_block(internal_key_x: bytes, output_key_parity: int,
@@ -126,4 +156,4 @@ def verify_taproot_script_path(output_key_x: bytes, script: bytes, control_block
 
 
 __all__ = ["TaprootOutput", "lift_x", "tagged_hash", "tapbranch_hash", "tapleaf_hash",
-           "taproot_control_block", "taproot_output", "verify_taproot_script_path"]
+           "taproot_control_block", "taproot_output", "taproot_output_from_point", "verify_taproot_script_path"]
