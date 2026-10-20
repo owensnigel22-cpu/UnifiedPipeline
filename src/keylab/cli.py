@@ -16,6 +16,7 @@ from typing import TextIO
 from keylab.backends import backend_info
 from keylab.benchmarks import (
     available_scalar_backends,
+    benchmark_ec,
     benchmark_hash160_only,
     benchmark_synthetic_wifs,
     benchmark_wif_file,
@@ -1411,6 +1412,34 @@ def _benchmark_pubkey(args: argparse.Namespace, parser: argparse.ArgumentParser)
     return 0
 
 
+def _benchmark_ec(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
+    """Compare Python, v65-windowed, and available native ECC backends."""
+    try:
+        report = benchmark_ec(
+            count=args.count,
+            seed=args.seed,
+            repetitions=args.repetitions,
+            backend=args.backend,
+        )
+    except (ImportError, OSError, ValueError, ArithmeticError) as exc:
+        parser.error(f"ECC benchmark failed: {exc}")
+    print(
+        f"secp256k1 G multiplication | scalars={report['count']} | seed={report['seed']} | "
+        f"repetitions={report['repetitions']} | statistic=median"
+    )
+    print(f"{'Method':<24} {'keys/sec':>12} {'median ms/corpus':>19}")
+    print("-" * 58)
+    for row in report["methods"]:
+        print(
+            f"{row['method']:<24} {row['median_keys_per_second']:>12.1f} "
+            f"{row['median_ms_per_corpus']:>19.3f}"
+        )
+    print(f"v65 table setup (excluded): {report['v65_table_setup_ms_excluded']:.3f} ms")
+    print("Correctness: every method matched the Python reference on the shared scalar corpus.")
+    print(report["note"])
+    return 0
+
+
 def _benchmark_wifs(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
     """Benchmark a random synthetic corpus or WIFs loaded from a local file."""
     backends = available_scalar_backends() if args.backend == "all" else (args.backend,)
@@ -1518,7 +1547,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="keylab", description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
     commands.add_parser("backends", help="list installed optional crypto, math, and SAT backends")
-    commands.add_parser("feature-audit", help="report implemented features and available evidence files")
+    commands.add_parser(
+        "audit", aliases=("feature-audit",), help="report implemented features and available evidence files"
+    )
     pubkey_benchmark = commands.add_parser(
         "benchmark-pubkey",
         help="measure WIF decode, scalar multiplication, and compressed public-key formatting",
@@ -1527,6 +1558,18 @@ def build_parser() -> argparse.ArgumentParser:
     pubkey_benchmark.add_argument("--warmup", type=int, default=20)
     pubkey_benchmark.add_argument(
         "--backend", choices=("auto", "python", "python-affine-window", "python-glv", "python-wnaf", "coincurve", "fastecdsa", "all"), default="auto"
+    )
+    ec_benchmark = commands.add_parser(
+        "benchmark-ec",
+        help="compare secp256k1 generator multiplication on a reproducible scalar corpus",
+    )
+    ec_benchmark.add_argument("--count", type=int, default=12, help="number of deterministic test scalars")
+    ec_benchmark.add_argument("--seed", type=int, default=20261020, help="seed for the public benchmark corpus")
+    ec_benchmark.add_argument("--repetitions", type=int, default=5, help="timed repetitions; median is reported")
+    ec_benchmark.add_argument(
+        "--backend",
+        choices=("all", "python", "python-affine-window", "python-glv", "python-wnaf", "v65-windowed", "coincurve", "fastecdsa"),
+        default="all",
     )
     wif_benchmark = commands.add_parser(
         "benchmark-wifs",
@@ -2023,12 +2066,16 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if args.command == "backends":
         return _backend_status()
-    if args.command == "feature-audit":
+    if args.command in {"audit", "feature-audit"}:
         return _feature_audit()
     if args.command == "benchmark-pubkey":
         if args.iterations < 1 or args.warmup < 0:
             parser.error("--iterations must be positive and --warmup nonnegative")
         return _benchmark_pubkey(args, parser)
+    if args.command == "benchmark-ec":
+        if args.count < 1 or args.seed < 0 or args.repetitions < 1:
+            parser.error("--count and --repetitions must be positive; --seed must be nonnegative")
+        return _benchmark_ec(args, parser)
     if args.command == "benchmark-wifs":
         if args.count < 1 or args.warmup < 0:
             parser.error("--count must be positive and --warmup nonnegative")
