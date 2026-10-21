@@ -11,6 +11,7 @@ from collections.abc import Iterable
 from functools import lru_cache
 from importlib.util import find_spec
 from pathlib import Path
+from statistics import median
 from time import perf_counter_ns
 
 from keylab.ec.secp256k1 import (
@@ -381,19 +382,99 @@ def benchmark_synthetic_wifs(
     derive_addresses: bool = True,
     address_types: Iterable[str] | None = None,
     warmup: int = 3,
+    repetitions: int = 1,
 ) -> dict[str, object]:
     """Create a random synthetic WIF corpus, then benchmark without printing keys."""
     if type(count) is not int or not 1 <= count <= 1_000_000:
         raise ValueError("count must be between 1 and 1,000,000")
-    wifs = (encode_wif(secrets.randbelow(N - 1) + 1, compressed=True) for _ in range(count))
-    return benchmark_multiple_wifs(
+    if type(repetitions) is not int or repetitions < 1:
+        raise ValueError("repetitions must be a positive integer")
+    wifs = tuple(encode_wif(secrets.randbelow(N - 1) + 1, compressed=True) for _ in range(count))
+    return benchmark_repeated_wifs(
         wifs,
+        repetitions=repetitions,
         backend=backend,
         derive_addresses=derive_addresses,
         address_types=address_types,
         warmup=warmup,
         corpus_source="synthetic-random",
     )
+
+
+def benchmark_repeated_wifs(
+    wifs: Iterable[str],
+    *,
+    repetitions: int = 5,
+    backend: str = "auto",
+    derive_addresses: bool = True,
+    address_types: Iterable[str] | None = None,
+    warmup: int = 3,
+    corpus_source: str = "provided",
+) -> dict[str, object]:
+    """Benchmark one fixed WIF corpus repeatedly and report median timings."""
+    if type(repetitions) is not int or repetitions < 1:
+        raise ValueError("repetitions must be a positive integer")
+    corpus = tuple(wifs)
+    if not corpus:
+        raise ValueError("WIF corpus must contain at least one key")
+    runs = [
+        benchmark_multiple_wifs(
+            corpus,
+            backend=backend,
+            derive_addresses=derive_addresses,
+            address_types=address_types,
+            warmup=warmup,
+            corpus_source=corpus_source,
+        )
+        for _ in range(repetitions)
+    ]
+    summary = dict(runs[0])
+    median_elapsed_ns = median(float(run["elapsed_ms"]) for run in runs) * 1_000_000
+    summary.update(
+        repetitions=repetitions,
+        elapsed_ms=median_elapsed_ns / 1_000_000,
+        average_ms_per_key=median_elapsed_ns / len(corpus) / 1_000_000,
+        throughput_per_second=median(float(run["throughput_per_second"]) for run in runs),
+        stages_ms={
+            name: median(float(run["stages_ms"][name]) for run in runs)
+            for name in runs[0]["stages_ms"]
+        },
+        address_types_ms={
+            name: median(float(run["address_types_ms"][name]) for run in runs)
+            for name in runs[0]["address_types_ms"]
+        },
+        run_timings=[
+            {
+                "elapsed_ms": run["elapsed_ms"],
+                "throughput_per_second": run["throughput_per_second"],
+                "address_types_us_per_address": run["address_types_us_per_address"],
+            }
+            for run in runs
+        ],
+        measurement_note=(
+            "Same WIF corpus reused across runs; corpus loading and warmup excluded; "
+            "stage values are per-stage medians; secrets and derived addresses are not returned."
+        ),
+    )
+    median_elapsed_ms = median_elapsed_ns / 1_000_000
+    summary["stages_percent_of_total"] = {
+        name: 100 * duration / median_elapsed_ms
+        for name, duration in summary["stages_ms"].items()
+    }
+    summary["address_types_percent_of_total"] = {
+        name: 100 * duration / median_elapsed_ms
+        for name, duration in summary["address_types_ms"].items()
+    }
+    counts = runs[0]["address_counts"]
+    summary["address_types_us_per_address"] = (
+        {
+            name: (duration * 1_000 / counts[name] if counts[name] else None)
+            for name, duration in summary["address_types_ms"].items()
+        }
+        if counts is not None
+        else {name: None for name in summary["address_types_ms"]}
+    )
+    return summary
 
 
 def benchmark_hash160_only(count: int = 10_000, *, backend: str = "auto") -> dict[str, object]:
@@ -447,6 +528,7 @@ def benchmark_wif_file(
     derive_addresses: bool = True,
     address_types: Iterable[str] | None = None,
     warmup: int = 3,
+    repetitions: int = 1,
 ) -> dict[str, object]:
     """Benchmark nonblank, noncomment WIF lines from a local text file."""
     try:
@@ -454,8 +536,9 @@ def benchmark_wif_file(
             wifs = [line.strip() for line in input_file if line.strip() and not line.lstrip().startswith("#")]
     except OSError as exc:
         raise ValueError(f"could not read WIF corpus file: {exc}") from exc
-    return benchmark_multiple_wifs(
+    return benchmark_repeated_wifs(
         wifs,
+        repetitions=repetitions,
         backend=backend,
         derive_addresses=derive_addresses,
         address_types=address_types,
@@ -469,6 +552,7 @@ __all__ = [
     "benchmark_ec",
     "benchmark_hash160_only",
     "benchmark_multiple_wifs",
+    "benchmark_repeated_wifs",
     "benchmark_synthetic_wifs",
     "benchmark_wif_file",
     "benchmark_wif_to_pubkey",

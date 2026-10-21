@@ -8,6 +8,7 @@ import pytest
 from keylab.cli import main
 from keylab.ec.secp256k1 import N, compress_pubkey, scalar_mult
 from keylab.encoding.address import (
+    address_belongs_to_wif,
     address_to_target_hash,
     derive_addresses_from_wif,
     hash160,
@@ -116,6 +117,40 @@ def test_wif_public_derivation_returns_all_address_families_without_private_scal
     assert "private_key_hex" not in result
     revealed = derive_addresses_from_wif(encode(1, compressed=True), reveal_private=True)
     assert revealed["private_key_hex"] == f"{1:064x}"
+
+
+def test_canonical_compressed_wif_derives_all_expected_address_families() -> None:
+    wif = "KwDiBf89QgGbjEhKnhXJuH7LrciVrZi3qYjgd9M7rFU73sVHnoWn"
+    result = derive_addresses_from_wif(wif)
+    assert result["p2pkh"] == "1BgGZ9tcN4rm9KBzDn7KprQz87SZ26SAMH"
+    assert result["p2sh_p2wpkh"] == "3JvL6Ymt8MVWiCNHC7oWU6nLeHNJKLZGLN"
+    assert result["p2wpkh"] == "bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4"
+
+
+@pytest.mark.parametrize(
+    ("address_type", "target"),
+    [
+        ("p2pkh", "1BgGZ9tcN4rm9KBzDn7KprQz87SZ26SAMH"),
+        ("p2sh_p2wpkh", "3JvL6Ymt8MVWiCNHC7oWU6nLeHNJKLZGLN"),
+        ("p2wpkh", "bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4"),
+    ],
+)
+def test_address_belongs_to_wif_identifies_exact_address_type(address_type: str, target: str) -> None:
+    wif = "KwDiBf89QgGbjEhKnhXJuH7LrciVrZi3qYjgd9M7rFU73sVHnoWn"
+    result = address_belongs_to_wif(wif, target)
+    assert result["verified"] is True
+    assert result["matches"] == [address_type]
+    assert "wif" not in result
+    assert "private_key_hex" not in result
+
+
+def test_address_belongs_to_wif_rejects_wrong_address_and_accepts_uppercase_bech32() -> None:
+    wif = "KwDiBf89QgGbjEhKnhXJuH7LrciVrZi3qYjgd9M7rFU73sVHnoWn"
+    target = "bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4"
+    assert address_belongs_to_wif(wif, target.upper())["matches"] == ["p2wpkh"]
+    other = address_belongs_to_wif(wif, "1EHNa6Q4Jz2uvNExL497mE43ikXhwF6kZm")
+    assert other["verified"] is False
+    assert other["matches"] == []
 
 
 def test_wif_derive_cli_echoes_wif_only_when_requested(capsys) -> None:

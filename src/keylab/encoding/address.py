@@ -122,7 +122,13 @@ def verify_pubkey_from_address(address: str, public_key: bytes) -> bool:
 
 
 def derive_addresses_from_wif(wif: str, *, reveal_private: bool = False) -> dict[str, object]:
-    """Derive addresses from WIF; include private hex only when explicitly requested."""
+    """Derive addresses from WIF; include private hex only when explicitly requested.
+
+    Reuse HASH160(pubkey) across P2PKH, nested SegWit, and native SegWit
+    encodings. ``bytes.hex()`` is retained for private-key hex because it is
+    Python's C-implemented byte serializer; converting through an integer or
+    formatting each byte in Python would add work.
+    """
     from keylab.encoding.taproot import taproot_output_from_point
     from keylab.encoding.wif import decode
 
@@ -131,16 +137,53 @@ def derive_addresses_from_wif(wif: str, *, reveal_private: bool = False) -> dict
     public_key = compress_pubkey(point) if compressed else (
         b"\x04" + point[0].to_bytes(32, "big") + point[1].to_bytes(32, "big")
     )
+    key_hash = hash160(public_key)
+    version = {"mainnet": 0x00, "testnet": 0x6F}[network]
+    hrp = {"mainnet": "bc", "testnet": "tb"}[network]
     result: dict[str, object] = {
         "network": network,
         "compressed": compressed,
         "public_key_hex": public_key.hex(),
-        "hash160_hex": hash160(public_key).hex(),
-        "p2pkh": p2pkh_address(public_key, network),
-        "p2sh_p2wpkh": p2sh_p2wpkh_address(public_key, network) if compressed else None,
-        "p2wpkh": p2wpkh_address(public_key, network) if compressed else None,
+        "hash160_hex": key_hash.hex(),
+        "p2pkh": base58.check_encode(bytes([version]) + key_hash),
+        "p2sh_p2wpkh": (
+            base58.check_encode(bytes([0x05 if network == "mainnet" else 0xC4])
+                                + hash160(b"\x00\x14" + key_hash))
+            if compressed else None
+        ),
+        "p2wpkh": bech32.encode_segwit_address(hrp, 0, key_hash) if compressed else None,
         "p2tr": taproot_output_from_point(point, network=network).address,
     }
     if reveal_private:
         result["private_key_hex"] = key_bytes.hex()
     return result
+
+
+def address_belongs_to_wif(wif: str, target_address: str) -> dict[str, object]:
+    """Check whether a supported address is one of the addresses derived from a WIF.
+
+    The result identifies the matching address type and includes derived public
+    addresses only; it never returns the WIF or private scalar. Bech32 addresses
+    are compared case-insensitively after their checksum and format are validated.
+    """
+    address_to_target_hash(target_address)  # Validate format and checksum first.
+    derived = derive_addresses_from_wif(wif)
+    is_segwit = target_address.lower().startswith(("bc1", "tb1", "bcrt1"))
+    target = target_address.lower() if is_segwit else target_address
+    candidates = {
+        name: address
+        for name, address in derived.items()
+        if name in {"p2pkh", "p2sh_p2wpkh", "p2wpkh", "p2tr"} and address is not None
+    }
+    matches = [
+        name for name, address in candidates.items()
+        if (str(address).lower() if is_segwit else address) == target
+    ]
+    return {
+        "network": derived["network"],
+        "compressed": derived["compressed"],
+        "target_address": target_address,
+        "derived_addresses": candidates,
+        "matches": matches,
+        "verified": bool(matches),
+    }

@@ -534,6 +534,62 @@ def ecdsa_verify_digest(digest: bytes, signature: tuple[int, int], public_key: P
     return total is not None and total[0] % N == r
 
 
+def is_high_s_signature(signature: tuple[int, int]) -> bool:
+    """Return whether a valid-range ECDSA signature uses the non-low-S form."""
+    if len(signature) != 2:
+        raise ValueError("signature must contain exactly r and s")
+    r, s = signature
+    if type(r) is not int or type(s) is not int or not (1 <= r < N and 1 <= s < N):
+        raise ValueError("ECDSA signature values must be in [1, N-1]")
+    return s > N // 2
+
+
+def recover_private_key_from_reused_nonce(
+    digest1: bytes,
+    signature1: tuple[int, int],
+    digest2: bytes,
+    signature2: tuple[int, int],
+    public_key: Point,
+) -> int | None:
+    """Recover an ECDSA private scalar from two signatures sharing one nonce.
+
+    Returns ``None`` unless the signatures have the same ``r`` and a candidate
+    scalar both matches ``public_key`` and verifies both signatures. The
+    second nonce sign is tried both ways to handle ECDSA's ``k``/``-k`` point
+    ambiguity and low-S normalization. Educational recovery helper only.
+    """
+    if (type(digest1) is not bytes or len(digest1) != 32
+            or type(digest2) is not bytes or len(digest2) != 32):
+        raise ValueError("digests must each be exactly 32 bytes")
+    if public_key is None or not is_on_curve(public_key):
+        return None
+    if len(signature1) != 2 or len(signature2) != 2:
+        return None
+    r1, s1 = signature1
+    r2, s2 = signature2
+    if any(type(value) is not int or not 1 <= value < N for value in (r1, s1, r2, s2)):
+        return None
+    if r1 != r2:
+        return None
+    z1, z2 = int.from_bytes(digest1, "big"), int.from_bytes(digest2, "big")
+    for nonce_sign in (1, -1):
+        denominator = (s1 - nonce_sign * s2) % N
+        if denominator == 0:
+            continue
+        nonce = ((z1 - z2) * pow(denominator, -1, N)) % N
+        if nonce == 0:
+            continue
+        private_scalar = ((s1 * nonce - z1) * pow(r1, -1, N)) % N
+        if not 1 <= private_scalar < N:
+            continue
+        if scalar_mult(private_scalar, G) != public_key:
+            continue
+        if (ecdsa_verify_digest(digest1, signature1, public_key)
+                and ecdsa_verify_digest(digest2, signature2, public_key)):
+            return private_scalar
+    return None
+
+
 def compress_pubkey(point: Point) -> bytes:
     """Serialize a finite affine point using SEC compressed format."""
     if point is None or not is_on_curve(point):

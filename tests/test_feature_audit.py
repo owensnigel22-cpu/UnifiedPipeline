@@ -1,4 +1,4 @@
-from keylab.feature_audit import feature_audit
+from keylab.feature_audit import FEATURE_STATUS, feature_audit
 
 
 def test_feature_audit_reports_source_evidence_without_claiming_test_execution() -> None:
@@ -13,7 +13,13 @@ def test_feature_audit_cli_emits_json(capsys) -> None:
     from keylab.cli import main
 
     assert main(["feature-audit"]) == 0
-    assert '"audit"' in capsys.readouterr().out
+    output = capsys.readouterr().out
+    assert '"audit"' in output
+    assert '"partial_nonce_hnp"' in output
+    assert FEATURE_STATUS["partial_nonce_hnp"]["implemented"] is False
+    assert FEATURE_STATUS["partial_nonce_hnp"]["tested"] is False
+    assert FEATURE_STATUS["ecdsa_public_key_recovery"]["implemented"] is True
+    assert FEATURE_STATUS["rng_bias_from_r_values"]["implemented"] is False
 
 
 def test_symbolic_sha_cli_solves_and_forward_verifies(capsys) -> None:

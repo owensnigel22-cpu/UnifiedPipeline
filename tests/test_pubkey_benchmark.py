@@ -4,6 +4,7 @@ from keylab.benchmarks import (
     benchmark_ec,
     benchmark_hash160_only,
     benchmark_multiple_wifs,
+    benchmark_repeated_wifs,
     benchmark_synthetic_wifs,
     benchmark_wif_to_pubkey,
 )
@@ -84,12 +85,32 @@ def test_multiple_wif_benchmark_can_time_one_address_family() -> None:
     assert report["address_types_us_per_address"]["p2wpkh"] is not None
 
 
+def test_repeated_wif_benchmark_reports_median_on_fixed_corpus() -> None:
+    wifs = (encode_wif(1), encode_wif(2))
+    report = benchmark_repeated_wifs(
+        wifs,
+        repetitions=3,
+        backend="python",
+        warmup=0,
+        address_types=("p2wpkh",),
+    )
+    assert report["keys_processed"] == 2
+    assert report["repetitions"] == 3
+    assert len(report["run_timings"]) == 3
+    assert report["elapsed_ms"] > 0
+    assert report["throughput_per_second"] > 0
+    assert report["address_counts"]["p2wpkh"] == 2
+    assert "Same WIF corpus reused" in report["measurement_note"]
+
+
 def test_multi_wif_cli_emits_aggregate_json(capsys) -> None:
     assert main([
-        "benchmark-wifs", "--count", "2", "--warmup", "0", "--backend", "python", "--no-addresses"
+        "benchmark-wifs", "--count", "2", "--warmup", "0", "--backend", "python", "--no-addresses",
+        "--repetitions", "2",
     ]) == 0
     output = capsys.readouterr().out
     assert '"keys_processed": 2' in output
+    assert '"repetitions": 2' in output
     assert '"scalar_multiplication"' in output
 
 

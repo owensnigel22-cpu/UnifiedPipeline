@@ -1,5 +1,6 @@
 """Known generator-multiple vectors for the reference secp256k1 implementation."""
 
+import hashlib
 import random
 
 from keylab.advanced_suite import curve_add_geometry
@@ -22,6 +23,7 @@ from keylab.ec.secp256k1 import (
     point_double,
     point_negate_affine,
     public_key_from_private_scalar,
+    recover_private_key_from_reused_nonce,
     scalar_mult,
     wnaf_digits,
 )
@@ -96,6 +98,58 @@ def test_rfc6979_ecdsa_sign_and_verify_digest() -> None:
     assert ecdsa_verify_digest(digest, signature, public_key)
     assert not ecdsa_verify_digest(hashlib.sha256(b"different").digest(), signature, public_key)
     assert not ecdsa_verify_digest(digest, (0, signature[1]), public_key)
+
+
+def _ecdsa_sign_with_nonce(private_scalar: int, nonce: int, digest: bytes) -> tuple[int, int]:
+    z = int.from_bytes(digest, "big")
+    nonce_point = scalar_mult(nonce, G, backend="python")
+    assert nonce_point is not None
+    r = nonce_point[0] % N
+    s = pow(nonce, -1, N) * (z + r * private_scalar) % N
+    return r, s
+
+
+def test_ecdsa_nonce_reuse_recovers_key_for_distinct_messages() -> None:
+    private_scalar = 0x123456789ABCDEF
+    nonce = 0xFEDCBA987654321
+    digest1 = hashlib.sha256(b"same nonce, first message").digest()
+    digest2 = hashlib.sha256(b"same nonce, second message").digest()
+    signature1 = _ecdsa_sign_with_nonce(private_scalar, nonce, digest1)
+    signature2 = _ecdsa_sign_with_nonce(private_scalar, nonce, digest2)
+    public_key = public_key_from_private_scalar(private_scalar, backend="python")
+
+    assert signature1[0] == signature2[0]
+    assert recover_private_key_from_reused_nonce(
+        digest1, signature1, digest2, signature2, public_key
+    ) == private_scalar
+
+
+def test_ecdsa_nonce_reuse_recovery_rejects_non_reuse_cases() -> None:
+    private_scalar = 0x123456789ABCDEF
+    public_key = public_key_from_private_scalar(private_scalar, backend="python")
+    digest1 = hashlib.sha256(b"message one").digest()
+    digest2 = hashlib.sha256(b"message two").digest()
+    signature1 = _ecdsa_sign_with_nonce(private_scalar, 0x111111111, digest1)
+
+    # Different nonces and different messages.
+    signature_different_nonce = _ecdsa_sign_with_nonce(private_scalar, 0x222222223, digest2)
+    assert recover_private_key_from_reused_nonce(
+        digest1, signature1, digest2, signature_different_nonce, public_key
+    ) is None
+
+    # Same message and distinct nonces must not yield a false recovery.
+    signature_same_message_different_nonce = _ecdsa_sign_with_nonce(
+        private_scalar, 0x333333337, digest1
+    )
+    assert recover_private_key_from_reused_nonce(
+        digest1, signature1, digest1, signature_same_message_different_nonce, public_key
+    ) is None
+
+    # Different r values are an immediate rejection, independent of digest values.
+    assert signature1[0] != signature_different_nonce[0]
+    assert recover_private_key_from_reused_nonce(
+        digest1, signature1, digest2, signature_different_nonce, public_key
+    ) is None
 
 
 def test_windowed_generator_multiplication_matches_double_and_add() -> None:

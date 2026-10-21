@@ -9,7 +9,14 @@ from __future__ import annotations
 from collections.abc import Sequence
 from dataclasses import dataclass
 
-from keylab.ec.secp256k1 import G, N, P, is_on_curve, point_add_affine, scalar_mult
+from keylab.ec.secp256k1 import (
+    G,
+    N,
+    P,
+    is_on_curve,
+    point_add_affine,
+    scalar_mult,
+)
 from keylab.encoding.bech32 import encode_segwit_address
 from keylab.hashes.tagged import tagged_hash
 

@@ -1,6 +1,6 @@
 from keylab.ec.schnorr import schnorr_public_key, schnorr_sign, schnorr_verify
-from keylab.ec.sec1 import parse_sec1, serialize_sec1
-from keylab.ec.secp256k1 import G, N, compress_pubkey, point_add_affine
+from keylab.ec.sec1 import parse_sec1, serialize_sec1, serialize_uncompressed, serialize_xonly
+from keylab.ec.secp256k1 import G, N, P, compress_pubkey, point_add_affine
 
 
 def test_bip340_official_signing_vector_zero() -> None:
@@ -36,6 +36,12 @@ def test_sec1_roundtrips_compressed_and_uncompressed_encodings() -> None:
         assert parse_sec1(compressed) == point
         assert parse_sec1(uncompressed) == point
         assert serialize_sec1(parse_sec1(uncompressed), compressed=False) == uncompressed
+        assert serialize_uncompressed(point) == uncompressed
+        assert serialize_xonly(point) == point[0].to_bytes(32, "big")
+
+
+def test_xonly_encoding_is_independent_of_y_parity() -> None:
+    assert serialize_xonly(G) == serialize_xonly((G[0], (-G[1]) % P))
 
 
 def test_sec1_parser_rejects_invalid_points_and_encodings() -> None:

@@ -31,4 +31,24 @@ def serialize_sec1(point: Point, *, compressed: bool = True) -> bytes:
     return b"\x04" + x.to_bytes(32, "big") + y.to_bytes(32, "big")
 
 
-__all__ = ["parse_sec1", "serialize_sec1"]
+def serialize_uncompressed(point: Point) -> bytes:
+    """Serialize a finite point using the 65-byte SEC1 uncompressed form."""
+    return serialize_sec1(point, compressed=False)
+
+
+def serialize_xonly(point: Point) -> bytes:
+    """Return the 32-byte x coordinate used by BIP-340/BIP-341.
+
+    X-only encodings omit y parity. Protocols that parse them lift x to the
+    even-y point; callers needing a complete SEC1 point should use
+    :func:`serialize_sec1` instead.
+    """
+    if point is None or not is_on_curve(point):
+        raise ValueError("a finite secp256k1 point is required")
+    x, _ = point
+    if not 0 <= x < P:
+        raise ValueError("point coordinates are outside the field")
+    return x.to_bytes(32, "big")
+
+
+__all__ = ["parse_sec1", "serialize_sec1", "serialize_uncompressed", "serialize_xonly"]

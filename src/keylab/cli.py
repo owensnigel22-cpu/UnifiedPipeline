@@ -25,7 +25,7 @@ from keylab.benchmarks import (
 from keylab.encoding.address import address_to_target_hash
 from keylab.encoding.wif import decode as decode_wif
 from keylab.encoding.wif import encode as encode_wif
-from keylab.feature_audit import feature_audit
+from keylab.feature_audit import FEATURE_STATUS, feature_audit
 from keylab.hashes.length_extension import sha256_length_extend
 from keylab.hashes.llm_agents import plan_sha256_cube_bits
 from keylab.hashes.reduced import (
@@ -1430,7 +1430,7 @@ def _backend_status() -> int:
 
 def _feature_audit() -> int:
     """Print source/test-file evidence without overstating executed checks."""
-    print(json.dumps({"audit": feature_audit()}, indent=2, sort_keys=True))
+    print(json.dumps({"audit": feature_audit(), "feature_status": FEATURE_STATUS}, indent=2, sort_keys=True))
     return 0
 
 
@@ -1489,6 +1489,7 @@ def _benchmark_wifs(args: argparse.Namespace, parser: argparse.ArgumentParser) -
                     derive_addresses=not args.no_addresses,
                     address_types=args.addresses,
                     warmup=args.warmup,
+                    repetitions=args.repetitions,
                 )
             else:
                 report = benchmark_synthetic_wifs(
@@ -1497,6 +1498,7 @@ def _benchmark_wifs(args: argparse.Namespace, parser: argparse.ArgumentParser) -
                     derive_addresses=not args.no_addresses,
                     address_types=args.addresses,
                     warmup=args.warmup,
+                    repetitions=args.repetitions,
                 )
         except (ImportError, OSError, ValueError, ArithmeticError) as exc:
             parser.error(f"multi-WIF benchmark failed for backend {backend}: {exc}")
@@ -1615,6 +1617,7 @@ def build_parser() -> argparse.ArgumentParser:
     wif_benchmark.add_argument("--count", type=int, default=1_000, help="synthetic WIF count (1..1,000,000)")
     wif_benchmark.add_argument("--wif-file", help="text file with one WIF per line; blank lines and # comments are ignored")
     wif_benchmark.add_argument("--warmup", type=int, default=3)
+    wif_benchmark.add_argument("--repetitions", type=int, default=5, help="repeat the same corpus and report median timings")
     wif_benchmark.add_argument("--backend", choices=("auto", "python", "python-affine-window", "python-glv", "python-wnaf", "coincurve", "fastecdsa", "all"), default="auto")
     wif_benchmark.add_argument(
         "--addresses",
@@ -2122,8 +2125,8 @@ def main(argv: list[str] | None = None) -> int:
             parser.error("--count and --repetitions must be positive; --seed must be nonnegative")
         return _benchmark_ec(args, parser)
     if args.command == "benchmark-wifs":
-        if args.count < 1 or args.warmup < 0:
-            parser.error("--count must be positive and --warmup nonnegative")
+        if args.count < 1 or args.warmup < 0 or args.repetitions < 1:
+            parser.error("--count and --repetitions must be positive; --warmup nonnegative")
         return _benchmark_wifs(args, parser)
     if args.command == "benchmark-hash160":
         if args.count < 1:

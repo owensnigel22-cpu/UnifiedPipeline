@@ -22,7 +22,7 @@ def test_concrete_word_operations_fold_without_allocating_cnf_structure() -> Non
     assert cnf.clauses == []
 
 
-def test_symbolic_add32_roundtrip_solves_and_extracts_input() -> None:
+def test_bitvec_symbolic_roundtrip() -> None:
     if not available_backends():
         import pytest
 
@@ -42,6 +42,14 @@ def test_symbolic_add32_roundtrip_solves_and_extracts_input() -> None:
 
     result = solve_cnf(cnf.clauses)
     assert result.status == "SATISFIABLE"
+    from keylab.sat.cryptominisat import literal_value
+
+    one_based_model = [False] * (cnf.variable_count + 1)
+    for variable, value in result.assignments.items():
+        one_based_model[variable] = value
+    least_significant_bit = symbolic.to_literals()[0]
+    assert literal_value(one_based_model, least_significant_bit) is bool(secret_word & 1)
+    assert literal_value(one_based_model, -least_significant_bit) is not bool(secret_word & 1)
     assert symbolic.extract_word(result.assignments) == secret_word
     assert masked.extract_word(result.assignments) == (secret_word ^ mask)
     assert rotated.extract_word(result.assignments) == (

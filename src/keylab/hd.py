@@ -11,6 +11,7 @@ import hmac
 import unicodedata
 from dataclasses import dataclass
 
+from keylab.ec.sec1 import parse_sec1
 from keylab.ec.secp256k1 import N, compress_pubkey, scalar_mult
 
 HARDENED = 1 << 31
@@ -90,6 +91,41 @@ def derive_private_path(seed: bytes, path: str) -> tuple[bytes, bytes]:
     for index in parse_path(path):
         key, chain = derive_child_private(key, chain, index)
     return key, chain
+
+
+def recover_unhardened_parent_private_key(
+    child_key: bytes, parent_chain_code: bytes, parent_public_key: bytes, index: int
+) -> bytes:
+    """Recover a BIP-32 parent private scalar from a compromised non-hardened child.
+
+    This requires the child private key, parent chain code and parent public
+    key, and a non-hardened child index. It cannot recover a parent across a
+    hardened edge. The function is useful for demonstrating BIP-32's
+    non-hardened compromise relationship and is intentionally explicit about
+    its required sensitive child-key input.
+    """
+    if not isinstance(child_key, bytes) or len(child_key) != 32:
+        raise ValueError("child private key must be exactly 32 bytes")
+    if not isinstance(parent_chain_code, bytes) or len(parent_chain_code) != 32:
+        raise ValueError("parent chain code must be exactly 32 bytes")
+    if type(index) is not int or not 0 <= index < HARDENED:
+        raise ValueError("parent recovery requires a non-hardened index in [0, 2^31-1]")
+    child_scalar = int.from_bytes(child_key, "big")
+    if not 1 <= child_scalar < N:
+        raise ValueError("child private key is outside the secp256k1 scalar range")
+    parent_point = parse_sec1(parent_public_key)
+    digest = hmac.new(
+        parent_chain_code,
+        compress_pubkey(parent_point) + index.to_bytes(4, "big"),
+        hashlib.sha512,
+    ).digest()
+    tweak = int.from_bytes(digest[:32], "big")
+    if tweak >= N:
+        raise ValueError("invalid BIP-32 child tweak")
+    parent_scalar = (child_scalar - tweak) % N
+    if parent_scalar == 0:
+        raise ValueError("recovered parent private key is zero")
+    return parent_scalar.to_bytes(32, "big")
 
 
 @dataclass(frozen=True)
@@ -210,4 +246,4 @@ def derive_bip44_accounts(seed: bytes, account_count: int, addresses_per_account
     return tuple(results)
 
 
-__all__ = ["DerivedAddress", "DerivedTaprootAddress", "derive_bip44_accounts", "derive_bip44_p2pkh", "derive_bip86_p2tr", "derive_child_private", "derive_private_path", "master_key", "mnemonic_to_seed", "parse_path"]
+__all__ = ["DerivedAddress", "DerivedTaprootAddress", "derive_bip44_accounts", "derive_bip44_p2pkh", "derive_bip86_p2tr", "derive_child_private", "derive_private_path", "master_key", "mnemonic_to_seed", "parse_path", "recover_unhardened_parent_private_key"]
