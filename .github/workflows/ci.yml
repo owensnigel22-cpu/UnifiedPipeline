@@ -12,6 +12,11 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - run: python -m pip install -e ".[dev]"
+      # The secp256k1 extra installs coincurve (libsecp256k1) so the differential
+      # tests in tests/test_ecc_differential.py run instead of skipping.
+      - run: python -m pip install -e ".[dev,secp256k1]"
+      - name: Require the libsecp256k1 reference backend
+        run: |
+          python -c "import coincurve; print('coincurve', coincurve.PrivateKey(b'\x01' * 32).public_key.format().hex())"
       - run: ruff check .
-      - run: pytest
+      - run: pytest -rs
