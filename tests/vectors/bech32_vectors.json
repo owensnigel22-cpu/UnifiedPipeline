@@ -1,0 +1,363 @@
+{
+  "bip173": {
+    "source": "https://github.com/bitcoin/bips/blob/master/bip-0173.mediawiki (Test vectors)",
+    "valid_checksum": [
+      "A12UEL5L",
+      "a12uel5l",
+      "an83characterlonghumanreadablepartthatcontainsthenumber1andtheexcludedcharactersbio1tt5tgs",
+      "abcdef1qpzry9x8gf2tvdw0s3jn54khce6mua7lmqqqxw",
+      "11qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqc8247j",
+      "split1checkupstagehandshakeupstreamerranterredcaperred2y9e3w",
+      "?1ezyfcl"
+    ],
+    "invalid_checksum": [
+      {
+        "string": " 1nwldj5",
+        "script_pubkey": null,
+        "reason": "HRP character out of range"
+      },
+      {
+        "string": "\u007f1axkwrx",
+        "script_pubkey": null,
+        "reason": "HRP character out of range"
+      },
+      {
+        "string": "\u00801eym55h",
+        "script_pubkey": null,
+        "reason": "HRP character out of range"
+      },
+      {
+        "string": "an84characterslonghumanreadablepartthatcontainsthenumber1andtheexcludedcharactersbio1569pvx",
+        "script_pubkey": null,
+        "reason": "overall max length exceeded"
+      },
+      {
+        "string": "pzry9x0s0muk",
+        "script_pubkey": null,
+        "reason": "No separator character"
+      },
+      {
+        "string": "1pzry9x0s0muk",
+        "script_pubkey": null,
+        "reason": "Empty HRP"
+      },
+      {
+        "string": "x1b4n0q5v",
+        "script_pubkey": null,
+        "reason": "Invalid data character"
+      },
+      {
+        "string": "li1dgmt3",
+        "script_pubkey": null,
+        "reason": "Too short checksum"
+      },
+      {
+        "string": "de1lg7wt",
+        "script_pubkey": null,
+        "reason": null
+      },
+      {
+        "string": "A1G7SGD8",
+        "script_pubkey": null,
+        "reason": "checksum calculated with uppercase form of HRP"
+      },
+      {
+        "string": "10a06t8",
+        "script_pubkey": null,
+        "reason": "empty HRP"
+      },
+      {
+        "string": "1qzzfhee",
+        "script_pubkey": null,
+        "reason": "empty HRP"
+      }
+    ],
+    "valid_address": [
+      {
+        "string": "BC1QW508D6QEJXTDG4Y5R3ZARVARY0C5XW7KV8F3T4",
+        "script_pubkey": "0014751e76e8199196d454941c45d1b3a323f1433bd6",
+        "reason": null
+      },
+      {
+        "string": "tb1qrp33g0q5c5txsp9arysrx4k6zdkfs4nce4xj0gdcccefvpysxf3q0sl5k7",
+        "script_pubkey": "00201863143c14c5166804bd19203356da136c985678cd4d27a1b8c6329604903262",
+        "reason": null
+      },
+      {
+        "string": "bc1pw508d6qejxtdg4y5r3zarvary0c5xw7kw508d6qejxtdg4y5r3zarvary0c5xw7k7grplx",
+        "script_pubkey": "5128751e76e8199196d454941c45d1b3a323f1433bd6751e76e8199196d454941c45d1b3a323f1433bd6",
+        "reason": null
+      },
+      {
+        "string": "BC1SW50QA3JX3S",
+        "script_pubkey": "6002751e",
+        "reason": null
+      },
+      {
+        "string": "bc1zw508d6qejxtdg4y5r3zarvaryvg6kdaj",
+        "script_pubkey": "5210751e76e8199196d454941c45d1b3a323",
+        "reason": null
+      },
+      {
+        "string": "tb1qqqqqp399et2xygdj5xreqhjjvcmzhxw4aywxecjdzew6hylgvsesrxh6hy",
+        "script_pubkey": "0020000000c4a5cad46221b2a187905e5266362b99d5e91c6ce24d165dab93e86433",
+        "reason": null
+      }
+    ],
+    "invalid_address": [
+      {
+        "string": "tc1qw508d6qejxtdg4y5r3zarvary0c5xw7kg3g4ty",
+        "script_pubkey": null,
+        "reason": "Invalid human-readable part"
+      },
+      {
+        "string": "bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t5",
+        "script_pubkey": null,
+        "reason": "Invalid checksum"
+      },
+      {
+        "string": "BC13W508D6QEJXTDG4Y5R3ZARVARY0C5XW7KN40WF2",
+        "script_pubkey": null,
+        "reason": "Invalid witness version"
+      },
+      {
+        "string": "bc1rw5uspcuh",
+        "script_pubkey": null,
+        "reason": "Invalid program length"
+      },
+      {
+        "string": "bc10w508d6qejxtdg4y5r3zarvary0c5xw7kw508d6qejxtdg4y5r3zarvary0c5xw7kw5rljs90",
+        "script_pubkey": null,
+        "reason": "Invalid program length"
+      },
+      {
+        "string": "BC1QR508D6QEJXTDG4Y5R3ZARVARYV98GJ9P",
+        "script_pubkey": null,
+        "reason": "Invalid program length for witness version 0 (per BIP141)"
+      },
+      {
+        "string": "tb1qrp33g0q5c5txsp9arysrx4k6zdkfs4nce4xj0gdcccefvpysxf3q0sL5k7",
+        "script_pubkey": null,
+        "reason": "Mixed case"
+      },
+      {
+        "string": "bc1zw508d6qejxtdg4y5r3zarvaryvqyzf3du",
+        "script_pubkey": null,
+        "reason": "zero padding of more than 4 bits"
+      },
+      {
+        "string": "tb1qrp33g0q5c5txsp9arysrx4k6zdkfs4nce4xj0gdcccefvpysxf3pjxtptv",
+        "script_pubkey": null,
+        "reason": "Non-zero padding in 8-to-5 conversion"
+      },
+      {
+        "string": "bc1gmk9yu",
+        "script_pubkey": null,
+        "reason": "Empty data section"
+      }
+    ]
+  },
+  "bip350": {
+    "source": "https://github.com/bitcoin/bips/blob/master/bip-0350.mediawiki (Test vectors)",
+    "valid_checksum": [
+      "A1LQFN3A",
+      "a1lqfn3a",
+      "an83characterlonghumanreadablepartthatcontainsthetheexcludedcharactersbioandnumber11sg7hg6",
+      "abcdef1l7aum6echk45nj3s0wdvt2fg8x9yrzpqzd3ryx",
+      "11llllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllludsr8",
+      "split1checkupstagehandshakeupstreamerranterredcaperredlc445v",
+      "?1v759aa"
+    ],
+    "invalid_checksum": [
+      {
+        "string": " 1xj0phk",
+        "script_pubkey": null,
+        "reason": "HRP character out of range"
+      },
+      {
+        "string": "\u007f1g6xzxy",
+        "script_pubkey": null,
+        "reason": "HRP character out of range"
+      },
+      {
+        "string": "\u00801vctc34",
+        "script_pubkey": null,
+        "reason": "HRP character out of range"
+      },
+      {
+        "string": "an84characterslonghumanreadablepartthatcontainsthetheexcludedcharactersbioandnumber11d6pts4",
+        "script_pubkey": null,
+        "reason": "overall max length exceeded"
+      },
+      {
+        "string": "qyrz8wqd2c9m",
+        "script_pubkey": null,
+        "reason": "No separator character"
+      },
+      {
+        "string": "1qyrz8wqd2c9m",
+        "script_pubkey": null,
+        "reason": "Empty HRP"
+      },
+      {
+        "string": "y1b0jsk6g",
+        "script_pubkey": null,
+        "reason": "Invalid data character"
+      },
+      {
+        "string": "lt1igcx5c0",
+        "script_pubkey": null,
+        "reason": "Invalid data character"
+      },
+      {
+        "string": "in1muywd",
+        "script_pubkey": null,
+        "reason": "Too short checksum"
+      },
+      {
+        "string": "mm1crxm3i",
+        "script_pubkey": null,
+        "reason": "Invalid character in checksum"
+      },
+      {
+        "string": "au1s5cgom",
+        "script_pubkey": null,
+        "reason": "Invalid character in checksum"
+      },
+      {
+        "string": "M1VUXWEZ",
+        "script_pubkey": null,
+        "reason": "checksum calculated with uppercase form of HRP"
+      },
+      {
+        "string": "16plkw9",
+        "script_pubkey": null,
+        "reason": "empty HRP"
+      },
+      {
+        "string": "1p2gdwpf",
+        "script_pubkey": null,
+        "reason": "empty HRP"
+      }
+    ],
+    "valid_address": [
+      {
+        "string": "BC1QW508D6QEJXTDG4Y5R3ZARVARY0C5XW7KV8F3T4",
+        "script_pubkey": "0014751e76e8199196d454941c45d1b3a323f1433bd6",
+        "reason": null
+      },
+      {
+        "string": "tb1qrp33g0q5c5txsp9arysrx4k6zdkfs4nce4xj0gdcccefvpysxf3q0sl5k7",
+        "script_pubkey": "00201863143c14c5166804bd19203356da136c985678cd4d27a1b8c6329604903262",
+        "reason": null
+      },
+      {
+        "string": "bc1pw508d6qejxtdg4y5r3zarvary0c5xw7kw508d6qejxtdg4y5r3zarvary0c5xw7kt5nd6y",
+        "script_pubkey": "5128751e76e8199196d454941c45d1b3a323f1433bd6751e76e8199196d454941c45d1b3a323f1433bd6",
+        "reason": null
+      },
+      {
+        "string": "BC1SW50QGDZ25J",
+        "script_pubkey": "6002751e",
+        "reason": null
+      },
+      {
+        "string": "bc1zw508d6qejxtdg4y5r3zarvaryvaxxpcs",
+        "script_pubkey": "5210751e76e8199196d454941c45d1b3a323",
+        "reason": null
+      },
+      {
+        "string": "tb1qqqqqp399et2xygdj5xreqhjjvcmzhxw4aywxecjdzew6hylgvsesrxh6hy",
+        "script_pubkey": "0020000000c4a5cad46221b2a187905e5266362b99d5e91c6ce24d165dab93e86433",
+        "reason": null
+      },
+      {
+        "string": "tb1pqqqqp399et2xygdj5xreqhjjvcmzhxw4aywxecjdzew6hylgvsesf3hn0c",
+        "script_pubkey": "5120000000c4a5cad46221b2a187905e5266362b99d5e91c6ce24d165dab93e86433",
+        "reason": null
+      },
+      {
+        "string": "bc1p0xlxvlhemja6c4dqv22uapctqupfhlxm9h8z3k2e72q4k9hcz7vqzk5jj0",
+        "script_pubkey": "512079be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+        "reason": null
+      }
+    ],
+    "invalid_address": [
+      {
+        "string": "tc1p0xlxvlhemja6c4dqv22uapctqupfhlxm9h8z3k2e72q4k9hcz7vq5zuyut",
+        "script_pubkey": null,
+        "reason": "Invalid human-readable part"
+      },
+      {
+        "string": "bc1p0xlxvlhemja6c4dqv22uapctqupfhlxm9h8z3k2e72q4k9hcz7vqh2y7hd",
+        "script_pubkey": null,
+        "reason": "Invalid checksum (Bech32 instead of Bech32m)"
+      },
+      {
+        "string": "tb1z0xlxvlhemja6c4dqv22uapctqupfhlxm9h8z3k2e72q4k9hcz7vqglt7rf",
+        "script_pubkey": null,
+        "reason": "Invalid checksum (Bech32 instead of Bech32m)"
+      },
+      {
+        "string": "BC1S0XLXVLHEMJA6C4DQV22UAPCTQUPFHLXM9H8Z3K2E72Q4K9HCZ7VQ54WELL",
+        "script_pubkey": null,
+        "reason": "Invalid checksum (Bech32 instead of Bech32m)"
+      },
+      {
+        "string": "bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kemeawh",
+        "script_pubkey": null,
+        "reason": "Invalid checksum (Bech32m instead of Bech32)"
+      },
+      {
+        "string": "tb1q0xlxvlhemja6c4dqv22uapctqupfhlxm9h8z3k2e72q4k9hcz7vq24jc47",
+        "script_pubkey": null,
+        "reason": "Invalid checksum (Bech32m instead of Bech32)"
+      },
+      {
+        "string": "bc1p38j9r5y49hruaue7wxjce0updqjuyyx0kh56v8s25huc6995vvpql3jow4",
+        "script_pubkey": null,
+        "reason": "Invalid character in checksum"
+      },
+      {
+        "string": "BC130XLXVLHEMJA6C4DQV22UAPCTQUPFHLXM9H8Z3K2E72Q4K9HCZ7VQ7ZWS8R",
+        "script_pubkey": null,
+        "reason": "Invalid witness version"
+      },
+      {
+        "string": "bc1pw5dgrnzv",
+        "script_pubkey": null,
+        "reason": "Invalid program length (1 byte)"
+      },
+      {
+        "string": "bc1p0xlxvlhemja6c4dqv22uapctqupfhlxm9h8z3k2e72q4k9hcz7v8n0nx0muaewav253zgeav",
+        "script_pubkey": null,
+        "reason": "Invalid program length (41 bytes)"
+      },
+      {
+        "string": "BC1QR508D6QEJXTDG4Y5R3ZARVARYV98GJ9P",
+        "script_pubkey": null,
+        "reason": "Invalid program length for witness version 0 (per BIP141)"
+      },
+      {
+        "string": "tb1p0xlxvlhemja6c4dqv22uapctqupfhlxm9h8z3k2e72q4k9hcz7vq47Zagq",
+        "script_pubkey": null,
+        "reason": "Mixed case"
+      },
+      {
+        "string": "bc1p0xlxvlhemja6c4dqv22uapctqupfhlxm9h8z3k2e72q4k9hcz7v07qwwzcrf",
+        "script_pubkey": null,
+        "reason": "zero padding of more than 4 bits"
+      },
+      {
+        "string": "tb1p0xlxvlhemja6c4dqv22uapctqupfhlxm9h8z3k2e72q4k9hcz7vpggkg4j",
+        "script_pubkey": null,
+        "reason": "Non-zero padding in 8-to-5 conversion"
+      },
+      {
+        "string": "bc1gmk9yu",
+        "script_pubkey": null,
+        "reason": "Empty data section"
+      }
+    ]
+  }
+}

@@ -13,6 +13,7 @@ repository (<https://github.com/bitcoin/bips>, `master` branch, fetched
 | `bip341_wallet_test_vectors.json` | `bip-0341/wallet-test-vectors.json` | Verbatim copy |
 | `bip32_test_vectors.json` | `bip-0032.mediawiki` § Test Vectors 1–5 | Extracted by script from the mediawiki text |
 | `bip39_trezor_vectors.json` | `trezor/python-mnemonic` `vectors.json` (the BIP-39 reference vectors) | English subset copied verbatim (24 vectors, passphrase `TREZOR`) |
+| `bech32_vectors.json` | `bip-0173.mediawiki` and `bip-0350.mediawiki` § Test vectors | Extracted by script from the mediawiki text |
 | `bip_derivation_vectors.json` | `bip-0049`, `bip-0084`, `bip-0086` mediawiki § Test vectors | Extracted by script from the mediawiki text |
 
 If a BIP is revised, refresh the verbatim files from the same paths and
