@@ -742,9 +742,9 @@ def schnorr_bip340_sign_and_verify_trace(
         raise ValueError("private key must be in [1, n-1]")
     if len(aux_rand) != 32:
         raise ValueError("BIP-340 auxiliary randomness must be exactly 32 bytes")
+    # BIP-340 (2022 revision) signs messages of any length; Taproot sighashes
+    # are the 32-byte special case.
     msg_bytes = msg_str.encode('utf-8')
-    if len(msg_bytes) != 32:
-        raise ValueError("BIP-340 messages must be exactly 32 bytes; pass a 32-byte hex message via a future CLI option")
     
     P = scalar_mult_g_fast(privkey_d)
     d = privkey_d
@@ -1509,8 +1509,7 @@ def rsa_demo(bits: int = 2048) -> dict[str, object]:
 # =============================================================================
 
 def bip340_message_arg(value: str) -> str:
-    if len(value.encode('utf-8')) != 32:
-        raise argparse.ArgumentTypeError("BIP-340 message must encode to exactly 32 UTF-8 bytes")
+    """Accept any UTF-8 message; BIP-340 no longer restricts message length."""
     return value
 
 def main():
@@ -1557,7 +1556,7 @@ def main():
     parser.add_argument("--taproot-tweak", nargs=1, metavar='PUBKEY_X_HEX', help="Compute Taproot output key Q = P + t*G")
     parser.add_argument("--ec-prng", type=str, metavar='SEED_STR', help="Generate deterministic demonstration points (not a secure PRNG)")
     parser.add_argument("--rfc6979-trace", type=str, metavar='MSG_STR', help="Trace RFC 6979 deterministic nonce derivation")
-    parser.add_argument("--schnorr-trace", type=bip340_message_arg, metavar='MSG_32_BYTES', help="Trace BIP-340 using an exactly 32-byte UTF-8 message")
+    parser.add_argument("--schnorr-trace", type=bip340_message_arg, metavar='MSG', help="Trace BIP-340 over a UTF-8 message of any length")
     parser.add_argument("--aux-rand", type=bytes.fromhex, metavar='HEX32', help="32-byte BIP-340 auxiliary randomness as 64 hex characters (default: all-zero vector setting)")
     parser.add_argument("--hash-to-curve", type=str, metavar='SEED_STR', help="Map arbitrary seed string to valid secp256k1 point")
     parser.add_argument("--verifiable-point", type=str, metavar='SEED_STR', help="Generate a deterministically derived point using a custom construction")
