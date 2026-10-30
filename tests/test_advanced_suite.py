@@ -2,8 +2,13 @@ import hashlib
 
 import pytest
 
-from keylab.advanced_suite import batch_inv, rfc6979_deterministic_nonce, rfc6979_trace
-from keylab.ec.secp256k1 import rfc6979_nonce_from_digest
+from keylab.advanced_suite import (
+    batch_inv,
+    parse_pubkey,
+    rfc6979_deterministic_nonce,
+    rfc6979_trace,
+)
+from keylab.ec.secp256k1 import compress_pubkey, decompress_pubkey, rfc6979_nonce_from_digest
 
 
 def test_batch_inv_handles_zero_and_normalizes_inputs_in_order() -> None:
@@ -37,3 +42,15 @@ def test_rfc6979_trace_matches_shared_nonce_api() -> None:
     trace = rfc6979_trace(private_scalar, message)
 
     assert trace["rfc6979_k_hex"] == f"0x{rfc6979_nonce_from_digest(private_scalar, digest):064x}"
+
+
+ODD_Y_KEY = "03DFF1D77F2A671C5F36183726DB2341BE58FEAE1DA2DECED843240F7B502BA659"
+
+
+def test_advanced_suite_parse_pubkey_honours_odd_y_prefix() -> None:
+    # Regression: 0x03 keys used to parse to the even-y point.
+    parsed = parse_pubkey(ODD_Y_KEY)
+    assert parsed == decompress_pubkey(bytes.fromhex(ODD_Y_KEY))
+    assert parsed[1] % 2 == 1
+    assert compress_pubkey(parsed).hex().upper() == ODD_Y_KEY
+    assert parse_pubkey(ODD_Y_KEY[2:])[1] % 2 == 0  # x-only lifts to even y

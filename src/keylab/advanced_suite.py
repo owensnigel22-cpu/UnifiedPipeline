@@ -49,6 +49,7 @@ import math
 import secrets
 import time
 
+from keylab.ec.secp256k1 import decompress_pubkey as _decompress_pubkey
 from keylab.ec.secp256k1 import is_on_curve as _shared_is_on_curve
 from keylab.ec.secp256k1 import lift_x as _shared_lift_x
 from keylab.ec.secp256k1 import rfc6979_nonce_from_digest
@@ -497,9 +498,9 @@ def parse_pubkey(pubkey_hex: str) -> tuple[int, int]:
         return lift_x_even(int.from_bytes(raw, "big"))
     if len(raw) != 33 or raw[0] not in (2, 3):
         raise ValueError("public key must be 32-byte x-only or 33-byte compressed SEC hex")
-    x = int.from_bytes(raw[1:], "big")
-    pt = lift_x_even(x)
-    return pt if raw[0] == 2 or pt[1] % 2 == 0 else point_negate(pt)
+    # Shared SEC1 decoding honours the 0x03 odd-y prefix. (The previous inline
+    # version always returned the even-y point, so 0x03 keys parsed incorrectly.)
+    return _decompress_pubkey(raw)
 
 def curve_y_roots(x: int) -> tuple[int, ...]:
     """Return the curve's y-coordinate root(s) for x, or raise if x has no point."""
