@@ -1549,6 +1549,7 @@ def main():
     parser.add_argument("--pubkey-advance", type=str, metavar='PUBKEY_HEX', help="Advance a valid public point by repeatedly adding G")
     parser.add_argument("--steps", type=int, default=10, help="Number of public-point additions (1 to 1000; default: 10)")
     parser.add_argument("--wif", type=str, metavar='WIF', help="Validate WIF and derive its public key and addresses")
+    parser.add_argument("--show-private", action="store_true", help="With --wif, print the decoded private scalar (hidden by default)")
     parser.add_argument("--bech32-diagnose", type=str, metavar='ADDRESS', help="Check a Bech32 or Bech32m checksum")
     parser.add_argument("--walkback-trace", type=str, metavar='ADDRESS_OR_KEY', help="Parse an address/public key and report what can be known from it")
     parser.add_argument("--benchmark-mult", action="store_true", help="Benchmark generic NAF vs fixed-base multiplication and batch inversions")
@@ -1806,7 +1807,14 @@ def main():
         decoded = decode_wif(args.wif if args.wif else demo_wif)
         print("\n[0c] WIF Forward Derivation:")
         print(f"    Network               : {decoded['network']}")
-        print(f"    Private Scalar        : {decoded['private_key_hex'] if args.wif else '[redacted demo key]'}")
+        if not args.wif:
+            private_display = "[redacted demo key]"
+        elif args.show_private:
+            private_display = decoded["private_key_hex"]
+        else:
+            # SECURITY.md: user-supplied secrets are revealed only on explicit request.
+            private_display = "[redacted; pass --show-private to reveal]"
+        print(f"    Private Scalar        : {private_display}")
         print(f"    Public Key            : {decoded['public_key_hex']}")
         print(f"    Hash160               : {decoded['hash160_hex']}")
         print(f"    Legacy P2PKH          : {decoded['legacy_p2pkh']}")
