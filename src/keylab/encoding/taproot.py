@@ -149,5 +149,127 @@ def verify_taproot_script_path(output_key_x: bytes, script: bytes, control_block
     return output.output_key_x == output_key_x and output.output_key_parity == parity
 
 
-__all__ = ["TaprootOutput", "lift_x", "tagged_hash", "tapbranch_hash", "tapleaf_hash",
-           "taproot_control_block", "taproot_output", "taproot_output_from_point", "verify_taproot_script_path"]
+def taproot_tweak_seckey(private_scalar: int, merkle_root: bytes = b"") -> int:
+    """Return the BIP-341 tweaked secret key for a key-path spend.
+
+    The internal key is first negated if its public point has odd y (so it
+    matches the even-y x-only internal key), then ``t = hashTapTweak(P_x || root)``
+    is added modulo N. The result signs for the output key ``Q = P + tG``.
+    """
+    if type(private_scalar) is not int or not 1 <= private_scalar < N:
+        raise ValueError("private scalar must be in [1, N-1]")
+    if not isinstance(merkle_root, bytes) or len(merkle_root) not in (0, 32):
+        raise ValueError("Merkle root must be empty or 32 bytes")
+    point = scalar_mult(private_scalar, G)
+    assert point is not None
+    adjusted = private_scalar if point[1] % 2 == 0 else N - private_scalar
+    tweak = int.from_bytes(tagged_hash("TapTweak", point[0].to_bytes(32, "big") + merkle_root), "big")
+    if tweak >= N:
+        raise ValueError("TapTweak hash is outside the curve order")
+    tweaked = (adjusted + tweak) % N
+    if tweaked == 0:
+        raise ValueError("tweaked secret key is zero")
+    return tweaked
+
+
+TAPROOT_HASH_TYPES = frozenset({0x00, 0x01, 0x02, 0x03, 0x81, 0x82, 0x83})
+
+
+def taproot_sign_key_path(sighash: bytes, internal_private_scalar: int, merkle_root: bytes = b"",
+                          *, hash_type: int = 0x00, aux_rand: bytes | None = None) -> bytes:
+    """Produce a BIP-341 key-path witness signature over a 32-byte sighash.
+
+    Returns 64 bytes for ``SIGHASH_DEFAULT`` (0x00) and 65 bytes otherwise,
+    with the hash type appended as BIP-341 requires. ``aux_rand`` defaults to
+    fresh randomness; pass 32 zero bytes only to reproduce test vectors.
+    """
+    from keylab.ec.schnorr import schnorr_sign
+
+    if not isinstance(sighash, bytes) or len(sighash) != 32:
+        raise ValueError("Taproot sighash must be 32 bytes")
+    if hash_type not in TAPROOT_HASH_TYPES:
+        raise ValueError("invalid Taproot hash type")
+    tweaked = taproot_tweak_seckey(internal_private_scalar, merkle_root)
+    signature = schnorr_sign(sighash, tweaked, aux_rand)
+    return signature if hash_type == 0x00 else signature + bytes([hash_type])
+
+
+@dataclass(frozen=True)
+class TapLeaf:
+    """One script leaf in a Taproot script tree."""
+
+    script: bytes
+    leaf_version: int = 0xC0
+
+    @property
+    def leaf_hash(self) -> bytes:
+        return tapleaf_hash(self.script, self.leaf_version)
+
+
+ScriptTree = TapLeaf | Sequence["ScriptTree"]
+
+
+@dataclass(frozen=True)
+class ScriptTreeLeaf:
+    """A leaf together with its hash and Merkle inclusion path (leaf to root)."""
+
+    leaf: TapLeaf
+    leaf_hash: bytes
+    merkle_path: tuple[bytes, ...]
+
+
+@dataclass(frozen=True)
+class BuiltScriptTree:
+    """Merkle root and per-leaf inclusion data, in depth-first left-to-right order."""
+
+    merkle_root: bytes
+    leaves: tuple[ScriptTreeLeaf, ...]
+
+
+def _tree_helper(tree: ScriptTree) -> tuple[list[tuple[TapLeaf, bytes, list[bytes]]], bytes]:
+    if isinstance(tree, TapLeaf):
+        leaf_hash = tree.leaf_hash
+        return [(tree, leaf_hash, [])], leaf_hash
+    if not isinstance(tree, Sequence) or isinstance(tree, (bytes, str)) or len(tree) != 2:
+        raise ValueError("a script tree node must be a TapLeaf or a pair of subtrees")
+    left, left_hash = _tree_helper(tree[0])
+    right, right_hash = _tree_helper(tree[1])
+    entries = [(leaf, h, path + [right_hash]) for leaf, h, path in left]
+    entries += [(leaf, h, path + [left_hash]) for leaf, h, path in right]
+    return entries, tapbranch_hash(left_hash, right_hash)
+
+
+def build_script_tree(tree: ScriptTree) -> BuiltScriptTree:
+    """Compute a script tree's Merkle root and each leaf's Merkle path.
+
+    ``tree`` is a :class:`TapLeaf` or a nested pair ``(left, right)``, which
+    mirrors BIP-341's reference ``taproot_tree_helper``. Control blocks can
+    then be serialized with :func:`taproot_control_block`.
+    """
+    entries, root = _tree_helper(tree)
+    if len(entries) > 1 and max(len(path) for _, _, path in entries) > 128:
+        raise ValueError("script tree is deeper than BIP-341's 128-level limit")
+    return BuiltScriptTree(root, tuple(ScriptTreeLeaf(leaf, h, tuple(path))
+                                       for leaf, h, path in entries))
+
+
+def taproot_script_tree_output(internal_key_x: bytes, tree: ScriptTree | None, *,
+                               network: str = "mainnet") -> tuple[TaprootOutput, tuple[bytes, ...]]:
+    """Build an output from an internal key and optional tree, plus control blocks per leaf."""
+    if tree is None:
+        return taproot_output(internal_key_x, b"", network=network), ()
+    built = build_script_tree(tree)
+    output = taproot_output(internal_key_x, built.merkle_root, network=network)
+    controls = tuple(
+        taproot_control_block(internal_key_x, output.output_key_parity, entry.merkle_path,
+                              leaf_version=entry.leaf.leaf_version)
+        for entry in built.leaves
+    )
+    return output, controls
+
+
+__all__ = ["TAPROOT_HASH_TYPES", "BuiltScriptTree", "ScriptTreeLeaf", "TapLeaf", "TaprootOutput",
+           "build_script_tree", "lift_x", "tagged_hash", "tapbranch_hash", "tapleaf_hash",
+           "taproot_control_block", "taproot_output", "taproot_output_from_point",
+           "taproot_script_tree_output", "taproot_sign_key_path", "taproot_tweak_seckey",
+           "verify_taproot_script_path"]
