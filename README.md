@@ -1,11 +1,31 @@
 # Keylab Cryptographic Analysis Notes
 
+> Research and teaching code: not constant-time and not for real funds. Read
+> [SECURITY.md](SECURITY.md) first. Changes are listed in
+> [CHANGELOG.md](CHANGELOG.md).
+
+## Documentation
+
+| Topic | Page |
+|---|---|
+| Architecture, cryptographic assumptions, implementation notes | [docs/architecture.md](docs/architecture.md) |
+| API reference (generated from docstrings) | [docs/api.md](docs/api.md) |
+| secp256k1 arithmetic, shared helpers, backends, verification strategy | [docs/secp256k1.md](docs/secp256k1.md) |
+| BIP-32 extended keys, CKDpub, BIP-44/49/84/86 | [docs/bip32.md](docs/bip32.md) |
+| BIP-340 Schnorr and BIP-327 MuSig2 key aggregation | [docs/bip340.md](docs/bip340.md) |
+| Taproot outputs, script trees, sighash, key-path signing | [docs/taproot.md](docs/taproot.md) |
+| Benchmark commands and recorded results | [docs/benchmarks.md](docs/benchmarks.md) |
+| Point halving, doubling quartic, division polynomials | [docs/point_halving.md](docs/point_halving.md) |
+| Official test-vector fixtures and provenance | [tests/vectors/README.md](tests/vectors/README.md) |
+
 ## secp256k1 signatures and key encodings
 
 `keylab.ec.sec1` parses and serializes validated compressed and uncompressed
 SEC1 public keys. `keylab.ec.schnorr` implements BIP-340 x-only public keys,
-signing, and verification, with secure random auxiliary input by default and
-the official BIP-340 vector covered by tests. The Python arithmetic remains a
+signing, and verification over messages of any length, with secure random
+auxiliary input by default and all 19 official BIP-340 vectors covered by
+tests. `keylab.ec.musig2` implements BIP-327 KeySort/KeyAgg and aggregate-key
+tweaking (no nonce handling or partial signing). The Python arithmetic remains a
 reference/research implementation; use a reviewed native library for production
 signing with secret keys.
 `keylab.crypto.hkdf` implements RFC 5869 HKDF with SHA-256/SHA-512 and checks
@@ -16,14 +36,22 @@ the standard 255-block output limit.
 `keylab.hd` provides BIP-39 PBKDF2 seed derivation and BIP-32 private-path
 derivation, including a batched BIP-44 P2PKH API that reuses account-level
 derivation and a BIP-86 P2TR key-path derivation API. Both emit public address
-data only. Mnemonic word-list and checksum
+data only. `ExtendedKey` adds xprv/xpub serialization (plus the SLIP-132
+y/z/u/v families), CKDpub, fingerprints, and parent identifiers;
+`derive_bip49_p2sh_p2wpkh`, `derive_bip84_p2wpkh`, and `derive_account_key`
+cover BIP-49 and BIP-84. Official BIP-32 vectors 1-5 and the BIP-49/84/86
+vectors are tested. Mnemonic word-list and checksum
 validation is separate; `mnemonic_to_seed` assumes the caller has supplied a
 valid phrase.
 
 `keylab.encoding.taproot` computes BIP-341 TapLeaf/TapBranch commitments,
 TapTweak output keys and P2TR addresses, and verifies script-path control-block
 commitments. This checks the committed script and Merkle path; it does not run
-Bitcoin Script or evaluate a witness spend. Taproot address data can also be
+Bitcoin Script or evaluate a witness spend. `build_script_tree` derives Merkle
+paths and control blocks from a nested leaf tree, `taproot_tweak_seckey` and
+`taproot_sign_key_path` produce key-path signatures, and
+`keylab.encoding.transaction.taproot_sighash` computes the BIP-341 signature
+hash for every hash type; all official BIP-341 wallet vectors pass. Taproot address data can also be
 decoded with `address_to_target_hash`.
 
 `keylab.encoding.address` also derives P2PKH, nested P2WPKH, native P2WPKH,
@@ -48,6 +76,10 @@ reported separately and excluded from operation timing; its table algorithm
 is ported into Keylab's Jacobian primitives, so this compares algorithms rather
 than importing and executing the attachment as a module. The benchmark omits
 all scalar values.
+Use `keylab benchmark-signatures` to time BIP-340 and ECDSA signing and
+verification, BIP-32 CKDpriv/CKDpub, and Taproot tweaking and key-path signing
+against libsecp256k1 on a seeded corpus (`--json` for the full report);
+recorded results are in [docs/benchmarks.md](docs/benchmarks.md).
 Use `keylab benchmark-wifs --count 1000 --backend all` for a randomly generated
 multi-key corpus, or `keylab benchmark-wifs --wif-file path-to-wifs.txt` for a
 local file with one WIF per line. The file and synthetic corpus are processed
@@ -507,6 +539,11 @@ The advanced command retains the script's public-point walkback/tracing,
 SHA-256 conditional backward ledger, SAT/CNF input, secp256k1 experiments,
 and RSA demonstrations. Existing package functionality remains available
 through `keylab` and its library modules.
+
+`--musig2-aggregate` follows BIP-327 and takes 33-byte compressed keys; pass
+`--musig2-mode legacy-xonly` to reproduce the pre-0.2 draft behaviour.
+`--schnorr-trace` accepts a message of any length. `--wif` shows public data
+only; add `--show-private` to display the decoded private scalar.
 
 ### Modular inverses in RSA and ECC
 
