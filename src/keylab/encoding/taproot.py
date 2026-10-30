@@ -21,6 +21,11 @@ from keylab.ec.secp256k1 import (
 from keylab.encoding.bech32 import encode_segwit_address
 from keylab.hashes.tagged import tagged_hash
 
+TAPROOT_ANNEX_TAG = 0x50
+TAPROOT_CONTROL_BASE_SIZE = 33
+TAPROOT_CONTROL_NODE_SIZE = 32
+TAPROOT_CONTROL_MAX_NODE_COUNT = 128
+
 
 def tapleaf_hash(script: bytes, leaf_version: int = 0xC0) -> bytes:
     """Compute the BIP-341 TapLeaf hash using Bitcoin's CompactSize length."""
@@ -28,6 +33,10 @@ def tapleaf_hash(script: bytes, leaf_version: int = 0xC0) -> bytes:
         raise TypeError("script must be bytes")
     if type(leaf_version) is not int or not 0 <= leaf_version <= 0xFE or leaf_version & 1:
         raise ValueError("leaf version must be an even byte")
+    if leaf_version == TAPROOT_ANNEX_TAG:
+        # BIP-341: the leaf version "cannot be 0x50 as that would result in
+        # ambiguity with the annex".
+        raise ValueError("leaf version 0x50 is reserved for the annex")
     length = len(script)
     if length < 253:
         compact_size = bytes([length])
@@ -124,16 +133,22 @@ def taproot_control_block(internal_key_x: bytes, output_key_parity: int,
         raise ValueError("internal x-only key must be 32 bytes")
     if output_key_parity not in (0, 1):
         raise ValueError("output parity must be 0 or 1")
-    if len(merkle_path) > 128 or any(len(node) != 32 for node in merkle_path):
+    if len(merkle_path) > TAPROOT_CONTROL_MAX_NODE_COUNT or any(len(node) != 32 for node in merkle_path):
         raise ValueError("Merkle path must contain at most 128 32-byte nodes")
     if leaf_version & 1 or not 0 <= leaf_version <= 0xFE:
         raise ValueError("leaf version must be an even byte")
+    if leaf_version == TAPROOT_ANNEX_TAG:
+        raise ValueError("leaf version 0x50 is reserved for the annex")
     return bytes([leaf_version | output_key_parity]) + internal_key_x + b"".join(merkle_path)
 
 
 def verify_taproot_script_path(output_key_x: bytes, script: bytes, control_block: bytes) -> bool:
     """Verify control-block commitment to an output key (not script execution)."""
-    if len(output_key_x) != 32 or len(control_block) < 33 or (len(control_block) - 33) % 32:
+    # BIP-341: the control block "must have length 33 + 32m, for a value of m
+    # that is an integer between 0 and 128, inclusive. Fail if it does not".
+    path_bytes = len(control_block) - TAPROOT_CONTROL_BASE_SIZE
+    if (len(output_key_x) != 32 or path_bytes < 0 or path_bytes % TAPROOT_CONTROL_NODE_SIZE
+            or path_bytes // TAPROOT_CONTROL_NODE_SIZE > TAPROOT_CONTROL_MAX_NODE_COUNT):
         return False
     leaf_version = control_block[0] & 0xFE
     parity = control_block[0] & 1
@@ -268,7 +283,7 @@ def taproot_script_tree_output(internal_key_x: bytes, tree: ScriptTree | None, *
     return output, controls
 
 
-__all__ = ["TAPROOT_HASH_TYPES", "BuiltScriptTree", "ScriptTreeLeaf", "TapLeaf", "TaprootOutput",
+__all__ = ["TAPROOT_ANNEX_TAG", "TAPROOT_CONTROL_MAX_NODE_COUNT", "TAPROOT_HASH_TYPES", "BuiltScriptTree", "ScriptTreeLeaf", "TapLeaf", "TaprootOutput",
            "build_script_tree", "lift_x", "tagged_hash", "tapbranch_hash", "tapleaf_hash",
            "taproot_control_block", "taproot_output", "taproot_output_from_point",
            "taproot_script_tree_output", "taproot_sign_key_path", "taproot_tweak_seckey",
