@@ -49,6 +49,8 @@ import math
 import secrets
 import time
 
+from keylab.ec.musig2 import key_agg as _bip327_key_agg
+from keylab.ec.musig2 import key_agg_coeff as _bip327_key_agg_coeff
 from keylab.ec.secp256k1 import decompress_pubkey as _decompress_pubkey
 from keylab.ec.secp256k1 import is_on_curve as _shared_is_on_curve
 from keylab.ec.secp256k1 import lift_x as _shared_lift_x
@@ -888,13 +890,40 @@ def verifiable_pseudorandom_point(seed_str: str) -> dict[str, object]:
 # New in v17: MuSig2 Key Aggregation, Taproot Tweaking & Long-Period EC PRNG
 # =============================================================================
 
-def musig2_aggregate_keys(pubkey_hex_list: list[str]) -> dict[str, object]:
+def musig2_aggregate_keys(pubkey_hex_list: list[str], mode: str = "bip327") -> dict[str, object]:
     """
-    MuSig2 Key Aggregation Engine: Aggregates multiple Schnorr public keys into a joint key P_agg.
-    Calculates key coefficients a_i = Hash(KeyAgg || P_1 || ... || P_n || P_i) for unforgeability.
+    MuSig2 Key Aggregation Engine: aggregates public keys into a joint key P_agg.
+
+    ``mode="bip327"`` (default) follows BIP-327 KeyAgg exactly: inputs are
+    33-byte compressed keys, L = hash_KeyAgg list(pk_1 || ... || pk_u), and
+    a_i = hash_KeyAgg coefficient(L || pk_i), except that the second distinct
+    key gets a_i = 1. Results match the official BIP-327 test vectors.
+
+    ``mode="legacy-xonly"`` keeps this suite's earlier pre-BIP-327 draft
+    behaviour (x-only keys lifted to even y, 32-byte keys hashed). Its output
+    does NOT match BIP-327 and is retained only for reproducing old traces.
     """
+    if mode not in ("bip327", "legacy-xonly"):
+        raise ValueError("mode must be 'bip327' or 'legacy-xonly'")
     if len(pubkey_hex_list) < 2:
         raise ValueError("provide at least two public keys")
+    if mode == "bip327":
+        keys = [bytes.fromhex(p_hex.removeprefix("0x")) for p_hex in pubkey_hex_list]
+        if any(len(key) != 33 for key in keys):
+            raise ValueError(
+                "BIP-327 aggregates 33-byte compressed keys; use mode='legacy-xonly' for x-only inputs"
+            )
+        context = _bip327_key_agg(keys)
+        bip327_coeffs = [f"0x{_bip327_key_agg_coeff(keys, key):064x}" for key in keys]
+        return {
+            "mode": mode,
+            "input_pubkeys_count": len(pubkey_hex_list),
+            "key_coefficients_a_i": bip327_coeffs,
+            "aggregated_point_x_hex": f"0x{context.point[0]:064x}",
+            "aggregated_point_y_hex": f"0x{context.point[1]:064x}",
+            "x_only_aggregated_pubkey_hex": f"0x{context.point[0]:064x}",
+        }
+
     pts = [lift_x_even(parse_pubkey(p_hex)[0]) for p_hex in pubkey_hex_list]
 
     # Compute KeyAgg list digest
@@ -918,6 +947,7 @@ def musig2_aggregate_keys(pubkey_hex_list: list[str]) -> dict[str, object]:
 
     P_agg = jacobian_to_affine(R_agg_jac)
     return {
+        "mode": mode,
         "input_pubkeys_count": len(pubkey_hex_list),
         "key_coefficients_a_i": coeffs,
         "aggregated_point_x_hex": f"0x{P_agg[0]:064x}",
@@ -1552,7 +1582,8 @@ def main():
     parser.add_argument("--rsa-n", type=str, metavar='MODULUS_HEX', help="RSA modulus for RSA operations")
     parser.add_argument("--rsa-e", type=int, default=65537, metavar='EXPONENT', help="RSA public exponent (default 65537)")
     parser.add_argument("--rsa-d", type=str, metavar='PRIVATE_EXPONENT_HEX', help="RSA private exponent for decrypt/sign")
-    parser.add_argument("--musig2-aggregate", nargs='+', metavar='PUBKEY_HEX', help="Aggregate multiple Schnorr public keys into a joint key P_agg")
+    parser.add_argument("--musig2-aggregate", nargs='+', metavar='PUBKEY_HEX', help="Aggregate 33-byte compressed public keys with BIP-327 KeyAgg")
+    parser.add_argument("--musig2-mode", choices=("bip327", "legacy-xonly"), default="bip327", help="MuSig2 aggregation rules (legacy-xonly reproduces the pre-BIP-327 draft)")
     parser.add_argument("--taproot-tweak", nargs=1, metavar='PUBKEY_X_HEX', help="Compute Taproot output key Q = P + t*G")
     parser.add_argument("--ec-prng", type=str, metavar='SEED_STR', help="Generate deterministic demonstration points (not a secure PRNG)")
     parser.add_argument("--rfc6979-trace", type=str, metavar='MSG_STR', help="Trace RFC 6979 deterministic nonce derivation")
@@ -1892,8 +1923,9 @@ def main():
             "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
             "02038fbdd86e5f2a1781fbe8a7476d14af8544fdd5a737be5fbeb11cc912c026a5"
         ]
-        musig = musig2_aggregate_keys(keys)
+        musig = musig2_aggregate_keys(keys, mode=args.musig2_mode)
         print("\n[5] MuSig2 Multi-Party Key Aggregation Engine:")
+        print(f"    Aggregation Rules     : {musig['mode']}")
         print(f"    Aggregated Keys Count : {musig['input_pubkeys_count']}")
         print(f"    Key Coefficients a_i  : {musig['key_coefficients_a_i']}")
         print(f"    Aggregated Point P_agg: ({musig['aggregated_point_x_hex']}, {musig['aggregated_point_y_hex']})")
