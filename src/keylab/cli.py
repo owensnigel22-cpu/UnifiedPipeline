@@ -11,13 +11,14 @@ import sys
 import time
 from pathlib import Path
 from subprocess import run
-from typing import TextIO
+from typing import Any, TextIO, cast
 
 from keylab.backends import backend_info
 from keylab.benchmarks import (
     available_scalar_backends,
     benchmark_ec,
     benchmark_hash160_only,
+    benchmark_signatures,
     benchmark_synthetic_wifs,
     benchmark_wif_file,
     benchmark_wif_to_pubkey,
@@ -1476,6 +1477,37 @@ def _benchmark_ec(args: argparse.Namespace, parser: argparse.ArgumentParser) -> 
     return 0
 
 
+def _benchmark_signatures(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
+    """Time BIP-340, ECDSA, BIP-32, and Taproot operations (Python vs libsecp256k1)."""
+    try:
+        report = benchmark_signatures(
+            count=args.count,
+            seed=args.seed,
+            repetitions=args.repetitions,
+            backend=args.backend,
+        )
+    except (ImportError, OSError, ValueError, ArithmeticError) as exc:
+        parser.error(f"signature benchmark failed: {exc}")
+    if args.json:
+        print(json.dumps(report, indent=2))
+        return 0
+    print(
+        f"signatures/BIP-32/Taproot | corpus={report['count']} | seed={report['seed']} | "
+        f"repetitions={report['repetitions']} | statistic=median"
+    )
+    print(f"Keylab point multiplication: {report['keylab_multiplication']}")
+    print(f"{'Operation':<22} {'Implementation':<14} {'ops/sec':>11} {'us/op':>10}")
+    print("-" * 60)
+    rows = cast(list[dict[str, Any]], report["operations"])
+    for row in rows:
+        print(
+            f"{row['operation']:<22} {row['implementation']:<14} "
+            f"{row['median_ops_per_second']:>11.1f} {row['median_us_per_op']:>10.1f}"
+        )
+    print(report["note"])
+    return 0
+
+
 def _benchmark_wifs(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
     """Benchmark a random synthetic corpus or WIFs loaded from a local file."""
     backends = available_scalar_backends() if args.backend == "all" else (args.backend,)
@@ -1609,6 +1641,16 @@ def build_parser() -> argparse.ArgumentParser:
         choices=("all", "python", "python-affine-window", "python-glv", "python-wnaf", "v65-windowed", "coincurve", "fastecdsa"),
         default="all",
     )
+    signature_benchmark = commands.add_parser(
+        "benchmark-signatures",
+        help="time BIP-340, ECDSA, BIP-32, and Taproot operations on a seeded public corpus",
+        description="Verifies correctness first and reports medians; never prints scalars, keys, or signatures.",
+    )
+    signature_benchmark.add_argument("--count", type=int, default=8, help="operations per timed corpus")
+    signature_benchmark.add_argument("--seed", type=int, default=20261030, help="seed for the public corpus")
+    signature_benchmark.add_argument("--repetitions", type=int, default=5, help="timed repetitions; median is reported")
+    signature_benchmark.add_argument("--backend", choices=("all", "keylab", "coincurve"), default="all")
+    signature_benchmark.add_argument("--json", action="store_true", help="print the full JSON report")
     wif_benchmark = commands.add_parser(
         "benchmark-wifs",
         help="benchmark many synthetic WIFs or a local newline-delimited WIF corpus",
@@ -2124,6 +2166,10 @@ def main(argv: list[str] | None = None) -> int:
         if args.count < 1 or args.seed < 0 or args.repetitions < 1:
             parser.error("--count and --repetitions must be positive; --seed must be nonnegative")
         return _benchmark_ec(args, parser)
+    if args.command == "benchmark-signatures":
+        if args.count < 1 or args.seed < 0 or args.repetitions < 1:
+            parser.error("--count and --repetitions must be positive; --seed must be nonnegative")
+        return _benchmark_signatures(args, parser)
     if args.command == "benchmark-wifs":
         if args.count < 1 or args.warmup < 0 or args.repetitions < 1:
             parser.error("--count and --repetitions must be positive; --warmup nonnegative")

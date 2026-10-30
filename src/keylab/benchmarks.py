@@ -21,8 +21,10 @@ from keylab.ec.secp256k1 import (
     _to_affine,
     _to_jacobian,
     compress_pubkey,
+    decompress_pubkey,
     is_on_curve,
     point_add,
+    point_add_affine,
     point_double,
     scalar_mult,
 )
@@ -547,12 +549,201 @@ def benchmark_wif_file(
     )
 
 
+SIGNATURE_OPERATIONS = (
+    "schnorr-sign",
+    "schnorr-verify",
+    "ecdsa-sign",
+    "ecdsa-verify",
+    "bip32-ckdpriv",
+    "bip32-ckdpub",
+    "taproot-tweak-pubkey",
+    "taproot-tweak-seckey",
+    "taproot-sign",
+    "musig2-key-agg",
+)
+
+
+MUSIG2_GROUP_SIZE = 3
+
+
+def _median_ns(samples: list[int]) -> float:
+    ordered = sorted(samples)
+    middle = len(ordered) // 2
+    return ordered[middle] if len(ordered) % 2 else (ordered[middle - 1] + ordered[middle]) / 2
+
+
+def benchmark_signatures(
+    *,
+    count: int = 8,
+    seed: int = 20261030,
+    repetitions: int = 5,
+    backend: str = "all",
+) -> dict[str, object]:
+    """Time BIP-340, ECDSA, BIP-32, Taproot, and MuSig2 operations on a seeded public corpus.
+
+    ``backend`` selects Keylab's implementations (``keylab``), the libsecp256k1
+    reference through coincurve (``coincurve``), or both (``all``). Keylab rows
+    use ``scalar_mult(backend="auto")``, so their point multiplications run on
+    libsecp256k1 when coincurve is installed; ``keylab_multiplication`` in the
+    report records which path was active.
+    Every operation is checked for correctness before timing (Python and
+    libsecp256k1 Schnorr signatures must be byte-identical), method order is
+    shuffled per repetition, and medians are reported. Scalars, signatures,
+    and keys are never included in the result.
+    """
+    from keylab.ec.musig2 import key_agg, key_agg_coeff, key_sort
+    from keylab.ec.schnorr import schnorr_public_key, schnorr_sign, schnorr_verify
+    from keylab.ec.secp256k1 import ecdsa_sign_digest, ecdsa_verify_digest
+    from keylab.encoding.taproot import taproot_output, taproot_sign_key_path, taproot_tweak_seckey
+    from keylab.hd import ExtendedKey
+
+    if type(count) is not int or count < 1:
+        raise ValueError("count must be a positive integer")
+    if type(seed) is not int or seed < 0:
+        raise ValueError("seed must be a nonnegative integer")
+    if type(repetitions) is not int or repetitions < 1:
+        raise ValueError("repetitions must be a positive integer")
+    if backend not in ("all", "keylab", "coincurve"):
+        raise ValueError("backend must be 'all', 'keylab', or 'coincurve'")
+    have_coincurve = find_spec("coincurve") is not None
+    if backend == "coincurve" and not have_coincurve:
+        raise ImportError("install Keylab's coincurve extra: pip install 'keylab[secp256k1]'")
+
+    rng = random.Random(seed)
+    scalars = tuple(rng.randrange(1, N) for _ in range(count))
+    messages = tuple(hashlib.sha256(seed.to_bytes(8, "big") + i.to_bytes(4, "big")).digest()
+                     for i in range(count))
+    aux = tuple(hashlib.sha256(b"aux" + message).digest() for message in messages)
+    xonly = tuple(schnorr_public_key(scalar) for scalar in scalars)
+    points = tuple(scalar_mult(scalar, backend="python") for scalar in scalars)
+    schnorr_sigs = tuple(schnorr_sign(m, d, a) for m, d, a in zip(messages, scalars, aux))
+    ecdsa_sigs = tuple(ecdsa_sign_digest(m, d) for m, d in zip(messages, scalars))
+    root = ExtendedKey.from_seed(rng.randbytes(32))
+    account = root.derive("m/86'/0'/0'")
+    account_public = account.neuter()
+    merkle_root = hashlib.sha256(b"keylab benchmark tree").digest()
+    corpus = range(count)
+    # MuSig2: one KeyAgg over a sorted group of MUSIG2_GROUP_SIZE plain keys per operation.
+    plain_keys = tuple(compress_pubkey(point) for point in points)
+    musig_groups = tuple(
+        key_sort([plain_keys[(i + j) % count] for j in range(MUSIG2_GROUP_SIZE)]) for i in corpus
+    )
+
+    functions: dict[tuple[str, str], object] = {}
+    if backend in ("all", "keylab"):
+        functions.update({
+            ("schnorr-sign", "keylab"): lambda i: schnorr_sign(messages[i], scalars[i], aux[i]),
+            ("schnorr-verify", "keylab"): lambda i: schnorr_verify(messages[i], schnorr_sigs[i], xonly[i]),
+            ("ecdsa-sign", "keylab"): lambda i: ecdsa_sign_digest(messages[i], scalars[i]),
+            ("ecdsa-verify", "keylab"): lambda i: ecdsa_verify_digest(messages[i], ecdsa_sigs[i], points[i]),
+            ("bip32-ckdpriv", "keylab"): lambda i: account.child(i),
+            ("bip32-ckdpub", "keylab"): lambda i: account_public.child(i),
+            ("taproot-tweak-pubkey", "keylab"): lambda i: taproot_output(xonly[i], merkle_root),
+            ("taproot-tweak-seckey", "keylab"): lambda i: taproot_tweak_seckey(scalars[i], merkle_root),
+            ("taproot-sign", "keylab"): lambda i: taproot_sign_key_path(
+                messages[i], scalars[i], merkle_root, aux_rand=aux[i]),
+            ("musig2-key-agg", "keylab"): lambda i: key_agg(musig_groups[i]),
+        })
+    if backend in ("all", "coincurve") and have_coincurve:
+        import coincurve
+
+        cc_keys = tuple(coincurve.PrivateKey(scalar.to_bytes(32, "big")) for scalar in scalars)
+        cc_xonly = tuple(coincurve.keys.PublicKeyXOnly(key) for key in xonly)
+        cc_public = tuple(key.public_key for key in cc_keys)
+        cc_ecdsa = tuple(key.sign(message, hasher=None) for key, message in zip(cc_keys, messages))
+        functions.update({
+            ("schnorr-sign", "libsecp256k1"): lambda i: cc_keys[i].sign_schnorr(messages[i], aux[i]),
+            ("schnorr-verify", "libsecp256k1"): lambda i: cc_xonly[i].verify(schnorr_sigs[i], messages[i]),
+            ("ecdsa-sign", "libsecp256k1"): lambda i: cc_keys[i].sign(messages[i], hasher=None),
+            ("ecdsa-verify", "libsecp256k1"): lambda i: cc_public[i].verify(cc_ecdsa[i], messages[i], hasher=None),
+        })
+        for i in corpus:  # libsecp256k1 must agree with Keylab before anything is timed
+            if cc_keys[i].sign_schnorr(messages[i], aux[i]) != schnorr_sigs[i]:
+                raise ArithmeticError("libsecp256k1 and Keylab BIP-340 signatures differ")
+            if not cc_public[i].verify(cc_ecdsa[i], messages[i], hasher=None):
+                raise ArithmeticError("libsecp256k1 rejected its own ECDSA signature")
+    if not functions:
+        raise ValueError("no implementations selected")
+
+    for i in corpus:  # correctness gate for Keylab's implementations
+        if not schnorr_verify(messages[i], schnorr_sigs[i], xonly[i]):
+            raise ArithmeticError("BIP-340 signature failed verification")
+        if not ecdsa_verify_digest(messages[i], ecdsa_sigs[i], points[i]):
+            raise ArithmeticError("ECDSA signature failed verification")
+        if account.child(i).neuter() != account_public.child(i):
+            raise ArithmeticError("CKDpub disagrees with CKDpriv")
+        tweaked = taproot_tweak_seckey(scalars[i], merkle_root)
+        if schnorr_public_key(tweaked) != taproot_output(xonly[i], merkle_root).output_key_x:
+            raise ArithmeticError("tweaked secret key does not match tweaked output key")
+        group = musig_groups[i]
+        expected_aggregate = None
+        for member in group:  # independent sum of a_i * P_i
+            expected_aggregate = point_add_affine(
+                expected_aggregate,
+                scalar_mult(key_agg_coeff(group, member), decompress_pubkey(member), backend="python"),
+            )
+        if key_agg(group).point != expected_aggregate:
+            raise ArithmeticError("BIP-327 KeyAgg disagrees with the coefficient-wise sum")
+
+    warmup_ms: dict[tuple[str, str], float] = {}
+    for key, function in functions.items():
+        started = perf_counter_ns()
+        function(0)  # type: ignore[operator]
+        warmup_ms[key] = (perf_counter_ns() - started) / 1_000_000
+
+    samples: dict[tuple[str, str], list[int]] = {key: [] for key in functions}
+    order_rng = random.Random(seed ^ 0x5349474E)
+    for _ in range(repetitions):
+        order = list(functions)
+        order_rng.shuffle(order)
+        for key in order:
+            function = functions[key]
+            started = perf_counter_ns()
+            for i in corpus:
+                function(i)  # type: ignore[operator]
+            samples[key].append(perf_counter_ns() - started)
+
+    rows = []
+    for operation in SIGNATURE_OPERATIONS:
+        for implementation in ("keylab", "libsecp256k1"):
+            key = (operation, implementation)
+            if key not in samples:
+                continue
+            median_ns = _median_ns(samples[key])
+            rows.append({
+                "operation": operation,
+                "implementation": implementation,
+                "median_ms_per_corpus": median_ns / 1_000_000,
+                "median_ops_per_second": count * 1_000_000_000 / median_ns,
+                "median_us_per_op": median_ns / count / 1_000,
+                "samples_ms": [value / 1_000_000 for value in samples[key]],
+                "warmup_ms_excluded": warmup_ms[key],
+            })
+    return {
+        "benchmark": "secp256k1-signatures-bip32-taproot",
+        "count": count,
+        "seed": seed,
+        "repetitions": repetitions,
+        "timing_statistic": "median elapsed time over the same seeded corpus",
+        "operations": rows,
+        "coincurve_available": have_coincurve,
+        "keylab_multiplication": "auto: libsecp256k1 via coincurve" if have_coincurve else "auto: pure Python",
+        "machine": platform.platform(),
+        "python_version": sys.version.split()[0],
+        "note": ("Correctness was verified before timing; the corpus is seeded and public. "
+                 "Scalars, signatures, and keys are intentionally omitted."),
+    }
+
+
 __all__ = [
+    "MUSIG2_GROUP_SIZE",
+    "SIGNATURE_OPERATIONS",
     "available_scalar_backends",
     "benchmark_ec",
     "benchmark_hash160_only",
     "benchmark_multiple_wifs",
     "benchmark_repeated_wifs",
+    "benchmark_signatures",
     "benchmark_synthetic_wifs",
     "benchmark_wif_file",
     "benchmark_wif_to_pubkey",
