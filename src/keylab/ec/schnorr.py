@@ -4,20 +4,16 @@ from __future__ import annotations
 
 import secrets
 
-from keylab.ec.secp256k1 import G, N, P, point_add_affine, point_negate_affine, scalar_mult
+from keylab.ec.secp256k1 import G, N, P, lift_x, point_add_affine, point_negate_affine, scalar_mult
 from keylab.hashes.tagged import tagged_hash
 
 
 def _lift_x_even(x: int) -> tuple[int, int] | None:
-    if not 0 <= x < P:
+    """Return the even-y point for ``x``, or ``None`` when x is not a valid coordinate."""
+    try:
+        return lift_x(x)
+    except ValueError:
         return None
-    y_squared = (pow(x, 3, P) + 7) % P
-    y = pow(y_squared, (P + 1) // 4, P)
-    if y * y % P != y_squared:
-        return None
-    if y & 1:
-        y = P - y
-    return x, y
 
 
 def schnorr_public_key(private_scalar: int) -> bytes:

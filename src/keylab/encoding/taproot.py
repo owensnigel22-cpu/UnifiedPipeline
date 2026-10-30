@@ -14,22 +14,12 @@ from keylab.ec.secp256k1 import (
     N,
     P,
     is_on_curve,
+    lift_x,
     point_add_affine,
     scalar_mult,
 )
 from keylab.encoding.bech32 import encode_segwit_address
 from keylab.hashes.tagged import tagged_hash
-
-
-def lift_x(x: int) -> tuple[int, int]:
-    """Lift a valid x-only secp256k1 public key to the even-y point."""
-    if type(x) is not int or not 0 <= x < P:
-        raise ValueError("x coordinate must be in the secp256k1 field")
-    y2 = (pow(x, 3, P) + 7) % P
-    y = pow(y2, (P + 1) // 4, P)
-    if y * y % P != y2:
-        raise ValueError("x coordinate does not lift to secp256k1")
-    return x, y if y % 2 == 0 else P - y
 
 
 def tapleaf_hash(script: bytes, leaf_version: int = 0xC0) -> bytes:

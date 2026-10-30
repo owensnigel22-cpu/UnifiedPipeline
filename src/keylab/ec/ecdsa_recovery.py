@@ -12,6 +12,7 @@ from keylab.ec.secp256k1 import (
     point_add_affine,
     point_negate_affine,
     scalar_mult,
+    y_from_x,
 )
 
 
@@ -41,9 +42,9 @@ def recover_public_keys_from_signature(
     for x in (r, r + N):
         if x >= P:
             continue
-        square = (pow(x, 3, P) + 7) % P
-        y = pow(square, (P + 1) // 4, P)
-        if y * y % P != square:
+        try:
+            y = y_from_x(x)
+        except ValueError:
             continue
         for root in (y, (-y) % P):
             nonce_point: Point = (x, root)

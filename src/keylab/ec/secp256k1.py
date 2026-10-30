@@ -38,6 +38,57 @@ def is_on_curve(point: Point) -> bool:
     )
 
 
+def sqrt_mod_p(value: int) -> int | None:
+    """Return a square root of ``value`` modulo P, or ``None`` for a non-residue.
+
+    secp256k1's field prime satisfies ``P % 4 == 3``, so a candidate root is
+    ``value^((P+1)/4)``. The candidate is checked because non-residues also
+    produce a value. This is the single shared square-root routine used by
+    point decompression, x-only lifting, and signature public-key recovery.
+    """
+    value %= P
+    root = pow(value, (P + 1) // 4, P)
+    return root if root * root % P == value else None
+
+
+def y_from_x(x: int, *, odd: bool = False) -> int:
+    """Return the curve y coordinate for ``x`` with the requested parity."""
+    if type(x) is not int or not 0 <= x < P:
+        raise ValueError("x coordinate must be in the secp256k1 field")
+    y = sqrt_mod_p(pow(x, 3, P) + 7)
+    if y is None:
+        raise ValueError("x coordinate does not lift to secp256k1")
+    return y if bool(y & 1) == odd else P - y
+
+
+def lift_x(x: int) -> tuple[int, int]:
+    """Lift an x coordinate to the even-y point, as BIP-340 and BIP-341 require."""
+    return x, y_from_x(x, odd=False)
+
+
+def has_even_y(point: Point) -> bool:
+    """Return whether a finite point has an even y coordinate."""
+    if point is None:
+        raise ValueError("the point at infinity has no y coordinate")
+    return point[1] % 2 == 0
+
+
+def require_point(point: Point, *, name: str = "point") -> tuple[int, int]:
+    """Validate a finite secp256k1 affine point and return it narrowed for typing."""
+    if point is None:
+        raise ValueError(f"{name} must not be the point at infinity")
+    if not isinstance(point, tuple) or len(point) != 2 or not is_on_curve(point):
+        raise ValueError(f"{name} is not a valid secp256k1 point")
+    return point
+
+
+def require_scalar(scalar: int, *, name: str = "scalar") -> int:
+    """Validate an integer scalar in ``[1, N-1]``."""
+    if type(scalar) is not int or not 1 <= scalar < N:
+        raise ValueError(f"{name} must be an integer in [1, N-1]")
+    return scalar
+
+
 def point_negate_affine(point: Point) -> Point:
     """Negate an affine secp256k1 point; infinity is represented by ``None``."""
     if point is None:
@@ -605,10 +656,7 @@ def decompress_pubkey(data: bytes) -> tuple[int, int]:
     x = int.from_bytes(data[1:], "big")
     if x >= P:
         raise ValueError("public-key x coordinate is outside the field")
-    y_squared = (pow(x, 3, P) + 7) % P
-    y = pow(y_squared, (P + 1) // 4, P)
-    if y * y % P != y_squared:
-        raise ValueError("compressed public key is not on secp256k1")
-    if y & 1 != data[0] & 1:
-        y = P - y
-    return x, y
+    try:
+        return x, y_from_x(x, odd=bool(data[0] & 1))
+    except ValueError as exc:
+        raise ValueError("compressed public key is not on secp256k1") from exc

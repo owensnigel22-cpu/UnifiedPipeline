@@ -49,7 +49,11 @@ import math
 import secrets
 import time
 
+from keylab.ec.secp256k1 import is_on_curve as _shared_is_on_curve
+from keylab.ec.secp256k1 import lift_x as _shared_lift_x
 from keylab.ec.secp256k1 import rfc6979_nonce_from_digest
+from keylab.ec.secp256k1 import sqrt_mod_p as _shared_sqrt_mod_p
+from keylab.hashes.tagged import tagged_hash as _shared_tagged_hash
 from keylab.numtheory.core import (
     mod_inverse_builtin,
     mod_inverse_egcd,
@@ -474,18 +478,17 @@ def scalar_mult_naf(k: int, pt: tuple[int, int] = SECP256K1_G) -> tuple[int, int
     return jacobian_to_affine(scalar_mult_naf_jacobian(k, pt))
 
 def is_on_curve(pt: tuple[int, int]) -> bool:
-    x, y = pt
-    return 0 <= x < SECP256K1_P and 0 <= y < SECP256K1_P and (y * y - x * x * x - 7) % SECP256K1_P == 0
+    """Curve-equation check; delegates to the shared secp256k1 validator."""
+    return pt is not None and _shared_is_on_curve(pt)
 
 def lift_x_even(x: int) -> tuple[int, int]:
     """Decode a BIP-340 x-only public key to the curve point with even y."""
     if not 0 <= x < SECP256K1_P:
         raise ValueError("public-key x coordinate is outside the field")
-    c = (pow(x, 3, SECP256K1_P) + 7) % SECP256K1_P
-    y = pow(c, (SECP256K1_P + 1) // 4, SECP256K1_P)
-    if y * y % SECP256K1_P != c:
-        raise ValueError("x coordinate does not lift to a secp256k1 point")
-    return (x, y if y % 2 == 0 else SECP256K1_P - y)
+    try:
+        return _shared_lift_x(x)
+    except ValueError as exc:
+        raise ValueError("x coordinate does not lift to a secp256k1 point") from exc
 
 def parse_pubkey(pubkey_hex: str) -> tuple[int, int]:
     """Parse a 32-byte x-only or 33-byte SEC compressed secp256k1 public key."""
@@ -502,9 +505,8 @@ def curve_y_roots(x: int) -> tuple[int, ...]:
     """Return the curve's y-coordinate root(s) for x, or raise if x has no point."""
     if not 0 <= x < SECP256K1_P:
         raise ValueError("x coordinate must be in [0, p)")
-    rhs = (pow(x, 3, SECP256K1_P) + 7) % SECP256K1_P
-    y = pow(rhs, (SECP256K1_P + 1) // 4, SECP256K1_P)
-    if y * y % SECP256K1_P != rhs:
+    y = _shared_sqrt_mod_p(pow(x, 3, SECP256K1_P) + 7)
+    if y is None:
         raise ValueError("x coordinate does not lift to a secp256k1 point")
     other = (-y) % SECP256K1_P
     return (y,) if y == other else tuple(sorted((y, other)))
@@ -718,9 +720,11 @@ def rfc6979_trace(privkey_d: int, msg_str: str) -> dict[str, object]:
 # =============================================================================
 
 def tagged_hash(tag: str, msg_bytes: bytes) -> bytes:
-    """Computes BIP-340 Tagged Hash: SHA256(SHA256(tag) || SHA256(tag) || msg)."""
-    tag_digest = hashlib.sha256(tag.encode('utf-8')).digest()
-    return hashlib.sha256(tag_digest + tag_digest + msg_bytes).digest()
+    """Computes BIP-340 Tagged Hash: SHA256(SHA256(tag) || SHA256(tag) || msg).
+
+    Delegates to the shared cached implementation in ``keylab.hashes.tagged``.
+    """
+    return _shared_tagged_hash(tag, msg_bytes)
 
 def schnorr_bip340_sign_and_verify_trace(
     privkey_d: int, msg_str: str, aux_rand: bytes = b"\x00" * 32
