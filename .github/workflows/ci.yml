@@ -4,26 +4,114 @@ on:
   push:
   pull_request:
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  test:
+  lint:
+    name: lint (ruff, mypy ratchet, docs, vectors)
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
-          python-version: "3.11"
-      # The secp256k1 extra installs coincurve (libsecp256k1) so the differential
-      # tests in tests/test_ecc_differential.py run instead of skipping.
-      - run: python -m pip install -e ".[dev,secp256k1]"
-      - name: Require the libsecp256k1 reference backend
-        run: |
-          python -c "import coincurve; print('coincurve', coincurve.PrivateKey(b'\x01' * 32).public_key.format().hex())"
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      # Same install as full-extras, so mypy sees the same type information and
+      # its error count matches scripts/mypy_baseline.txt.
+      - run: python -m pip install -e ".[dev,all-backends]"
+      - run: ruff check .
+      - run: python scripts/mypy_ratchet.py
+      - run: python scripts/gen_api_docs.py --check
+      - run: python scripts/vectors.py verify
+
+  test:
+    name: test (${{ matrix.os }}, ${{ matrix.python }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python: ["3.11", "3.12", "3.13", "3.14"]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+          cache-dependency-path: pyproject.toml
       # The SAT tests call an external solver executable (keylab.sat.solver.find_solver);
       # cryptominisat5 satisfies both the generic and the CryptoMiniSat-specific tests.
       - name: Install the CryptoMiniSat solver
+        if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y cryptominisat
           command -v cryptominisat5
-      - run: ruff check .
-      - run: pytest -rs
+      # secp256k1 installs coincurve (libsecp256k1) and ecc-alt installs fastecdsa,
+      # so every differential test runs instead of skipping.
+      - run: python -m pip install -e ".[dev,secp256k1,ecc-alt]"
+      - name: Require the libsecp256k1 and fastecdsa reference backends
+        run: python scripts/check_backends.py coincurve fastecdsa
+      - run: pytest -rs --junitxml=junit.xml
+      - name: Require zero skips
+        if: runner.os == 'Linux'
+        run: python scripts/check_skips.py junit.xml
+      # Windows has no packaged SAT solver executables; only those tests may skip.
+      - name: Allow only the external-SAT-executable skips
+        if: runner.os == 'Windows'
+        run: >-
+          python scripts/check_skips.py junit.xml
+          --allow "no supported external SAT solver is installed"
+          --allow "CryptoMiniSat is not installed"
+
+  full-extras:
+    name: full-extras (every backend, coverage)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - name: Install the CryptoMiniSat solver
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cryptominisat
+      - run: python -m pip install -e ".[dev,all-backends]"
+      - name: Require the libsecp256k1 and fastecdsa reference backends
+        run: python scripts/check_backends.py coincurve fastecdsa
+      # The global floor (79%) comes from [tool.coverage.report] fail_under.
+      - run: pytest -rs --junitxml=junit.xml --cov=keylab --cov-report=term --cov-report=xml
+      - name: Require zero skips
+        run: python scripts/check_skips.py junit.xml
+      - name: Coverage floors for the cryptographic packages
+        run: |
+          coverage report --include="*/keylab/ec/*" --fail-under=85 --skip-covered
+          coverage report --include="*/keylab/encoding/*" --fail-under=85 --skip-covered
+          coverage report --include="*/keylab/hd.py" --fail-under=85
+
+  bench-smoke:
+    name: bench-smoke (pure Python)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      # No native backend: this is the only job that times KeyLab's own arithmetic.
+      - run: python -m pip install -e ".[dev]"
+      - run: python scripts/bench_smoke.py
+      - run: keylab benchmark-ec --count 2 --repetitions 1

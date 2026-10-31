@@ -1,0 +1,13 @@
+version: 2
+updates:
+  # Tool pins in pyproject.toml (ruff, mypy, pytest-cov) change only through these
+  # PRs, where new findings are fixed or the mypy baseline is consciously updated.
+  - package-ecosystem: pip
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
