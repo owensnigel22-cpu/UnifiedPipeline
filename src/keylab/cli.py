@@ -13,6 +13,7 @@ from pathlib import Path
 from subprocess import run
 from typing import Any, TextIO, cast
 
+from keylab import __version__
 from keylab.backends import backend_info
 from keylab.benchmarks import (
     available_scalar_backends,
@@ -1615,6 +1616,7 @@ def _sat_solve(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="keylab", description=__doc__)
+    parser.add_argument("--version", action="version", version=f"keylab {__version__}")
     commands = parser.add_subparsers(dest="command", required=True)
     commands.add_parser("backends", help="list installed optional crypto, math, and SAT backends")
     commands.add_parser(

@@ -4,7 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "keylab"
-version = "0.3.0.dev0"
+# The version is read from keylab.__version__ (single source of truth).
+dynamic = ["version"]
 description = "Constrained key recovery and cryptographic research utilities"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -41,6 +42,9 @@ all-backends = [
 [project.scripts]
 keylab = "keylab.cli:main"
 keylab-advanced = "keylab.advanced_suite:main"
+
+[tool.setuptools.dynamic]
+version = { attr = "keylab.__version__" }
 
 [tool.setuptools.packages.find]
 where = ["src"]

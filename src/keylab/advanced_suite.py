@@ -48,6 +48,7 @@ import math
 import secrets
 import time
 
+from keylab import __version__
 from keylab.ec.musig2 import key_agg as _bip327_key_agg
 from keylab.ec.musig2 import key_agg_coeff as _bip327_key_agg_coeff
 from keylab.ec.secp256k1 import decompress_pubkey as _decompress_pubkey
@@ -1543,6 +1544,7 @@ def bip340_message_arg(value: str) -> str:
 
 def main():
     parser = argparse.ArgumentParser(description="Unified Cryptanalytic, Diagnostic, Multiplicative, Geometry, Walkback, WIF, ECDSA, Schnorr, Taproot, MuSig2, Nonce & Point Generation Suite (v17)")
+    parser.add_argument("--version", action="version", version=f"keylab-advanced {__version__}")
     parser.add_argument("--sign-msg", type=str, metavar='MSG_STR', help="Sign text or a 0x-prefixed hash using the fixed demo key")
     parser.add_argument("--nonce-reuse-attack", action="store_true", help="Run an educational ECDSA nonce-reuse key-recovery demonstration")
     parser.add_argument("--pubkey-advance", type=str, metavar='PUBKEY_HEX', help="Advance a valid public point by repeatedly adding G")

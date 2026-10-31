@@ -5,6 +5,15 @@ All notable changes to Keylab are recorded here. The format follows
 
 ## [Unreleased]
 
+### Added
+- `keylab --version` and `keylab-advanced --version`. The package version now has
+  one source, `keylab.__version__`, which `pyproject.toml` reads.
+- `keylab.ec` re-exports the shared curve helpers (`sqrt_mod_p`, `y_from_x`,
+  `lift_x`, `has_even_y`, `require_point`, `require_scalar`), `scalar_mult`, `G`,
+  `N`, and the BIP-327 MuSig2 API. `ec.secp256k1` and `encoding.{address,
+  bech32, base58, wif}` declare `__all__`; `docs/api.md` gains an API-stability
+  section.
+
 ### Changed
 - **`ExtendedKey.derive("M/...")` returns the extended public key.** BIP-32
   writes `M/...` for `N(m/...)`; it previously returned the private key, the
