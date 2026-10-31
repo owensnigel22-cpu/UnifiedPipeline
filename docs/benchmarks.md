@@ -1,8 +1,12 @@
 # Benchmarks
 
-All Keylab benchmarks use a **seeded, public corpus**, check correctness
-before timing, exclude warm-up, shuffle method order per repetition, and
-report the **median** (see [Methodology](#methodology)). None of them print scalars, keys, or signatures.
+Keylab's benchmarks report performance metrics only: timings, throughput,
+and correctness flags. They never print scalars, private keys, WIFs, or
+signatures, including any secrets loaded from a user-supplied file. The
+comparison benchmarks (`benchmark-ec`, `benchmark-signatures`) use a seeded
+public corpus, check correctness before timing, exclude warm-up, shuffle
+method order per repetition, and report the **median**; see
+[Methodology](#methodology) for how inputs are produced for each command.
 Throughput depends heavily on the machine; re-measure before citing numbers.
 
 | Command | Measures |
@@ -22,11 +26,26 @@ Python, run in an environment without coincurve.
 
 ## Methodology
 
-Every benchmark command follows the same rules, so results are comparable
-across runs and safe to share:
+### Where inputs come from
 
-1. **Seeded, public corpus.** Inputs come from `random.Random(seed)` (or
-   hashes of the seed), never from user secrets. The seed is in the report.
+| Command | Inputs |
+|---|---|
+| `benchmark-ec`, `benchmark-signatures` | Seeded public corpus from `random.Random(seed)` and hashes of the seed; the seed is in the report |
+| `benchmark-pubkey` | One fixed public fixture derived from a constant label |
+| `benchmark-hash160` | Deterministic public fixtures derived from a constant label and an index |
+| `benchmark-wifs` | Synthetic keys generated at random for each run (not seeded), or, with `--wif-file`, WIFs read from a local file the user supplies |
+
+When `benchmark-wifs --wif-file` is used, the WIFs are read locally and used
+only to time the derivation pipeline; they are not printed, returned, or
+written anywhere. Use throwaway keys for benchmarking all the same.
+
+### Rules for the comparison benchmarks
+
+`benchmark-ec` and `benchmark-signatures` follow these rules, so their results
+are comparable across runs and safe to share:
+
+1. **Seeded, public corpus.** No user-supplied keys are involved, and the
+   same seed reproduces the same inputs.
 2. **Correctness gate.** Before anything is timed, outputs are checked:
    multiplication backends against the Python reference; BIP-340 signatures
    verified and compared byte-for-byte with libsecp256k1; ECDSA signatures
@@ -39,7 +58,8 @@ across runs and safe to share:
    thermal or cache drift does not favour one method.
 5. **Median.** Each repetition times the whole corpus; the median over
    repetitions is reported along with every sample.
-6. **No secrets in output.** Reports omit scalars, keys, WIFs, and signatures.
+6. **Metrics only.** Reports contain timings, throughput, and correctness
+   flags; they omit scalars, keys, WIFs, and signatures.
 
 **Interpreting results.** Timings vary with machine load: the two same-day
 runs below differ by up to about 2x even for libsecp256k1. Compare rows from

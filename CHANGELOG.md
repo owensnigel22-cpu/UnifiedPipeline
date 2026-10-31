@@ -3,7 +3,7 @@
 All notable changes to Keylab are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [0.2.0] - 2026-10-30
+## [0.2.0] - 2026-10-31
 
 ### Fixed
 - **MuSig2 key aggregation now follows BIP-327.**
@@ -70,7 +70,7 @@ All notable changes to Keylab are recorded here. The format follows
 - Feature-audit entries for BIP-49/84 now describe the new derivation APIs.
 
 ### Test suite
-- 504 → 806 passing tests (12 fastecdsa differential tests skip when it is
+- 504 → 972 passing tests (12 fastecdsa differential tests skip when it is
   not installed).
 
 ## [0.1.0]
