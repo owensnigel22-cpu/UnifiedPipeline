@@ -3,6 +3,8 @@
 All notable changes to Keylab are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
 ## [0.2.0] - 2026-10-31
 
 ### Fixed
