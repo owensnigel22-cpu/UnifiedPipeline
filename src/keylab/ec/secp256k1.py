@@ -674,3 +674,34 @@ def decompress_pubkey(data: bytes) -> tuple[int, int]:
         return x, y_from_x(x, odd=bool(data[0] & 1))
     except ValueError as exc:
         raise ValueError("compressed public key is not on secp256k1") from exc
+
+__all__ = [
+    "BETA",
+    "LAMBDA",
+    "G",
+    "N",
+    "P",
+    "compress_pubkey",
+    "decompress_pubkey",
+    "ecdsa_sign_digest",
+    "ecdsa_verify_digest",
+    "glv_decompose",
+    "has_even_y",
+    "is_high_s_signature",
+    "is_on_curve",
+    "lift_x",
+    "point_add",
+    "point_add_affine",
+    "point_add_geometry",
+    "point_double",
+    "point_negate_affine",
+    "public_key_from_private_scalar",
+    "recover_private_key_from_reused_nonce",
+    "require_point",
+    "require_scalar",
+    "rfc6979_nonce_from_digest",
+    "scalar_mult",
+    "sqrt_mod_p",
+    "wnaf_digits",
+    "y_from_x",
+]

@@ -53,3 +53,11 @@ def check_decode(text: str) -> bytes:
     if supplied != _checksum(payload):
         raise ValueError("Base58Check checksum mismatch")
     return payload
+
+__all__ = [
+    "ALPHABET",
+    "b58decode",
+    "b58encode",
+    "check_decode",
+    "check_encode",
+]

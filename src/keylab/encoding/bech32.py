@@ -119,3 +119,14 @@ def decode_segwit_address(text: str) -> tuple[str, int, bytes]:
     if not 2 <= len(program) <= 40 or (version == 0 and len(program) not in (20, 32)):
         raise ValueError("invalid witness program length")
     return hrp, version, program
+
+__all__ = [
+    "BECH32",
+    "BECH32M",
+    "CHARSET",
+    "convertbits",
+    "decode",
+    "decode_segwit_address",
+    "encode",
+    "encode_segwit_address",
+]

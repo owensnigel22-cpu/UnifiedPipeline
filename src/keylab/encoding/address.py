@@ -187,3 +187,15 @@ def address_belongs_to_wif(wif: str, target_address: str) -> dict[str, object]:
         "matches": matches,
         "verified": bool(matches),
     }
+
+__all__ = [
+    "address_belongs_to_wif",
+    "address_to_target_hash",
+    "derive_addresses_from_wif",
+    "hash160",
+    "p2pkh_address",
+    "p2sh_p2wpkh_address",
+    "p2tr_address",
+    "p2wpkh_address",
+    "verify_pubkey_from_address",
+]

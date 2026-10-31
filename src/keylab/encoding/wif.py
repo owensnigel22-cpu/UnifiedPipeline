@@ -46,3 +46,8 @@ def decode(wif: str) -> tuple[bytes, bool, str]:
     if not 1 <= scalar < N:
         raise ValueError("WIF contains an invalid secp256k1 private scalar")
     return key_bytes, compressed, network
+
+__all__ = [
+    "decode",
+    "encode",
+]

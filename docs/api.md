@@ -27,6 +27,7 @@ CLI commands are listed by `keylab --help` and `keylab-advanced --help`;
 - [`keylab.ec.quartic`](#keylabecquartic) — Research: doubling-quartic inversion
 - [`keylab.ec.halving`](#keylabechalving) — Research: point halving
 - [`keylab.benchmarks`](#keylabbenchmarks) — Benchmarks
+- [API stability](#api-stability)
 
 ## `keylab.ec.secp256k1`
 
@@ -36,15 +37,20 @@ Reference secp256k1 point arithmetic; not constant-time and not a full-key-searc
 
 | Name | Signature / value | Summary |
 |---|---|---|
+| `BETA` | `BETA = int` |  |
 | `compress_pubkey` | `compress_pubkey(point: 'Point') -> 'bytes'` | Serialize a finite affine point using SEC compressed format. |
 | `decompress_pubkey` | `decompress_pubkey(data: 'bytes') -> 'tuple[int, int]'` | Parse a 33-byte compressed SEC public key and validate the resulting curve point. |
 | `ecdsa_sign_digest` | `ecdsa_sign_digest(digest: 'bytes', private_scalar: 'int', *, backend: 'str' = 'auto') -> 'tuple[int, int]'` | Create a deterministic, low-S ECDSA signature over one 32-byte digest. |
 | `ecdsa_verify_digest` | `ecdsa_verify_digest(digest: 'bytes', signature: 'tuple[int, int]', public_key: 'Point') -> 'bool'` | Verify a raw ``(r, s)`` ECDSA signature over a 32-byte digest. |
+| `G` | `G = tuple` |  |
 | `glv_decompose` | `glv_decompose(scalar: 'int') -> 'tuple[int, int]'` | Split k into signed components satisfying k = k1 + lambda*k2 (mod N). |
 | `has_even_y` | `has_even_y(point: 'Point') -> 'bool'` | Return whether a finite point has an even y coordinate. |
 | `is_high_s_signature` | `is_high_s_signature(signature: 'tuple[int, int]') -> 'bool'` | Return whether a valid-range ECDSA signature uses the non-low-S form. |
 | `is_on_curve` | `is_on_curve(point: 'Point') -> 'bool'` | Return whether an affine point is infinity or satisfies secp256k1's curve equation. |
+| `LAMBDA` | `LAMBDA = int` |  |
 | `lift_x` | `lift_x(x: 'int') -> 'tuple[int, int]'` | Lift an x coordinate to the even-y point, as BIP-340 and BIP-341 require. |
+| `N` | `N = int` |  |
+| `P` | `P = int` |  |
 | `point_add` | `point_add(left: 'Jacobian', right: 'Jacobian') -> 'Jacobian'` | Add two Jacobian secp256k1 points. |
 | `point_add_affine` | `point_add_affine(left: 'Point', right: 'Point') -> 'Point'` | Add affine secp256k1 points, returning ``None`` for the point at infinity. |
 | `point_add_geometry` | `point_add_geometry(left: 'Point', right: 'Point') -> 'dict[str, object]'` | Explain affine secant/tangent addition, including its third intersection. |
@@ -221,6 +227,9 @@ Bech32/Bech32m and SegWit address encoding; this does not invert address hashes.
 
 | Name | Signature / value | Summary |
 |---|---|---|
+| `BECH32` | `BECH32 = 'bech32'` |  |
+| `BECH32M` | `BECH32M = 'bech32m'` |  |
+| `CHARSET` | `CHARSET = 'qpzry9x8gf2tvdw0s3jn54khce6mua7l'` |  |
 | `convertbits` | `convertbits(data: 'bytes \| list[int]', from_bits: 'int', to_bits: 'int', pad: 'bool') -> 'list[int]'` | Convert a sequence between bit widths, rejecting invalid or non-zero padding. |
 | `decode` | `decode(text: 'str') -> 'tuple[str, list[int], str]'` | Decode a Bech32 string and return its HRP, data without checksum, and checksum spec. |
 | `decode_segwit_address` | `decode_segwit_address(text: 'str') -> 'tuple[str, int, bytes]'` | Decode and validate a SegWit address, including version-specific checksum rules. |
@@ -235,6 +244,7 @@ Base58 and Base58Check encoding; checksum validation is error detection, not key
 
 | Name | Signature / value | Summary |
 |---|---|---|
+| `ALPHABET` | `ALPHABET = str` |  |
 | `b58decode` | `b58decode(text: 'str') -> 'bytes'` | Decode Base58, rejecting empty strings and characters outside the alphabet. |
 | `b58encode` | `b58encode(data: 'bytes') -> 'str'` | Encode bytes as Base58 while preserving leading zero bytes. |
 | `check_decode` | `check_decode(text: 'str') -> 'bytes'` | Decode Base58Check and reject truncated data or a mismatched checksum. |
@@ -336,3 +346,18 @@ Small reproducible performance probes for public-key conversion paths.
 | `benchmark_wif_to_pubkey` | `benchmark_wif_to_pubkey(iterations: 'int' = 1000, *, warmup: 'int' = 20, backend: 'str' = 'auto') -> 'dict[str, object]'` | Time WIF decode, scalar parse, secp256k1 multiplication, compression, and hex. |
 | `MUSIG2_GROUP_SIZE` | `MUSIG2_GROUP_SIZE = 3` |  |
 | `SIGNATURE_OPERATIONS` | `SIGNATURE_OPERATIONS = tuple` |  |
+
+## API stability
+
+- **Public API.** A name is public if it is listed in its module's `__all__`
+  (and therefore in this reference). Names starting with `_`, and modules or
+  names not listed here, are internal and may change in any release.
+- **Package re-exports.** `keylab.ec` re-exports the most used curve,
+  signature, and MuSig2 names; `from keylab.ec import ...` and the full module
+  path refer to the same objects.
+- **Before 1.0.** KeyLab follows semantic versioning with the 0.x convention:
+  a minor release (0.2 → 0.3) may change public behaviour, and every such
+  change is listed under **Changed** in [CHANGELOG.md](../CHANGELOG.md). Patch
+  releases (0.2.x) only fix bugs.
+- **Never stable.** Benchmark report fields and teaching-trace output
+  (`keylab-advanced`) are for reading, not parsing.
