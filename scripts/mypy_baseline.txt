@@ -1,0 +1,4 @@
+# mypy error count for `mypy` with the pinned version and [tool.mypy] config.
+# scripts/mypy_ratchet.py fails if the count rises, and also if it falls without
+# this number being lowered in the same change, so fixes are locked in.
+99

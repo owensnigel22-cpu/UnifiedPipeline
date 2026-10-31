@@ -14,7 +14,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["hypothesis>=6.100", "mypy>=1.10", "pytest>=8.0", "ruff>=0.5"]
+# Lint, type-check, and coverage tools are pinned so local runs and CI agree;
+# bump them in a dedicated PR (Dependabot proposes updates).
+dev = ["hypothesis>=6.100", "mypy==2.4.1", "pytest>=8.0", "pytest-cov==7.1.0", "ruff==0.17.3"]
 dashboard = ["pandas>=2.0", "pandas-stubs>=2.0", "streamlit>=1.40"]
 crypto = ["cryptography>=44.0"]
 crypto-alt = ["pycryptodome>=3.23"]
@@ -50,3 +52,18 @@ pythonpath = ["."]
 [tool.ruff]
 line-length = 100
 target-version = "py311"
+
+[tool.mypy]
+python_version = "3.11"
+files = ["src"]
+ignore_missing_imports = true
+
+[tool.coverage.run]
+source = ["keylab"]
+
+[tool.coverage.report]
+# Floor enforced in CI's full-extras job; raise it as coverage improves.
+fail_under = 79
+precision = 2
+show_missing = true
+skip_covered = true
