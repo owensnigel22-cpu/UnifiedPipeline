@@ -1,0 +1,128 @@
+{
+  "description": "Pinned provenance of the official test vectors; checked by tests/test_vector_provenance.py and scripts/vectors.py.",
+  "checksum": "sha256 of the file with CRLF normalised to LF",
+  "modes": {
+    "verbatim": "byte-identical copy of the source file",
+    "subset": "the source's 'english' array, copied unchanged, with metadata fields added",
+    "extracted": "values extracted by script from the source text; the source checksum pins the text used"
+  },
+  "files": {
+    "bip340_test_vectors.csv": {
+      "sha256": "01c8cabba63b4c9b2f44c975902990086a4fe56eee9d265b187d1e2c1d98ccfb",
+      "sources": [
+        {
+          "repo": "bitcoin/bips",
+          "path": "bip-0340/test-vectors.csv",
+          "commit": "200f9b26fe0a2f235a2af8b30c4be9f12f6bc9cb",
+          "mode": "verbatim",
+          "sha256": "01c8cabba63b4c9b2f44c975902990086a4fe56eee9d265b187d1e2c1d98ccfb"
+        }
+      ]
+    },
+    "bip327_key_agg_vectors.json": {
+      "sha256": "03c02a97e4ef3f2edfbc8e6013c127496dfcfd5889cfca60ddf009a4e9091cab",
+      "sources": [
+        {
+          "repo": "bitcoin/bips",
+          "path": "bip-0327/vectors/key_agg_vectors.json",
+          "commit": "87394eaeb436d02e0a68b38a1e94bc526d50056e",
+          "mode": "verbatim",
+          "sha256": "03c02a97e4ef3f2edfbc8e6013c127496dfcfd5889cfca60ddf009a4e9091cab"
+        }
+      ]
+    },
+    "bip327_key_sort_vectors.json": {
+      "sha256": "2389fa0c146cfd7455c643ca240ec32835dcfc916f430f50dd94d0b49c9ea16c",
+      "sources": [
+        {
+          "repo": "bitcoin/bips",
+          "path": "bip-0327/vectors/key_sort_vectors.json",
+          "commit": "87394eaeb436d02e0a68b38a1e94bc526d50056e",
+          "mode": "verbatim",
+          "sha256": "2389fa0c146cfd7455c643ca240ec32835dcfc916f430f50dd94d0b49c9ea16c"
+        }
+      ]
+    },
+    "bip341_wallet_test_vectors.json": {
+      "sha256": "403e19fb81dd1f31e745699216308f61fb403774b2aafa87b631b8f7c042d37f",
+      "sources": [
+        {
+          "repo": "bitcoin/bips",
+          "path": "bip-0341/wallet-test-vectors.json",
+          "commit": "e35a46ecf3031c21dc7f7fdb694986789a3a8144",
+          "mode": "verbatim",
+          "sha256": "403e19fb81dd1f31e745699216308f61fb403774b2aafa87b631b8f7c042d37f"
+        }
+      ]
+    },
+    "bip32_test_vectors.json": {
+      "sha256": "14ff19840a0f5fe62416d9695bd06a16ade8e2ebcd25a6845538c97095f2db33",
+      "sources": [
+        {
+          "repo": "bitcoin/bips",
+          "path": "bip-0032.mediawiki",
+          "commit": "c0644a054fd1568ecbfc9c2b656ad5200b16ff74",
+          "mode": "extracted",
+          "sha256": "e5e00a8289db2f681052cf24a745320afc225e66b25d1e489a7c884d2fc7f11f"
+        }
+      ]
+    },
+    "bip39_trezor_vectors.json": {
+      "sha256": "e970b12cad641313707307d202bb13071355a0af735e6cc077da0aa409a5ba41",
+      "sources": [
+        {
+          "repo": "trezor/python-mnemonic",
+          "path": "vectors.json",
+          "commit": "b57a5ad77a981e743f4167ab2f7927a55c1e82a8",
+          "mode": "subset",
+          "sha256": "fa3b937b7cff9c9b8ecd3aa011faeb8d6dd67993174b72326e83f4de8fdb30f8"
+        }
+      ]
+    },
+    "bech32_vectors.json": {
+      "sha256": "089aa8f50c0c7da6dd00878198826dfb2f1f7fa074f43429aa9a020ce8a26a53",
+      "sources": [
+        {
+          "repo": "bitcoin/bips",
+          "path": "bip-0173.mediawiki",
+          "commit": "24e96e870fffaa257b465ce1f0370c14aac588e8",
+          "mode": "extracted",
+          "sha256": "b19eab06b264bbd15ad7f7d640fa34de8f4a8809fba8a6ecc3e165545b27a543"
+        },
+        {
+          "repo": "bitcoin/bips",
+          "path": "bip-0350.mediawiki",
+          "commit": "24e96e870fffaa257b465ce1f0370c14aac588e8",
+          "mode": "extracted",
+          "sha256": "63634b06aa8bae88b31929674736e74964c4598684269ac2b0b140c43a7a0dec"
+        }
+      ]
+    },
+    "bip_derivation_vectors.json": {
+      "sha256": "92ffb7bc82ea6227900e90405968ba2645568cae8c4e87f86e8b7b1a99ff63f5",
+      "sources": [
+        {
+          "repo": "bitcoin/bips",
+          "path": "bip-0049.mediawiki",
+          "commit": "24e96e870fffaa257b465ce1f0370c14aac588e8",
+          "mode": "extracted",
+          "sha256": "307b62faf7b9927233b5112e93d591272ba0c48303b5dbb6f0bbfbaf2347e695"
+        },
+        {
+          "repo": "bitcoin/bips",
+          "path": "bip-0084.mediawiki",
+          "commit": "24e96e870fffaa257b465ce1f0370c14aac588e8",
+          "mode": "extracted",
+          "sha256": "1900feec6cafca65b8c09906ca0658d2d742b4c9b44cb15678996985b6bfe627"
+        },
+        {
+          "repo": "bitcoin/bips",
+          "path": "bip-0086.mediawiki",
+          "commit": "24e96e870fffaa257b465ce1f0370c14aac588e8",
+          "mode": "extracted",
+          "sha256": "d8d01dee331da07c2562615bc1f064c1868ec3fce61184973da76d1196c7f5b0"
+        }
+      ]
+    }
+  }
+}
