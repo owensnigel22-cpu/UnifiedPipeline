@@ -438,6 +438,25 @@ def _scalar_mult_fastecdsa(scalar: int, point: Point) -> Point:
     return int(result.x), int(result.y)
 
 
+_INSTALLED_BACKENDS: dict[tuple[object, str], bool] = {}
+
+
+def _backend_installed(name: str) -> bool:
+    """Return whether the optional backend ``name`` is installed, probing once per process.
+
+    ``find_spec`` searches every ``sys.path`` entry when a module is absent, and
+    ``scalar_mult(backend="auto")`` used to repeat that search on every call (about
+    40% of pure-Python verification time). The answer is cached; the cache key
+    includes the probing function, so a test that monkeypatches ``find_spec`` to
+    simulate a missing backend is still honoured.
+    """
+    key = (find_spec, name)
+    installed = _INSTALLED_BACKENDS.get(key)
+    if installed is None:
+        installed = _INSTALLED_BACKENDS[key] = find_spec(name) is not None
+    return installed
+
+
 def scalar_mult(
     scalar: int,
     point: Point = G,
@@ -472,7 +491,7 @@ def scalar_mult(
             ("coincurve", _scalar_mult_coincurve),
             ("fastecdsa", _scalar_mult_fastecdsa),
         ):
-            if find_spec(name) is not None:
+            if _backend_installed(name):
                 try:
                     return operation(scalar, point)
                 except (ImportError, OSError):

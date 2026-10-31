@@ -97,6 +97,32 @@ Measured in the pure environment on this machine with the same scripts
 - k·G at least 1.7× faster than `python-affine-window` (from 0.55 ms);
 - no regression in the native environment, where `auto` must keep using libsecp256k1.
 
+## Progress against this baseline
+
+### M2.0: backend discovery cached (no arithmetic change)
+
+`benchmark-signatures --count 16 --repetitions 5`, same machine, before (`a41edf9`)
+and after the change, µs per operation:
+
+| Operation | Pure Python before | Pure Python after | Speed-up |
+|---|---:|---:|---:|
+| `schnorr-sign` | 9,673 | 4,916 | 1.97× |
+| `schnorr-verify` | 7,400 | 3,974 | 1.86× |
+| `ecdsa-sign` | 1,942 | 588 | 3.31× |
+| `ecdsa-verify` | 6,332 | 3,979 | 1.59× |
+| `bip32-ckdpriv` | 3,808 | 1,097 | 3.47× |
+| `bip32-ckdpub` | 2,111 | 1,020 | 2.07× |
+| `taproot-tweak-pubkey` | 1,998 | 921 | 2.17× |
+| `taproot-tweak-seckey` | 1,587 | 595 | 2.67× |
+| `taproot-sign` | 11,772 | 5,540 | 2.12× |
+| `musig2-key-agg` | 10,553 | 7,270 | 1.45× |
+
+Micro-benchmarks (median of 3 runs) agree: ECDSA verify 6.39 → 3.76 ms (1.70×),
+BIP-340 verify 6.03 → 4.03 ms (1.50×), the multiplications themselves unchanged
+(k·G 0.56 → 0.55 ms, k·P 3.33 → 3.34 ms). With coincurve installed, an
+interleaved A/B run (three alternating runs of each version) found no
+regression: the new median was at or below the old one for every operation.
+
 ## Reproducing
 
 ```bash

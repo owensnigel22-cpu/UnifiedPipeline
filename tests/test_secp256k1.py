@@ -291,3 +291,34 @@ def test_ecdsa_verify_still_accepts_bytes_like_digests_and_list_pairs() -> None:
     assert ecdsa_verify_digest(_DIGEST, _SIGNATURE, _PUBLIC)
     assert ecdsa_verify_digest(bytearray(_DIGEST), _SIGNATURE, _PUBLIC)
     assert ecdsa_verify_digest(memoryview(_DIGEST), list(_SIGNATURE), list(_PUBLIC))
+
+def test_auto_backend_discovery_runs_once_per_backend(monkeypatch) -> None:
+    from keylab.ec import secp256k1
+
+    probes: list[str] = []
+
+    def absent(name: str) -> None:
+        probes.append(name)
+
+    monkeypatch.setattr(secp256k1, "find_spec", absent)
+    point = scalar_mult(0xC0FFEE, backend="python")
+    for scalar in (3, 0x1234, N - 1, 2**200 + 7, 0xDEADBEEF):
+        assert scalar_mult(scalar, point) == scalar_mult(scalar, point, backend="python")
+    assert sorted(probes) == ["coincurve", "fastecdsa"]
+
+
+def test_auto_still_falls_back_on_every_call_when_a_found_backend_fails(monkeypatch) -> None:
+    from keylab.ec import secp256k1
+
+    calls: list[int] = []
+
+    def broken(scalar: int, point: object) -> None:
+        calls.append(scalar)
+        raise ImportError("simulated broken native library")
+
+    monkeypatch.setattr(secp256k1, "find_spec", lambda name: name if name == "coincurve" else None)
+    monkeypatch.setattr(secp256k1, "_scalar_mult_coincurve", broken)
+    point = scalar_mult(0xBEEF, backend="python")
+    for scalar in (5, 6, 7):
+        assert scalar_mult(scalar, point) == scalar_mult(scalar, point, backend="python")
+    assert calls == [5, 6, 7]
