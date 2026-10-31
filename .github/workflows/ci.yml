@@ -18,5 +18,12 @@ jobs:
       - name: Require the libsecp256k1 reference backend
         run: |
           python -c "import coincurve; print('coincurve', coincurve.PrivateKey(b'\x01' * 32).public_key.format().hex())"
+      # The SAT tests call an external solver executable (keylab.sat.solver.find_solver);
+      # cryptominisat5 satisfies both the generic and the CryptoMiniSat-specific tests.
+      - name: Install the CryptoMiniSat solver
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cryptominisat
+          command -v cryptominisat5
       - run: ruff check .
       - run: pytest -rs
