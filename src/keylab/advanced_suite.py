@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 pass_a_ext_and_advanced_crypto-v17.py
 Unified ECC, RSA, Address Diagnostics, Walkback, WIF, and Signature Demonstration Suite (v17)
