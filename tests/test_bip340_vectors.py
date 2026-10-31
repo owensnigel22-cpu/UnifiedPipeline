@@ -11,9 +11,8 @@ from keylab import advanced_suite
 from keylab.ec import schnorr
 from keylab.ec.schnorr import schnorr_public_key, schnorr_sign, schnorr_verify
 
-VECTORS = list(csv.DictReader(
-    (Path(__file__).parent / "vectors" / "bip340_test_vectors.csv").open(encoding="utf-8")
-))
+with (Path(__file__).parent / "vectors" / "bip340_test_vectors.csv").open(encoding="utf-8") as _csv:
+    VECTORS = list(csv.DictReader(_csv))
 
 
 def test_fixture_contains_all_nineteen_official_vectors() -> None:

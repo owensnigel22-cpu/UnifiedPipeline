@@ -6,6 +6,7 @@ import hashlib
 import json
 import sqlite3
 from collections.abc import Sequence
+from contextlib import closing
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -16,7 +17,7 @@ def history_count(database_path: Path) -> int:
     """Return the total number of stored benchmark rows."""
     if not database_path.exists():
         return 0
-    with sqlite3.connect(database_path) as connection:
+    with closing(sqlite3.connect(database_path)) as connection, connection:
         row = connection.execute("SELECT COUNT(*) FROM benchmark_runs").fetchone()
     return int(row[0]) if row is not None else 0
 
@@ -31,7 +32,7 @@ def import_csv_history(
     database_path.parent.mkdir(parents=True, exist_ok=True)
     digest = hashlib.sha256(csv_content).hexdigest()
     imported_at = datetime.now(UTC).isoformat()
-    with sqlite3.connect(database_path) as connection:
+    with closing(sqlite3.connect(database_path)) as connection, connection:
         connection.execute(
             """
             CREATE TABLE IF NOT EXISTS benchmark_runs (
@@ -77,7 +78,7 @@ def load_history(database_path: Path) -> list[BenchmarkRow]:
     """Return normalized records previously imported into SQLite."""
     if not database_path.exists():
         return []
-    with sqlite3.connect(database_path) as connection:
+    with closing(sqlite3.connect(database_path)) as connection, connection:
         rows = connection.execute(
             "SELECT data_json FROM benchmark_runs ORDER BY id"
         ).fetchall()

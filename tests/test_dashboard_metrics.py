@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sqlite3
+from contextlib import closing
 
 import pytest
 
@@ -76,7 +77,7 @@ def test_history_import_is_idempotent(tmp_path) -> None:
     assert import_csv_history(database, "run.csv", csv_bytes, rows) == 1
     assert import_csv_history(database, "run.csv", csv_bytes, rows) == 0
     assert load_history(database) == rows
-    with sqlite3.connect(database) as connection:
+    with closing(sqlite3.connect(database)) as connection:
         assert connection.execute("SELECT COUNT(*) FROM benchmark_runs").fetchone() == (1,)
 
 
