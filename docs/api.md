@@ -282,7 +282,7 @@ Division polynomials for short-Weierstrass curves ``y^2 = x^3 + ax + b`` over F_
 | `curve_rhs` | `curve_rhs(a: 'int' = 0, b: 'int' = 7, p: 'int' = 115792089237316195423570985008687907853269984665640564039457584007908834671663) -> 'Poly'` | The cubic ``x^3 + ax + b``. |
 | `division_polynomials` | `division_polynomials(n_max: 'int', a: 'int' = 0, b: 'int' = 7, p: 'int' = 115792089237316195423570985008687907853269984665640564039457584007908834671663) -> 'list[Poly]'` | Return the reduced division polynomials ``[f_0, f_1, ..., f_{n_max}]``. |
 | `multiplication_by_n_x` | `multiplication_by_n_x(n: 'int', a: 'int' = 0, b: 'int' = 7, p: 'int' = 115792089237316195423570985008687907853269984665640564039457584007908834671663) -> 'tuple[Poly, Poly]'` | Return ``(φ_n, ψ_n^2)`` with ``x(nP) = φ_n(x) / ψ_n(x)^2``. |
-| `Poly` | `Poly(iterable=(), /)` | Built-in mutable sequence. |
+| `Poly` | `Poly = list[int]` |  |
 | `poly_add` | `poly_add(left: 'Sequence[int]', right: 'Sequence[int]', p: 'int') -> 'Poly'` |  |
 | `poly_degree` | `poly_degree(poly: 'Sequence[int]') -> 'int'` | Degree of a trimmed polynomial; the zero polynomial has degree -1. |
 | `poly_divmod` | `poly_divmod(numerator: 'Sequence[int]', divisor: 'Sequence[int]', p: 'int') -> 'tuple[Poly, Poly]'` | Polynomial long division over the prime field F_p. |

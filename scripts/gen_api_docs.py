@@ -15,6 +15,7 @@ import argparse
 import importlib
 import inspect
 import sys
+import types
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -85,7 +86,14 @@ def _public_names(module) -> list[str]:
     return sorted(names, key=str.lower)
 
 
+def _is_type_alias(value: object) -> bool:
+    # inspect.signature of a builtin like list differs between Python versions.
+    return isinstance(value, (types.GenericAlias, types.UnionType))
+
+
 def _signature(name: str, value: object) -> str:
+    if _is_type_alias(value):
+        return f"{name} = {value!r}"
     if inspect.isclass(value):
         try:
             return f"class {name}{inspect.signature(value)}"
@@ -98,7 +106,7 @@ def _signature(name: str, value: object) -> str:
 
 
 def _summary(value: object) -> str:
-    if not (inspect.isclass(value) or callable(value)):
+    if _is_type_alias(value) or not (inspect.isclass(value) or callable(value)):
         return ""
     doc = inspect.getdoc(value) or ""
     return doc.splitlines()[0].strip() if doc else ""
