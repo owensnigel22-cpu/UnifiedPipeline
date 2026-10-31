@@ -260,11 +260,15 @@ class ExtendedKey:
                            index, self.family)
 
     def derive(self, path: str) -> ExtendedKey:
-        """Apply each component of ``path`` (``m/...``) starting from this key."""
+        """Apply each component of ``path`` starting from this key.
+
+        ``m/...`` keeps the key type. ``M/...`` is BIP-32 notation for the
+        public key ``N(m/...)``, so it returns the extended public key.
+        """
         node = self
         for index in parse_path(path):
             node = node.child(index)
-        return node
+        return node.neuter() if path.strip().startswith("M") else node
 
     def with_family(self, family: str) -> ExtendedKey:
         """Return the same key re-labelled for another SLIP-132 serialization family."""

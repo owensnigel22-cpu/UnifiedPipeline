@@ -3,6 +3,8 @@
 import hashlib
 import random
 
+import pytest
+
 from keylab.advanced_suite import curve_add_geometry
 from keylab.ec.secp256k1 import (
     _INFINITY,
@@ -255,3 +257,37 @@ def test_scalar_mult_naf_agrees() -> None:
 
     for scalar in test_scalars:
         assert scalar_mult_g_fast(scalar) == scalar_mult_naf(scalar)
+
+
+_DIGEST = bytes(range(32))
+_KEY = 0x1234567
+_PUBLIC = public_key_from_private_scalar(_KEY)
+_SIGNATURE = ecdsa_sign_digest(_DIGEST, _KEY)
+
+
+@pytest.mark.parametrize(
+    "digest,signature,public_key",
+    [
+        ("a" * 32, _SIGNATURE, _PUBLIC),
+        (None, _SIGNATURE, _PUBLIC),
+        (_DIGEST[:31], _SIGNATURE, _PUBLIC),
+        (_DIGEST, 5, _PUBLIC),
+        (_DIGEST, None, _PUBLIC),
+        (_DIGEST, (1,), _PUBLIC),
+        (_DIGEST, (1.0, 2), _PUBLIC),
+        (_DIGEST, (True, 1), _PUBLIC),
+        (_DIGEST, _SIGNATURE, "xy"),
+        (_DIGEST, _SIGNATURE, None),
+        (_DIGEST, _SIGNATURE, (None, None)),
+        (_DIGEST, _SIGNATURE, (1, 2, 3)),
+        (_DIGEST, _SIGNATURE, (_PUBLIC[0], _PUBLIC[1] + 1)),
+    ],
+)
+def test_ecdsa_verify_returns_false_for_malformed_input(digest, signature, public_key) -> None:
+    assert ecdsa_verify_digest(digest, signature, public_key) is False
+
+
+def test_ecdsa_verify_still_accepts_bytes_like_digests_and_list_pairs() -> None:
+    assert ecdsa_verify_digest(_DIGEST, _SIGNATURE, _PUBLIC)
+    assert ecdsa_verify_digest(bytearray(_DIGEST), _SIGNATURE, _PUBLIC)
+    assert ecdsa_verify_digest(memoryview(_DIGEST), list(_SIGNATURE), list(_PUBLIC))

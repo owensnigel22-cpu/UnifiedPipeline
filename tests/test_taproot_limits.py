@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from keylab.ec.secp256k1 import G
+from keylab.ec.secp256k1 import G, P
 from keylab.encoding.taproot import (
     TAPROOT_ANNEX_TAG,
     TAPROOT_CONTROL_MAX_NODE_COUNT,
@@ -76,3 +76,33 @@ def test_leaf_version_0x50_is_rejected_everywhere() -> None:
 def test_permitted_leaf_versions_still_work(version: int) -> None:
     output_key, control = _commitment(2, version)
     assert verify_taproot_script_path(output_key, SCRIPT, control)
+
+
+@pytest.mark.parametrize(
+    "internal_key_x",
+    [
+        bytes(32),  # x = 0: 7 is not a square mod p, so no point has x = 0
+        P.to_bytes(32, "big"),  # x must be below the field prime
+        bytes([0xFF]) * 32,
+    ],
+)
+def test_control_block_rejects_internal_keys_that_are_not_curve_points(
+    internal_key_x: bytes,
+) -> None:
+    with pytest.raises(ValueError, match="internal key is not a valid x-only public key"):
+        taproot_control_block(internal_key_x, 0)
+
+
+@pytest.mark.parametrize(
+    "output_key_x,script,control_block",
+    [
+        (INTERNAL, SCRIPT, "x" * 33),
+        (None, SCRIPT, bytes([0xC0]) + INTERNAL),
+        (INTERNAL, SCRIPT, None),
+        (INTERNAL, None, bytes([0xC0]) + INTERNAL),
+    ],
+)
+def test_script_path_verification_returns_false_for_malformed_input(
+    output_key_x, script, control_block
+) -> None:
+    assert verify_taproot_script_path(output_key_x, script, control_block) is False

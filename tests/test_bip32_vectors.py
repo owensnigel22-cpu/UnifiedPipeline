@@ -176,3 +176,20 @@ def test_extended_key_rejects_inconsistent_construction() -> None:
         ExtendedKey(root.key, root.chain_code, True, 0, b"\x01\x02\x03\x04")
     with pytest.raises(ValueError, match="family"):
         root.with_family("q")
+
+
+@pytest.mark.parametrize("number,seed,chain", CHAINS, ids=lambda v: str(v))
+def test_capital_m_path_derives_the_official_extended_public_key(
+    number: int, seed: str, chain: dict[str, str]
+) -> None:
+    # BIP-32 writes M/... for N(m/...): derive privately (hardened steps allowed), then neuter.
+    public = ExtendedKey.from_seed(bytes.fromhex(seed)).derive("M" + chain["path"][1:])
+    assert not public.is_private
+    assert public.serialize() == chain["xpub"]
+
+
+def test_lowercase_m_path_keeps_the_key_type() -> None:
+    root = ExtendedKey.from_seed(bytes.fromhex(BIP32["valid"][0]["seed"]))
+    assert root.derive("m/0'/1").is_private
+    assert not root.neuter().derive("m/1/2").is_private
+    assert root.neuter().derive("M/1/2") == root.derive("M/1/2")

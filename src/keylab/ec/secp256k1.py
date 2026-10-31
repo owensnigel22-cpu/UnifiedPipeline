@@ -7,6 +7,7 @@ import hmac
 from collections.abc import Iterator
 from functools import lru_cache
 from importlib.util import find_spec
+from typing import TypeGuard
 
 from keylab.numtheory.core import mod_inverse_builtin
 
@@ -568,14 +569,27 @@ def ecdsa_sign_digest(
     raise ArithmeticError("RFC 6979 failed to produce a valid ECDSA signature")
 
 
+def _is_int_pair(value: object) -> TypeGuard[tuple[int, int] | list[int]]:
+    """Return whether ``value`` is a 2-element tuple or list of plain ints."""
+    return (isinstance(value, (tuple, list)) and len(value) == 2
+            and all(type(item) is int for item in value))
+
+
 def ecdsa_verify_digest(digest: bytes, signature: tuple[int, int], public_key: Point) -> bool:
-    """Verify a raw ``(r, s)`` ECDSA signature over a 32-byte digest."""
-    if len(digest) != 32 or public_key is None or not is_on_curve(public_key):
+    """Verify a raw ``(r, s)`` ECDSA signature over a 32-byte digest.
+
+    Malformed input of any type (wrong digest type or length, a signature or
+    public key that is not a pair of ints) returns ``False``; it never raises.
+    """
+    if not isinstance(digest, (bytes, bytearray, memoryview)) or len(digest) != 32:
         return False
-    if len(signature) != 2:
+    if not _is_int_pair(signature) or not _is_int_pair(public_key):
+        return False
+    public_key = (public_key[0], public_key[1])
+    if not is_on_curve(public_key):
         return False
     r, s = signature
-    if type(r) is not int or type(s) is not int or not (1 <= r < N and 1 <= s < N):
+    if not (1 <= r < N and 1 <= s < N):
         return False
     z = int.from_bytes(digest, "big")
     inverse_s = pow(s, -1, N)

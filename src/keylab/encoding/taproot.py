@@ -139,11 +139,21 @@ def taproot_control_block(internal_key_x: bytes, output_key_parity: int,
         raise ValueError("leaf version must be an even byte")
     if leaf_version == TAPROOT_ANNEX_TAG:
         raise ValueError("leaf version 0x50 is reserved for the annex")
+    try:
+        lift_x(int.from_bytes(internal_key_x, "big"))
+    except ValueError as exc:
+        raise ValueError("internal key is not a valid x-only public key") from exc
     return bytes([leaf_version | output_key_parity]) + internal_key_x + b"".join(merkle_path)
 
 
 def verify_taproot_script_path(output_key_x: bytes, script: bytes, control_block: bytes) -> bool:
-    """Verify control-block commitment to an output key (not script execution)."""
+    """Verify control-block commitment to an output key (not script execution).
+
+    Malformed input of any type returns ``False``; it never raises.
+    """
+    if not all(isinstance(value, (bytes, bytearray, memoryview))
+               for value in (output_key_x, script, control_block)):
+        return False
     # BIP-341: the control block "must have length 33 + 32m, for a value of m
     # that is an integer between 0 and 128, inclusive. Fail if it does not".
     path_bytes = len(control_block) - TAPROOT_CONTROL_BASE_SIZE

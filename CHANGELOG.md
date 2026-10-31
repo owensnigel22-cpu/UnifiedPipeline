@@ -5,6 +5,22 @@ All notable changes to Keylab are recorded here. The format follows
 
 ## [Unreleased]
 
+### Changed
+- **`ExtendedKey.derive("M/...")` returns the extended public key.** BIP-32
+  writes `M/...` for `N(m/...)`; it previously returned the private key, the
+  same as `m/...`. Derivation is unchanged (hardened steps still work from a
+  private key); only the returned key type differs. `m/...` is unaffected.
+
+### Fixed
+- `ecdsa_verify_digest` returns `False` instead of raising `TypeError` for a
+  non-bytes digest, a signature that is not a pair of ints, or a public key
+  that is not a pair of ints. `bytes`, `bytearray`, and `memoryview` digests
+  and list pairs are still accepted.
+- `verify_taproot_script_path` returns `False` instead of raising for a
+  non-bytes output key, script, or control block.
+- `taproot_control_block` rejects an internal key that is not a valid x-only
+  public key (x outside the field, or no curve point with that x).
+
 ## [0.2.0] - 2026-10-31
 
 ### Fixed
