@@ -1,0 +1,164 @@
+{
+  "benchmark": "secp256k1-signatures-bip32-taproot",
+  "count": 16,
+  "seed": 20261030,
+  "repetitions": 5,
+  "timing_statistic": "median elapsed time over the same seeded corpus",
+  "operations": [
+    {
+      "operation": "schnorr-sign",
+      "implementation": "keylab",
+      "median_ms_per_corpus": 140.7948,
+      "median_ops_per_second": 113.64056058888538,
+      "median_us_per_op": 8799.675,
+      "samples_ms": [
+        143.6716,
+        140.7948,
+        139.7863,
+        140.5947,
+        253.8946
+      ],
+      "warmup_ms_excluded": 9.2767
+    },
+    {
+      "operation": "schnorr-verify",
+      "implementation": "keylab",
+      "median_ms_per_corpus": 94.9413,
+      "median_ops_per_second": 168.52518345546142,
+      "median_us_per_op": 5933.83125,
+      "samples_ms": [
+        97.5668,
+        94.9413,
+        93.7275,
+        91.2016,
+        104.6604
+      ],
+      "warmup_ms_excluded": 5.3848
+    },
+    {
+      "operation": "ecdsa-sign",
+      "implementation": "keylab",
+      "median_ms_per_corpus": 25.1946,
+      "median_ops_per_second": 635.0567185031713,
+      "median_us_per_op": 1574.6625,
+      "samples_ms": [
+        25.1946,
+        24.0365,
+        24.3759,
+        69.5578,
+        32.9634
+      ],
+      "warmup_ms_excluded": 1.7109
+    },
+    {
+      "operation": "ecdsa-verify",
+      "implementation": "keylab",
+      "median_ms_per_corpus": 90.9071,
+      "median_ops_per_second": 176.0038544844132,
+      "median_us_per_op": 5681.69375,
+      "samples_ms": [
+        90.9071,
+        120.0372,
+        86.7502,
+        87.1175,
+        96.9804
+      ],
+      "warmup_ms_excluded": 5.9953
+    },
+    {
+      "operation": "bip32-ckdpriv",
+      "implementation": "keylab",
+      "median_ms_per_corpus": 48.3169,
+      "median_ops_per_second": 331.14707276336026,
+      "median_us_per_op": 3019.80625,
+      "samples_ms": [
+        46.5592,
+        48.3169,
+        46.2944,
+        259.0974,
+        50.4052
+      ],
+      "warmup_ms_excluded": 3.1129
+    },
+    {
+      "operation": "bip32-ckdpub",
+      "implementation": "keylab",
+      "median_ms_per_corpus": 32.4238,
+      "median_ops_per_second": 493.4646771815765,
+      "median_us_per_op": 2026.4875,
+      "samples_ms": [
+        31.3087,
+        33.9518,
+        32.4238,
+        31.0662,
+        41.7702
+      ],
+      "warmup_ms_excluded": 1.9368
+    },
+    {
+      "operation": "taproot-tweak-pubkey",
+      "implementation": "keylab",
+      "median_ms_per_corpus": 32.2478,
+      "median_ops_per_second": 496.1578774366003,
+      "median_us_per_op": 2015.4875,
+      "samples_ms": [
+        29.7886,
+        31.0678,
+        32.2478,
+        32.5563,
+        35.9372
+      ],
+      "warmup_ms_excluded": 1.8716
+    },
+    {
+      "operation": "taproot-tweak-seckey",
+      "implementation": "keylab",
+      "median_ms_per_corpus": 24.0904,
+      "median_ops_per_second": 664.1649785806794,
+      "median_us_per_op": 1505.65,
+      "samples_ms": [
+        24.0904,
+        23.1617,
+        23.9169,
+        26.588,
+        24.3328
+      ],
+      "warmup_ms_excluded": 1.4698
+    },
+    {
+      "operation": "taproot-sign",
+      "implementation": "keylab",
+      "median_ms_per_corpus": 163.6895,
+      "median_ops_per_second": 97.74603746727799,
+      "median_us_per_op": 10230.59375,
+      "samples_ms": [
+        163.0518,
+        162.8317,
+        168.0958,
+        163.6895,
+        174.8999
+      ],
+      "warmup_ms_excluded": 10.229
+    },
+    {
+      "operation": "musig2-key-agg",
+      "implementation": "keylab",
+      "median_ms_per_corpus": 158.0757,
+      "median_ops_per_second": 101.21732815353657,
+      "median_us_per_op": 9879.73125,
+      "samples_ms": [
+        156.3399,
+        158.0757,
+        156.6415,
+        159.2848,
+        292.1097
+      ],
+      "warmup_ms_excluded": 9.7963
+    }
+  ],
+  "coincurve_available": false,
+  "keylab_multiplication": "auto: pure Python",
+  "machine": "Windows-10-10.0.19045-SP0",
+  "python_version": "3.14.7",
+  "note": "Correctness was verified before timing; the corpus is seeded and public. Scalars, signatures, and keys are intentionally omitted."
+}

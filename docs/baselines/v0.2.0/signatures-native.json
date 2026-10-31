@@ -1,0 +1,224 @@
+{
+  "benchmark": "secp256k1-signatures-bip32-taproot",
+  "count": 16,
+  "seed": 20261030,
+  "repetitions": 5,
+  "timing_statistic": "median elapsed time over the same seeded corpus",
+  "operations": [
+    {
+      "operation": "schnorr-sign",
+      "implementation": "keylab",
+      "median_ms_per_corpus": 10.4123,
+      "median_ops_per_second": 1536.6441612323886,
+      "median_us_per_op": 650.76875,
+      "samples_ms": [
+        9.5373,
+        10.4123,
+        16.1494,
+        11.0089,
+        9.3299
+      ],
+      "warmup_ms_excluded": 0.6252
+    },
+    {
+      "operation": "schnorr-sign",
+      "implementation": "libsecp256k1",
+      "median_ms_per_corpus": 2.062,
+      "median_ops_per_second": 7759.456838021339,
+      "median_us_per_op": 128.875,
+      "samples_ms": [
+        2.0555,
+        2.062,
+        4.2332,
+        2.3284,
+        2.0443
+      ],
+      "warmup_ms_excluded": 0.2232
+    },
+    {
+      "operation": "schnorr-verify",
+      "implementation": "keylab",
+      "median_ms_per_corpus": 6.9638,
+      "median_ops_per_second": 2297.596140038485,
+      "median_us_per_op": 435.2375,
+      "samples_ms": [
+        6.9638,
+        10.8448,
+        6.3475,
+        6.388,
+        6.9866
+      ],
+      "warmup_ms_excluded": 0.4041
+    },
+    {
+      "operation": "schnorr-verify",
+      "implementation": "libsecp256k1",
+      "median_ms_per_corpus": 1.4418,
+      "median_ops_per_second": 11097.239561659037,
+      "median_us_per_op": 90.1125,
+      "samples_ms": [
+        1.4418,
+        1.5239,
+        2.0744,
+        0.8341,
+        0.8913
+      ],
+      "warmup_ms_excluded": 0.0836
+    },
+    {
+      "operation": "ecdsa-sign",
+      "implementation": "keylab",
+      "median_ms_per_corpus": 3.4661,
+      "median_ops_per_second": 4616.139176596174,
+      "median_us_per_op": 216.63125,
+      "samples_ms": [
+        3.4661,
+        2.4776,
+        5.4187,
+        4.1547,
+        2.507
+      ],
+      "warmup_ms_excluded": 0.1739
+    },
+    {
+      "operation": "ecdsa-sign",
+      "implementation": "libsecp256k1",
+      "median_ms_per_corpus": 1.0154,
+      "median_ops_per_second": 15757.337010045303,
+      "median_us_per_op": 63.4625,
+      "samples_ms": [
+        1.362,
+        0.8208,
+        0.8165,
+        1.0433,
+        1.0154
+      ],
+      "warmup_ms_excluded": 0.0919
+    },
+    {
+      "operation": "ecdsa-verify",
+      "implementation": "keylab",
+      "median_ms_per_corpus": 3.8675,
+      "median_ops_per_second": 4137.039431157078,
+      "median_us_per_op": 241.71875,
+      "samples_ms": [
+        3.7292,
+        3.8472,
+        4.0948,
+        3.9604,
+        3.8675
+      ],
+      "warmup_ms_excluded": 0.2395
+    },
+    {
+      "operation": "ecdsa-verify",
+      "implementation": "libsecp256k1",
+      "median_ms_per_corpus": 0.9164,
+      "median_ops_per_second": 17459.624618070713,
+      "median_us_per_op": 57.275,
+      "samples_ms": [
+        0.9075,
+        1.252,
+        1.8565,
+        0.8958,
+        0.9164
+      ],
+      "warmup_ms_excluded": 0.0862
+    },
+    {
+      "operation": "bip32-ckdpriv",
+      "implementation": "keylab",
+      "median_ms_per_corpus": 3.331,
+      "median_ops_per_second": 4803.362353647553,
+      "median_us_per_op": 208.1875,
+      "samples_ms": [
+        3.331,
+        3.8077,
+        6.1859,
+        3.327,
+        3.3097
+      ],
+      "warmup_ms_excluded": 0.2291
+    },
+    {
+      "operation": "bip32-ckdpub",
+      "implementation": "keylab",
+      "median_ms_per_corpus": 8.9722,
+      "median_ops_per_second": 1783.2861505539333,
+      "median_us_per_op": 560.7625,
+      "samples_ms": [
+        8.9722,
+        8.9243,
+        17.446,
+        9.0093,
+        8.6224
+      ],
+      "warmup_ms_excluded": 0.5734
+    },
+    {
+      "operation": "taproot-tweak-pubkey",
+      "implementation": "keylab",
+      "median_ms_per_corpus": 7.1982,
+      "median_ops_per_second": 2222.7779167013978,
+      "median_us_per_op": 449.8875,
+      "samples_ms": [
+        8.4018,
+        7.7682,
+        7.1982,
+        6.7717,
+        7.0774
+      ],
+      "warmup_ms_excluded": 0.5119
+    },
+    {
+      "operation": "taproot-tweak-seckey",
+      "implementation": "keylab",
+      "median_ms_per_corpus": 1.553,
+      "median_ops_per_second": 10302.6400515132,
+      "median_us_per_op": 97.0625,
+      "samples_ms": [
+        1.4509,
+        1.7544,
+        3.0575,
+        1.4562,
+        1.553
+      ],
+      "warmup_ms_excluded": 0.1057
+    },
+    {
+      "operation": "taproot-sign",
+      "implementation": "keylab",
+      "median_ms_per_corpus": 11.1981,
+      "median_ops_per_second": 1428.813816629607,
+      "median_us_per_op": 699.88125,
+      "samples_ms": [
+        11.1971,
+        13.6921,
+        18.0451,
+        11.1981,
+        11.0387
+      ],
+      "warmup_ms_excluded": 0.7133
+    },
+    {
+      "operation": "musig2-key-agg",
+      "implementation": "keylab",
+      "median_ms_per_corpus": 14.4775,
+      "median_ops_per_second": 1105.1631842514246,
+      "median_us_per_op": 904.84375,
+      "samples_ms": [
+        15.5145,
+        14.0281,
+        21.821,
+        14.4775,
+        13.7759
+      ],
+      "warmup_ms_excluded": 1.162
+    }
+  ],
+  "coincurve_available": true,
+  "keylab_multiplication": "auto: libsecp256k1 via coincurve",
+  "machine": "Windows-10-10.0.19045-SP0",
+  "python_version": "3.14.7",
+  "note": "Correctness was verified before timing; the corpus is seeded and public. Scalars, signatures, and keys are intentionally omitted."
+}

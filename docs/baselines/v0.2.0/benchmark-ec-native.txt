@@ -1,0 +1,12 @@
+secp256k1 G multiplication | scalars=12 | seed=20261020 | repetitions=5 | statistic=median
+Method                       keys/sec    median ms/corpus
+----------------------------------------------------------
+python                          436.5              27.488
+python-affine-window           1812.8               6.620
+python-glv                      486.1              24.687
+python-wnaf                     463.5              25.892
+v65-windowed                   1250.0               9.600
+coincurve                     11150.3               1.076
+v65 table setup (excluded): 13.201 ms
+Correctness: every method matched the Python reference on the shared scalar corpus.
+The v65-windowed row is the v65 algorithm ported into Keylab's Jacobian primitives; scalar values are intentionally omitted.
