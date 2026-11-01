@@ -262,6 +262,30 @@ naive's flat ~7 KB (terms summed streaming). Results are bit-identical to
 `keylab.ec.reference.multi_scalar_mult`. With a native backend, `auto` stays on
 naive (per-term libsecp256k1 beats pure-Python Straus).
 
+### M2.8: Pippenger MSM method
+
+`multi_scalar_mult(..., method="pippenger")` is the bucket method over full
+scalars (window width c = max(2, n.bit_length() - 3)). `method="auto"` selects
+it from 128 terms. Pure Python, three methods:
+
+| n | naive ms | straus ms | pippenger ms | pip vs straus | straus KB | pip KB |
+|---:|---:|---:|---:|---:|---:|---:|
+| 2 | 2.89 | 2.62 | 5.75 | 0.46x | 10.6 | 1.7 |
+| 8 | 11.85 | 7.21 | 12.05 | 0.60x | 38.1 | 2.3 |
+| 16 | 24.20 | 11.93 | 20.70 | 0.58x | 74.8 | 2.5 |
+| 32 | 60.81 | 35.51 | 36.20 | 0.98x | 150.0 | 3.4 |
+| 64 | 101.38 | 91.97 | 53.74 | 1.71x | 313.8 | 5.4 |
+| 128 | 252.46 | 94.56 | 83.55 | 1.13x | 660.4 | 9.4 |
+| 256 | 463.32 | 219.17 | 144.33 | 1.52x | 1585.9 | 17.3 |
+| 512 | 844.80 | 372.35 | 229.03 | 1.63x | 3196.5 | 31.9 |
+
+**Time crossover ~n=64-128** (noisy in that band; `auto` switches at 128 to stay
+safely on the winning side). **Memory: Pippenger is far lighter at every size**
+-- a fixed 2^c-bucket array reused across windows (9 KB at n=128, 32 KB at n=512)
+versus Straus's 2n materialized sub-term tables (660 KB, 3.2 MB). So Pippenger
+both wins on speed for large batches and scales in near-constant memory. All
+methods are bit-identical to `keylab.ec.reference.multi_scalar_mult`.
+
 ## Reproducing
 
 ```bash

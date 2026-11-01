@@ -660,7 +660,10 @@ def scalar_mult(
     return _scalar_mult_python(scalar, point)
 
 
-MSM_METHODS = ("auto", "naive", "straus")
+MSM_METHODS = ("auto", "naive", "straus", "pippenger")
+# Term count at which Pippenger overtakes Straus in pure Python (measured;
+# docs/performance_baseline_v0.2.0.md). Below it, "auto" uses Straus.
+_PIPPENGER_MIN_TERMS = 128
 
 
 def _validated_pairs(pairs: Iterable[tuple[int, Point]]) -> list[tuple[int, Point]]:
@@ -732,6 +735,47 @@ def _msm_straus(pairs: list[tuple[int, Point]]) -> Point:
     return _to_affine(result)
 
 
+def _pippenger_window(term_count: int) -> int:
+    """Bucket-window width c for ``term_count`` terms (measured optimum)."""
+    return max(2, term_count.bit_length() - 3)
+
+
+def _msm_pippenger(pairs: list[tuple[int, Point]], window: int | None = None) -> Point:
+    """Pippenger's bucket method over full scalars (pure Python).
+
+    Each scalar is read in ``c``-bit windows. Within a window, points are summed
+    into buckets indexed by their window digit, then the buckets combine as
+    ``sum(j * bucket[j])`` by a running sum; window results combine by shifting
+    ``c`` bits (``c`` doublings) between windows. One doubling chain is shared
+    across all terms, and the bucket-combine cost is independent of the number of
+    terms, so it overtakes Straus for large batches. Equals
+    :func:`keylab.ec.reference.multi_scalar_mult`.
+    """
+    terms = [(scalar % N, point) for scalar, point in pairs if scalar % N and point is not None]
+    if not terms:
+        return None
+    c = _pippenger_window(len(terms)) if window is None else window
+    windows = (N.bit_length() + c - 1) // c
+    mask = (1 << c) - 1
+
+    result = _INFINITY
+    for window_index in range(windows - 1, -1, -1):
+        for _ in range(c):  # shift the accumulator up one window (doubling infinity is a no-op)
+            result = point_double(result)
+        buckets = [_INFINITY] * (1 << c)
+        for scalar, point in terms:
+            digit = (scalar >> (window_index * c)) & mask
+            if digit:
+                buckets[digit] = _point_add_mixed(buckets[digit], point)
+        running = _INFINITY  # running = bucket[j] + ... + bucket[top]
+        window_sum = _INFINITY  # window_sum = sum(j * bucket[j])
+        for digit in range((1 << c) - 1, 0, -1):
+            running = point_add(running, buckets[digit])
+            window_sum = point_add(window_sum, running)
+        result = point_add(result, window_sum)
+    return _to_affine(result)
+
+
 def _msm_uses_native(backend: str) -> bool:
     """Whether per-term ``scalar_mult`` would run on a native backend."""
     if backend in ("coincurve", "fastecdsa"):
@@ -758,19 +802,24 @@ def multi_scalar_mult(
     - ``"straus"`` (pure Python) is Straus/Shamir simultaneous multiplication: it
       shares one doubling chain across all terms via interleaved GLV+wNAF, so it
       beats ``"naive"`` for two or more terms without a native backend.
-    - ``"auto"`` picks ``"straus"`` for two or more terms when per-term work would
-      be pure Python, and ``"naive"`` otherwise (one/zero terms, or a native
-      backend installed, where per-term libsecp256k1 is faster).
+    - ``"pippenger"`` (pure Python) is the bucket method: it overtakes Straus for
+      large batches (measured crossover around 128 terms).
+    - ``"auto"`` picks, when per-term work would be pure Python, Straus for two or
+      more terms and Pippenger from ~128 terms up; otherwise ``"naive"`` (one/zero
+      terms, or a native backend installed, where per-term libsecp256k1 is faster).
 
-    All methods equal :func:`keylab.ec.reference.multi_scalar_mult`. Pippenger will
-    extend ``MSM_METHODS`` behind this signature.
+    All methods equal :func:`keylab.ec.reference.multi_scalar_mult`.
     """
     if method not in MSM_METHODS:
         raise ValueError(f"method must be one of: {', '.join(MSM_METHODS)}")
     terms = _validated_pairs(pairs)
     if method == "straus":
         return _msm_straus(terms)
+    if method == "pippenger":
+        return _msm_pippenger(terms)
     if method == "auto" and len(terms) >= 2 and not _msm_uses_native(backend):
+        if len(terms) >= _PIPPENGER_MIN_TERMS:
+            return _msm_pippenger(terms)
         return _msm_straus(terms)
     return _msm_naive(terms, backend)
 

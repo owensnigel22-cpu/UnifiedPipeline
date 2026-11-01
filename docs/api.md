@@ -53,7 +53,7 @@ Reference secp256k1 point arithmetic; not constant-time and not a full-key-searc
 | `is_on_curve` | `is_on_curve(point: 'Point') -> 'bool'` | Return whether an affine point is infinity or satisfies secp256k1's curve equation. |
 | `LAMBDA` | `LAMBDA = int` |  |
 | `lift_x` | `lift_x(x: 'int') -> 'tuple[int, int]'` | Lift an x coordinate to the even-y point, as BIP-340 and BIP-341 require. |
-| `MSM_METHODS` | `MSM_METHODS = ('auto', 'naive', 'straus')` |  |
+| `MSM_METHODS` | `MSM_METHODS = ('auto', 'naive', 'straus', 'pippenger')` |  |
 | `multi_scalar_mult` | `multi_scalar_mult(pairs: 'Iterable[tuple[int, Point]]', *, method: 'str' = 'auto', backend: 'str' = 'auto') -> 'Point'` | Return the multi-scalar multiplication ``sum(k_i * P_i)`` as an affine point. |
 | `N` | `N = int` |  |
 | `P` | `P = int` |  |

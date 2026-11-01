@@ -149,7 +149,7 @@ def test_auto_uses_naive_for_single_term() -> None:
 
 def test_rejects_bad_method_and_input() -> None:
     with pytest.raises(ValueError, match="method must be"):
-        multi_scalar_mult([(1, G)], method="pippenger")
+        multi_scalar_mult([(1, G)], method="bos-coster")
     with pytest.raises(ValueError):
         multi_scalar_mult([(-1, G)], method="straus")
 

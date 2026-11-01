@@ -129,7 +129,7 @@ def test_framework_detects_a_broken_msm(monkeypatch) -> None:
 
 def test_rejects_bad_method() -> None:
     with pytest.raises(ValueError, match="method must be"):
-        multi_scalar_mult([(1, G)], method="pippenger")
+        multi_scalar_mult([(1, G)], method="bos-coster")
 
 
 @pytest.mark.parametrize("bad", [[(1,)], [(1, G, 2)], [(-1, G)], [(1.0, G)], [("k", G)], [5]])

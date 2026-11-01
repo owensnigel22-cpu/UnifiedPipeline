@@ -46,6 +46,12 @@ All notable changes to Keylab are recorded here. The format follows
   its own copies. Every public name, CLI flag, and output is unchanged.
 
 ### Performance
+- `multi_scalar_mult` gains a Pippenger bucket method (`method="pippenger"`),
+  which overtakes Straus for large batches (measured crossover ~64-128 terms)
+  and uses near-constant memory (a fixed bucket array reused across windows)
+  versus Straus's linear table growth. `method="auto"` selects naive (<=1 term
+  or native backend), Straus (2-127 terms), or Pippenger (>=128 terms); results
+  are unchanged.
 - `multi_scalar_mult` gains a Straus/Shamir method (`method="straus"`), which
   shares one doubling chain across all terms via interleaved GLV+wNAF. In pure
   Python it beats the naive sum for two or more terms (crossover at n=2, ~2.2x
