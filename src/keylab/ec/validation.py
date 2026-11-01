@@ -232,9 +232,44 @@ def diff_infinity(backends: Sequence[str] | None = None) -> list[Mismatch]:
     return mismatches
 
 
+def diff_batch_normalization(points: Sequence[Point] | None = None) -> list[Mismatch]:
+    """Compare ``batch_to_affine`` with the reference, per point and as one batch.
+
+    The batch mixes every edge point (and its negation) in several Jacobian forms
+    with affine points and infinities, so positions, infinity handling, and the
+    shared inversion are all exercised; sub-batches of sizes 0, 1, and 2 are
+    checked as well.
+    """
+    base: list[Point] = list(edge_points()) if points is None else list(points)
+    expected: list[Point] = []
+    batch: list[object] = []
+    for point in [*base, *(reference.negate(p) for p in base)]:
+        for form in _jacobian_forms(point):
+            batch.append(form)
+            expected.append(point)
+        batch.append(point)
+        expected.append(point)
+        batch.append(None)
+        expected.append(None)
+    batch.append((5, 7, curve.P))  # Z congruent to 0: infinity
+    expected.append(None)
+    mismatches = []
+    for size in (0, 1, 2, len(batch)):
+        actual = _outcome(curve.batch_to_affine, batch[:size])
+        if actual != expected[:size]:
+            mismatches.append(Mismatch("batch_to_affine", "keylab.ec.secp256k1", f"batch of {size}",
+                                       f"{size} reference points", _fmt(actual)[:200]))
+    one_by_one = [curve._to_affine(p) if isinstance(p, tuple) and len(p) == 3 else p for p in batch]
+    if one_by_one != expected:
+        mismatches.append(Mismatch("_to_affine", "keylab.ec.secp256k1", "per-point normalization",
+                                   "reference points", "differs"))
+    return mismatches
+
+
 def validate_all(scalars: Iterable[int] | None = None) -> list[Mismatch]:
     """Run every differential check; the gate for any arithmetic change."""
-    return [*diff_scalar_mult(scalars), *diff_group_operations(), *diff_serialization(), *diff_infinity()]
+    return [*diff_scalar_mult(scalars), *diff_group_operations(), *diff_serialization(),
+            *diff_infinity(), *diff_batch_normalization()]
 
 
 def assert_no_mismatches(mismatches: Sequence[Mismatch], *, limit: int = 10) -> None:
@@ -253,6 +288,7 @@ __all__ = [
     "Mismatch",
     "assert_no_mismatches",
     "available_backends",
+    "diff_batch_normalization",
     "diff_group_operations",
     "diff_infinity",
     "diff_scalar_mult",

@@ -39,6 +39,8 @@ Reference secp256k1 point arithmetic; not constant-time and not a full-key-searc
 
 | Name | Signature / value | Summary |
 |---|---|---|
+| `batch_inverse` | `batch_inverse(values: 'Sequence[int]', modulus: 'int' = 115792089237316195423570985008687907853269984665640564039457584007908834671663) -> 'list[int]'` | Invert every value modulo a prime with a single modular inversion. |
+| `batch_to_affine` | `batch_to_affine(points: 'Iterable[object]') -> 'list[Point]'` | Normalize many points to affine coordinates with one modular inversion. |
 | `BETA` | `BETA = int` |  |
 | `compress_pubkey` | `compress_pubkey(point: 'Point') -> 'bytes'` | Serialize a finite affine point using SEC compressed format. |
 | `decompress_pubkey` | `decompress_pubkey(data: 'bytes') -> 'tuple[int, int]'` | Parse a 33-byte compressed SEC public key and validate the resulting curve point. |
@@ -156,6 +158,7 @@ Differential validation of secp256k1 implementations against the frozen referenc
 | `assert_no_mismatches` | `assert_no_mismatches(mismatches: 'Sequence[Mismatch]', *, limit: 'int' = 10) -> 'None'` | Raise ``AssertionError`` listing up to ``limit`` mismatches, if there are any. |
 | `available_backends` | `available_backends(*, include_strategies: 'bool' = True) -> 'tuple[str, ...]'` | Return the contract backends usable here (native ones only if installed). |
 | `CONTRACT_BACKENDS` | `CONTRACT_BACKENDS = tuple` |  |
+| `diff_batch_normalization` | `diff_batch_normalization(points: 'Sequence[Point] \| None' = None) -> 'list[Mismatch]'` | Compare ``batch_to_affine`` with the reference, per point and as one batch. |
 | `diff_group_operations` | `diff_group_operations(points: 'Sequence[Point] \| None' = None) -> 'list[Mismatch]'` | Compare addition, doubling, negation, mixed addition, and Jacobian conversion. |
 | `diff_infinity` | `diff_infinity(backends: 'Sequence[str] \| None' = None) -> 'list[Mismatch]'` | Check point-at-infinity handling in every operation that can meet it. |
 | `diff_scalar_mult` | `diff_scalar_mult(scalars: 'Iterable[int] \| None' = None, points: 'Sequence[tuple[int, int]] \| None' = None, backends: 'Sequence[str] \| None' = None) -> 'list[Mismatch]'` | Compare ``scalar_mult`` for every backend with the reference (defaults: edge inputs). |

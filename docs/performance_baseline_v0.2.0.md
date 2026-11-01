@@ -123,6 +123,29 @@ BIP-340 verify 6.03 → 4.03 ms (1.50×), the multiplications themselves unchang
 interleaved A/B run (three alternating runs of each version) found no
 regression: the new median was at or below the old one for every operation.
 
+### M2.2: batch normalization (shared primitive; no change to existing operation paths)
+
+`batch_to_affine` vs per-point `_to_affine` on Jacobian points with random Z
+(pure Python, median of 7):
+
+| Batch size | Per point, one at a time | Per point, batched | Speed-up |
+|---:|---:|---:|---:|
+| 1 | 31.0 µs | 36.0 µs | 0.9× |
+| 2 | 33.0 µs | 21.0 µs | 1.6× |
+| 8 | 32.5 µs | 9.9 µs | 3.3× |
+| 64 | 35.6 µs | 8.2 µs | 4.4× |
+| 960 | 36.5 µs | 6.0 µs | 6.1× |
+
+Generator affine-window table build (one-off per process): 29.3 → 20.1 ms;
+the table is identical. Verification, signing, BIP-32, Taproot, and MuSig2
+timings are unchanged (0.93–1.13×, within noise), as expected: each of those
+paths normalizes one point at a time today. The batch primitive pays off in the
+later M2 steps (precomputed tables, multi-scalar multiplication, batch
+verification). In the native environment, a balanced ABBA run found no
+regression (Taproot output 1.10×, BIP-340 sign 1.02×, k·G 1.00×). An earlier
+run in which the new code always ran second showed a spurious 0.6× from that
+ordering.
+
 ## Reproducing
 
 ```bash

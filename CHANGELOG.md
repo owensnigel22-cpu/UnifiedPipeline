@@ -22,6 +22,11 @@ All notable changes to Keylab are recorded here. The format follows
   without a native backend). See `docs/PERFORMANCE_VALIDATION.md`.
 - `benchmark-ec` and `benchmark-signatures` check their results against the
   frozen reference before timing.
+- `batch_inverse` and `batch_to_affine` in `keylab.ec.secp256k1`: invert many
+  field elements, or normalize many Jacobian points, with one modular inversion
+  (Montgomery's trick). About 4× faster per point than one-at-a-time
+  normalization for 64 points and 6× for 960. The generator table now uses them
+  instead of an inline copy; the table is unchanged.
 
 ### Changed
 - **`ExtendedKey.derive("M/...")` returns the extended public key.** BIP-32

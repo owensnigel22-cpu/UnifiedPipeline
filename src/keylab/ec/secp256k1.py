@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import hmac
-from collections.abc import Iterator
+from collections.abc import Iterable, Iterator, Sequence
 from functools import lru_cache
 from importlib.util import find_spec
 from typing import TypeGuard
@@ -162,6 +162,70 @@ def _to_affine(point: Jacobian) -> Point:
     return x * inverse2 % P, y * inverse2 * inverse % P
 
 
+def batch_inverse(values: Sequence[int], modulus: int = P) -> list[int]:
+    """Invert every value modulo a prime with a single modular inversion.
+
+    Montgomery's trick: with prefix products ``c_i = v_1 * ... * v_i``, one
+    inversion gives ``c_n^-1``, and walking back ``v_i^-1 = c_(i-1) * c_i^-1``,
+    ``c_(i-1)^-1 = c_i^-1 * v_i`` recovers every inverse for 3(n-1)
+    multiplications. Values are reduced modulo ``modulus``; a value congruent to
+    zero has no inverse and raises ``ValueError`` naming its index.
+    """
+    residues: list[int] = []
+    prefixes: list[int] = []
+    product = 1
+    for index, value in enumerate(values):
+        if type(value) is not int:
+            raise ValueError(f"value at index {index} must be an int")
+        residue = value % modulus
+        if residue == 0:
+            raise ValueError(f"value at index {index} is zero modulo the prime and has no inverse")
+        residues.append(residue)
+        prefixes.append(product)
+        product = product * residue % modulus
+    if not residues:
+        return []
+    inverse = mod_inverse_builtin(product, modulus)
+    result = [0] * len(residues)
+    for index in range(len(residues) - 1, -1, -1):
+        result[index] = inverse * prefixes[index] % modulus
+        inverse = inverse * residues[index] % modulus
+    return result
+
+
+def batch_to_affine(points: Iterable[object]) -> list[Point]:
+    """Normalize many points to affine coordinates with one modular inversion.
+
+    Each element may be a Jacobian point ``(X, Y, Z)`` (affine ``(X/Z^2, Y/Z^3)``;
+    ``Z`` congruent to 0 is the point at infinity), an affine point ``(x, y)``
+    (returned unchanged), or ``None`` (infinity). Output order matches input
+    order, and each result equals what ``_to_affine`` gives for that point alone.
+    Like ``_to_affine`` this is a coordinate change: it does not check that the
+    points lie on the curve. Any other element raises ``ValueError`` naming its
+    index.
+    """
+    items = list(points)
+    result: list[Point] = [None] * len(items)
+    jacobian: list[tuple[int, tuple[int, int, int]]] = []
+    for index, item in enumerate(items):
+        if item is None:
+            continue
+        if (not isinstance(item, tuple) or len(item) not in (2, 3)
+                or any(type(coordinate) is not int for coordinate in item)):
+            raise ValueError(
+                f"malformed point at index {index}: expected None, (x, y), or (X, Y, Z) of ints"
+            )
+        if len(item) == 2:
+            result[index] = (item[0], item[1])
+        elif item[2] % P:
+            jacobian.append((index, (item[0], item[1], item[2])))
+    z_inverses = batch_inverse([point[2] for _, point in jacobian])
+    for (index, (x, y, _z)), z_inverse in zip(jacobian, z_inverses, strict=True):
+        z_inverse_squared = z_inverse * z_inverse % P
+        result[index] = (x * z_inverse_squared % P, y * z_inverse_squared * z_inverse % P)
+    return result
+
+
 def point_double(point: Jacobian) -> Jacobian:
     """Double a Jacobian secp256k1 point."""
     x, y, z = point
@@ -263,32 +327,13 @@ def _generator_affine_window_table() -> tuple[tuple[Point, ...], ...]:
         for _ in range(_AFFINE_WINDOW_BITS):
             base = point_double(base)
 
-    z_values = [point[2] % P for window in jacobian_windows for point in window[1:]]
-    prefixes: list[int] = []
-    product = 1
-    for z_value in z_values:
-        if z_value == 0:
-            raise ArithmeticError("fixed-base table contains a point at infinity")
-        prefixes.append(product)
-        product = product * z_value % P
-    inverse_product = mod_inverse_builtin(product, P)
-    z_inverses = [0] * len(z_values)
-    for index in range(len(z_values) - 1, -1, -1):
-        z_value = z_values[index]
-        z_inverses[index] = inverse_product * prefixes[index] % P
-        inverse_product = inverse_product * z_value % P
-
-    affine_windows: list[tuple[Point, ...]] = []
-    inverse_index = 0
-    for window in jacobian_windows:
-        affine: list[Point] = [None]
-        for x, y, _z in window[1:]:
-            z_inverse = z_inverses[inverse_index]
-            inverse_index += 1
-            inverse_squared = z_inverse * z_inverse % P
-            affine.append((x * inverse_squared % P, y * inverse_squared * z_inverse % P))
-        affine_windows.append(tuple(affine))
-    return tuple(affine_windows)
+    finite = [point for window in jacobian_windows for point in window[1:]]
+    if any(point[2] % P == 0 for point in finite):
+        raise ArithmeticError("fixed-base table contains a point at infinity")
+    normalized = iter(batch_to_affine(finite))
+    return tuple(
+        (None, *(next(normalized) for _ in window[1:])) for window in jacobian_windows
+    )
 
 
 def _scalar_mult_generator_affine_window(scalar: int) -> Point:
@@ -728,6 +773,8 @@ __all__ = [
     "G",
     "N",
     "P",
+    "batch_inverse",
+    "batch_to_affine",
     "compress_pubkey",
     "decompress_pubkey",
     "ecdsa_sign_digest",

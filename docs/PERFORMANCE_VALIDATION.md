@@ -37,7 +37,8 @@ returns a list of `Mismatch` records (empty means agreement);
 | `diff_group_operations` | Affine addition and negation; Jacobian `point_add`, `point_double`, mixed addition; `_to_jacobian`/`_to_affine`, using Jacobian inputs with Z = 1 and three non-trivial Z values; all over the edge points, their negations, and infinity |
 | `diff_serialization` | SEC1 compressed and uncompressed encoding, x-only encoding, `parse_sec1`, `decompress_pubkey`, `lift_x`, and rejection of invalid encodings (the same exception type) |
 | `diff_infinity` | Scalars 0, N, 2N; `scalar_mult(k, None)`; negative scalars rejected; G + (−G); infinity as an operand; Jacobian infinity; encodings of infinity rejected |
-| `validate_all` | All four |
+| `diff_batch_normalization` | `batch_to_affine` on one mixed batch (edge points and negations in four Jacobian forms, affine points, `None`, Z ≡ 0) and on sub-batches of 0, 1, and 2; per-point `_to_affine` on the same inputs |
+| `validate_all` | All five |
 
 **Edge scalars** (`EDGE_SCALARS`, 36 values): 0; small values around 4- and
 5-bit window boundaries; N−3 … N+2; 2N−1 … 2N+1; (N±1)/2; the GLV eigenvalue
@@ -100,7 +101,7 @@ reference, and verifies every signature. A mismatch aborts the run.
   - `keylab benchmark-signatures --backend keylab --json`;
   - `keylab benchmark-ec` for generator multiplication.
 - **Statistics:** every tool reports the median of its repetitions. Run `bench_micro.py` three times and compare per-metric medians of the runs.
-- **Noise:** run-to-run variation on a desktop reaches about 1.3× (up to 1.8× on single metrics; see `performance_baseline_v0.2.0.md`). Differences below 1.3× are not evidence. To check for a regression, alternate old and new code (A/B/A/B/A/B) in one session rather than comparing two separate sessions.
+- **Noise:** run-to-run variation on a desktop reaches about 1.3× (up to 1.8× on single metrics; see `performance_baseline_v0.2.0.md`). Differences below 1.3× are not evidence. To check for a regression, interleave old and new code in one session in a balanced order (A/B/B/A, repeated), never always running one version first: an M2.2 run that always ran the new code second showed a spurious 0.6× that disappeared under ABBA ordering.
 - **Baseline:** `docs/performance_baseline_v0.2.0.md`, plus its *Progress* section, which each M2 step extends with its before/after table.
 
 ## Acceptance criteria for an optimization
