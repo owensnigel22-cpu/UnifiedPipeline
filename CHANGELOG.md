@@ -46,6 +46,11 @@ All notable changes to Keylab are recorded here. The format follows
   its own copies. Every public name, CLI flag, and output is unchanged.
 
 ### Performance
+- `multi_scalar_mult` gains a Straus/Shamir method (`method="straus"`), which
+  shares one doubling chain across all terms via interleaved GLV+wNAF. In pure
+  Python it beats the naive sum for two or more terms (crossover at n=2, ~2.2x
+  by n>=32), at the cost of memory linear in the term count. `method="auto"`
+  selects it for n>=2 without a native backend; results are unchanged.
 - Arbitrary-point scalar multiplication `k*P` is about 2.1x faster in pure
   Python: the GLV endomorphism splits k into two ~128-bit halves evaluated as
   interleaved width-4 wNAF. This also speeds BIP-340 and ECDSA verification

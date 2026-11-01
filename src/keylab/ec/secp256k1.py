@@ -660,7 +660,83 @@ def scalar_mult(
     return _scalar_mult_python(scalar, point)
 
 
-MSM_METHODS = ("auto", "naive")
+MSM_METHODS = ("auto", "naive", "straus")
+
+
+def _validated_pairs(pairs: Iterable[tuple[int, Point]]) -> list[tuple[int, Point]]:
+    """Materialize and check an MSM input: each a (non-negative int, point) tuple."""
+    result = []
+    for index, pair in enumerate(pairs):
+        if not isinstance(pair, tuple) or len(pair) != 2:
+            raise ValueError(f"pair at index {index} must be a (scalar, point) tuple")
+        scalar, point = pair
+        if type(scalar) is not int or scalar < 0:
+            raise ValueError(f"scalar at index {index} must be a non-negative int")
+        result.append((scalar, point))
+    return result
+
+
+def _msm_naive(pairs: list[tuple[int, Point]], backend: str) -> Point:
+    """Sum one ``scalar_mult`` per term; linear, respects ``backend``."""
+    total: Point = None
+    for scalar, point in pairs:
+        total = point_add_affine(total, scalar_mult(scalar, point, backend=backend))
+    return total
+
+
+def _msm_straus(pairs: list[tuple[int, Point]]) -> Point:
+    """Straus/Shamir simultaneous multiplication (pure Python).
+
+    Every term is GLV-split into two ~128-bit signed halves over P and
+    ``phi(P) = (BETA*x, y) = LAMBDA*P``, giving up to 2n sub-terms. Each sub-term's
+    half is recoded as width-``_GLV_WNAF_WINDOW`` NAF, and all sub-terms share one
+    left-to-right doubling chain (~128 doublings total instead of ~128 per term).
+    Every sub-term's odd-multiple table is normalized to affine under a single
+    shared inversion. Equals :func:`keylab.ec.reference.multi_scalar_mult`.
+    """
+    scalars: list[int] = []
+    jacobian_tables: list[Jacobian] = []
+    spans: list[tuple[int, int]] = []
+    odd_count = 1 << (_GLV_WNAF_WINDOW - 2)
+    for scalar, point in pairs:
+        reduced = scalar % N
+        if reduced == 0 or point is None:
+            continue
+        k1, k2 = glv_decompose(reduced)
+        base1 = point_negate_affine(point) if k1 < 0 else point
+        endomorphism = (BETA * point[0] % P, point[1])
+        base2 = point_negate_affine(endomorphism) if k2 < 0 else endomorphism
+        for half, base in ((abs(k1), base1), (abs(k2), base2)):
+            if half == 0:
+                continue
+            assert base is not None
+            scalars.append(half)
+            spans.append((len(jacobian_tables), odd_count))
+            jacobian_tables.extend(_odd_multiple_table(_to_jacobian(base), odd_count))
+    if not scalars:
+        return None
+
+    affine = batch_to_affine(jacobian_tables)  # one shared inversion for all sub-terms
+    tables = [affine[start:start + count] for start, count in spans]
+    digit_lists = [wnaf_digits(scalar, _GLV_WNAF_WINDOW) for scalar in scalars]
+
+    result = _INFINITY
+    for index in range(max(len(digits) for digits in digit_lists) - 1, -1, -1):
+        result = point_double(result)
+        for table, digits in zip(tables, digit_lists, strict=True):
+            if index < len(digits) and digits[index]:
+                digit = digits[index]
+                entry = table[(abs(digit) - 1) >> 1]
+                assert entry is not None
+                result = _point_add_mixed(result, entry if digit > 0 else (entry[0], (-entry[1]) % P))
+    return _to_affine(result)
+
+
+def _msm_uses_native(backend: str) -> bool:
+    """Whether per-term ``scalar_mult`` would run on a native backend."""
+    if backend in ("coincurve", "fastecdsa"):
+        return True
+    return backend == "auto" and any(_backend_installed(name) for name in ("coincurve", "fastecdsa"))
 
 
 def multi_scalar_mult(
@@ -675,26 +751,28 @@ def multi_scalar_mult(
     int (reduced mod N), each point is a finite affine point or ``None`` (infinity).
     The empty sum and any sum that cancels are ``None``.
 
-    This is the MSM foundation. ``method="naive"`` (the current ``"auto"``) sums one
-    ``scalar_mult`` per term -- each term already using the fast per-point path
-    (``backend``: libsecp256k1 when present, else GLV+wNAF). Its cost is linear in
-    the number of terms. Sublinear methods that share doublings across terms
-    (Straus/Shamir) and bucket methods (Pippenger) will extend ``MSM_METHODS`` and
-    the ``"auto"`` choice behind this same signature; results must stay identical
-    to :func:`keylab.ec.reference.multi_scalar_mult`.
+    Methods:
+
+    - ``"naive"`` sums one ``scalar_mult`` per term (respecting ``backend``);
+      linear in the number of terms.
+    - ``"straus"`` (pure Python) is Straus/Shamir simultaneous multiplication: it
+      shares one doubling chain across all terms via interleaved GLV+wNAF, so it
+      beats ``"naive"`` for two or more terms without a native backend.
+    - ``"auto"`` picks ``"straus"`` for two or more terms when per-term work would
+      be pure Python, and ``"naive"`` otherwise (one/zero terms, or a native
+      backend installed, where per-term libsecp256k1 is faster).
+
+    All methods equal :func:`keylab.ec.reference.multi_scalar_mult`. Pippenger will
+    extend ``MSM_METHODS`` behind this signature.
     """
     if method not in MSM_METHODS:
         raise ValueError(f"method must be one of: {', '.join(MSM_METHODS)}")
-    total: Point = None
-    for index, pair in enumerate(pairs):
-        if not isinstance(pair, tuple) or len(pair) != 2:
-            raise ValueError(f"pair at index {index} must be a (scalar, point) tuple")
-        scalar, point = pair
-        if type(scalar) is not int or scalar < 0:
-            raise ValueError(f"scalar at index {index} must be a non-negative int")
-        term = scalar_mult(scalar, point, backend=backend)
-        total = point_add_affine(total, term)
-    return total
+    terms = _validated_pairs(pairs)
+    if method == "straus":
+        return _msm_straus(terms)
+    if method == "auto" and len(terms) >= 2 and not _msm_uses_native(backend):
+        return _msm_straus(terms)
+    return _msm_naive(terms, backend)
 
 
 def public_key_from_private_scalar(private_scalar: int, *, backend: str = "auto") -> tuple[int, int]:

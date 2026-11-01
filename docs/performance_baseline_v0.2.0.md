@@ -235,6 +235,33 @@ win for large `n`. Both will be measured against this table, and their crossover
 documented, when they land. Results are bit-identical to
 `keylab.ec.reference.multi_scalar_mult` (`validate_all()` 0 mismatches).
 
+### M2.7: Straus/Shamir MSM method
+
+`multi_scalar_mult(..., method="straus")` shares one doubling chain across all
+terms (GLV-split each term into two ~128-bit halves over P and phi(P), width-4
+interleaved wNAF, one shared inversion for every sub-term table). `method="auto"`
+selects it for n >= 2 when per-term work would be pure Python. Pure Python,
+naive vs Straus:
+
+| n | naive ms | straus ms | speed-up | straus peak KB |
+|---:|---:|---:|---:|---:|
+| 1 | 1.41 | 1.57 | 0.90x | 5.8 |
+| 2 | 3.03 | 2.56 | 1.19x | 10.5 |
+| 4 | 6.32 | 3.76 | 1.68x | 19.7 |
+| 8 | 12.98 | 6.85 | 1.90x | 38.1 |
+| 16 | 26.67 | 12.89 | 2.07x | 75.0 |
+| 32 | 51.56 | 23.45 | 2.20x | 149.7 |
+| 64 | 103.42 | 45.92 | 2.25x | 313.0 |
+| 128 | 201.67 | 90.99 | 2.22x | 659.5 |
+
+**Crossover: n = 2.** Straus beats naive for every n >= 2 (1.2x at n=2, ~2.2x by
+n >= 32); at n = 1 naive is marginally faster, so `auto` keeps naive there. The
+cost is memory: Straus materializes 2n sub-term tables before the shared
+inversion, so its peak grows ~linearly (5.8 KB at n=1 to 660 KB at n=128) versus
+naive's flat ~7 KB (terms summed streaming). Results are bit-identical to
+`keylab.ec.reference.multi_scalar_mult`. With a native backend, `auto` stays on
+naive (per-term libsecp256k1 beats pure-Python Straus).
+
 ## Reproducing
 
 ```bash
