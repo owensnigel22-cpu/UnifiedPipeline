@@ -6,6 +6,12 @@ All notable changes to Keylab are recorded here. The format follows
 ## [Unreleased]
 
 ### Added
+- `keylab.ec.multi_scalar_mult(pairs, *, method="auto")`: a multi-scalar
+  multiplication engine returning `sum(k_i * P_i)`, re-exported from
+  `keylab.ec`. The foundation method (`naive`) sums one optimized `k*P` per
+  term; Straus/Shamir and Pippenger methods will extend `MSM_METHODS` behind
+  the same signature. Validated against a naive reference over empty, singleton,
+  duplicate, zero-scalar, infinity, and cancellation cases.
 - `keylab --version` and `keylab-advanced --version`. The package version now has
   one source, `keylab.__version__`, which `pyproject.toml` reads.
 - `keylab.ec` re-exports the shared curve helpers (`sqrt_mod_p`, `y_from_x`,

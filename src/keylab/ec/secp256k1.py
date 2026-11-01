@@ -660,6 +660,43 @@ def scalar_mult(
     return _scalar_mult_python(scalar, point)
 
 
+MSM_METHODS = ("auto", "naive")
+
+
+def multi_scalar_mult(
+    pairs: Iterable[tuple[int, Point]],
+    *,
+    method: str = "auto",
+    backend: str = "auto",
+) -> Point:
+    """Return the multi-scalar multiplication ``sum(k_i * P_i)`` as an affine point.
+
+    ``pairs`` is an iterable of ``(scalar, point)``; each scalar is a non-negative
+    int (reduced mod N), each point is a finite affine point or ``None`` (infinity).
+    The empty sum and any sum that cancels are ``None``.
+
+    This is the MSM foundation. ``method="naive"`` (the current ``"auto"``) sums one
+    ``scalar_mult`` per term -- each term already using the fast per-point path
+    (``backend``: libsecp256k1 when present, else GLV+wNAF). Its cost is linear in
+    the number of terms. Sublinear methods that share doublings across terms
+    (Straus/Shamir) and bucket methods (Pippenger) will extend ``MSM_METHODS`` and
+    the ``"auto"`` choice behind this same signature; results must stay identical
+    to :func:`keylab.ec.reference.multi_scalar_mult`.
+    """
+    if method not in MSM_METHODS:
+        raise ValueError(f"method must be one of: {', '.join(MSM_METHODS)}")
+    total: Point = None
+    for index, pair in enumerate(pairs):
+        if not isinstance(pair, tuple) or len(pair) != 2:
+            raise ValueError(f"pair at index {index} must be a (scalar, point) tuple")
+        scalar, point = pair
+        if type(scalar) is not int or scalar < 0:
+            raise ValueError(f"scalar at index {index} must be a non-negative int")
+        term = scalar_mult(scalar, point, backend=backend)
+        total = point_add_affine(total, term)
+    return total
+
+
 def public_key_from_private_scalar(private_scalar: int, *, backend: str = "auto") -> tuple[int, int]:
     """Derive secp256k1 public key ``Q = d*G`` for a valid private scalar ``d``."""
     if type(private_scalar) is not int or not 1 <= private_scalar < N:
@@ -833,6 +870,7 @@ def decompress_pubkey(data: bytes) -> tuple[int, int]:
 __all__ = [
     "BETA",
     "LAMBDA",
+    "MSM_METHODS",
     "SCALAR_MULT_BACKENDS",
     "G",
     "N",
@@ -848,6 +886,7 @@ __all__ = [
     "is_high_s_signature",
     "is_on_curve",
     "lift_x",
+    "multi_scalar_mult",
     "point_add",
     "point_add_affine",
     "point_add_geometry",

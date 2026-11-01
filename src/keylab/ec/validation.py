@@ -266,10 +266,43 @@ def diff_batch_normalization(points: Sequence[Point] | None = None) -> list[Mism
     return mismatches
 
 
+def diff_msm(methods: Sequence[str] | None = None) -> list[Mismatch]:
+    """Compare ``multi_scalar_mult`` with the reference over the MSM corner cases.
+
+    Each batch below is checked against ``reference.multi_scalar_mult`` (naive
+    accumulation) for every MSM method: empty, singleton, duplicate points,
+    duplicate scalars, zero scalars, infinity inputs, and sums that cancel to
+    infinity, plus a mixed batch of edge points and scalars.
+    """
+    methods = list(curve.MSM_METHODS) if methods is None else methods
+    points = edge_points()
+    g, minus_g, two_g = points[0], reference.negate(points[0]), reference.double(points[0])
+    batches: dict[str, list[tuple[int, Point]]] = {
+        "empty": [],
+        "singleton": [(12345, g)],
+        "duplicate-points": [(3, g), (5, g), (7, g)],
+        "duplicate-scalars": [(9, g), (9, two_g), (9, points[3])],
+        "zero-scalars": [(0, g), (7, two_g), (0, points[3])],
+        "infinity-terms": [(5, None), (7, g), (0, None)],
+        "cancel-k-and-N-minus-k": [(12345, g), (curve.N - 12345, g)],
+        "cancel-P-and-minus-P": [(8, g), (8, minus_g)],
+        "mixed-edge": [(s, p) for s, p in zip(EDGE_SCALARS, points * 5, strict=False)],
+    }
+    mismatches = []
+    for name, batch in batches.items():
+        expected = reference.multi_scalar_mult([(k % curve.N, p) for k, p in batch])
+        for method in methods:
+            actual = _outcome(curve.multi_scalar_mult, batch, method=method)
+            if actual != expected:
+                mismatches.append(Mismatch("multi_scalar_mult", f"method={method}", name,
+                                           _fmt(expected), _fmt(actual)))
+    return mismatches
+
+
 def validate_all(scalars: Iterable[int] | None = None) -> list[Mismatch]:
     """Run every differential check; the gate for any arithmetic change."""
     return [*diff_scalar_mult(scalars), *diff_group_operations(), *diff_serialization(),
-            *diff_infinity(), *diff_batch_normalization()]
+            *diff_infinity(), *diff_batch_normalization(), *diff_msm()]
 
 
 def assert_no_mismatches(mismatches: Sequence[Mismatch], *, limit: int = 10) -> None:
@@ -291,6 +324,7 @@ __all__ = [
     "diff_batch_normalization",
     "diff_group_operations",
     "diff_infinity",
+    "diff_msm",
     "diff_scalar_mult",
     "diff_serialization",
     "edge_points",

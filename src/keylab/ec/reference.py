@@ -90,6 +90,19 @@ def scalar_mult(scalar: int, point: Point = G) -> Point:
     return result
 
 
+def multi_scalar_mult(pairs: list[tuple[int, Point]]) -> Point:
+    """Return the sum of ``k_i * P_i`` by naive accumulation: the MSM oracle.
+
+    Each pair is a non-negative int scalar and a point (``None`` is infinity).
+    Deliberately the simplest correct thing -- one ``scalar_mult`` per term, summed
+    left to right -- so an optimized MSM can be validated against it.
+    """
+    total: Point = None
+    for scalar, point in pairs:
+        total = add(total, scalar_mult(scalar, point))
+    return total
+
+
 def encode_compressed(point: Point) -> bytes:
     """SEC1 compressed encoding: 0x02/0x03 by y parity, then x (33 bytes)."""
     if point is None or not is_on_curve(point):
@@ -146,6 +159,7 @@ __all__ = [
     "encode_uncompressed",
     "encode_xonly",
     "is_on_curve",
+    "multi_scalar_mult",
     "negate",
     "scalar_mult",
 ]

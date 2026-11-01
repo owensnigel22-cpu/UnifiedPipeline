@@ -53,6 +53,8 @@ Reference secp256k1 point arithmetic; not constant-time and not a full-key-searc
 | `is_on_curve` | `is_on_curve(point: 'Point') -> 'bool'` | Return whether an affine point is infinity or satisfies secp256k1's curve equation. |
 | `LAMBDA` | `LAMBDA = int` |  |
 | `lift_x` | `lift_x(x: 'int') -> 'tuple[int, int]'` | Lift an x coordinate to the even-y point, as BIP-340 and BIP-341 require. |
+| `MSM_METHODS` | `MSM_METHODS = ('auto', 'naive')` |  |
+| `multi_scalar_mult` | `multi_scalar_mult(pairs: 'Iterable[tuple[int, Point]]', *, method: 'str' = 'auto', backend: 'str' = 'auto') -> 'Point'` | Return the multi-scalar multiplication ``sum(k_i * P_i)`` as an affine point. |
 | `N` | `N = int` |  |
 | `P` | `P = int` |  |
 | `point_add` | `point_add(left: 'Jacobian', right: 'Jacobian') -> 'Jacobian'` | Add two Jacobian secp256k1 points. |
@@ -142,6 +144,7 @@ Frozen textbook secp256k1 arithmetic: the oracle for validating optimizations.
 | `encode_xonly` | `encode_xonly(point: 'Point') -> 'bytes'` | BIP-340 x-only encoding: the 32-byte x coordinate. |
 | `G` | `G = tuple` |  |
 | `is_on_curve` | `is_on_curve(point: 'Point') -> 'bool'` | Return whether ``point`` is infinity or a field point with y^2 = x^3 + 7. |
+| `multi_scalar_mult` | `multi_scalar_mult(pairs: 'list[tuple[int, Point]]') -> 'Point'` | Return the sum of ``k_i * P_i`` by naive accumulation: the MSM oracle. |
 | `N` | `N = int` |  |
 | `negate` | `negate(point: 'Point') -> 'Point'` | Return -point: (x, -y), with -infinity = infinity. |
 | `P` | `P = int` |  |
@@ -161,6 +164,7 @@ Differential validation of secp256k1 implementations against the frozen referenc
 | `diff_batch_normalization` | `diff_batch_normalization(points: 'Sequence[Point] \| None' = None) -> 'list[Mismatch]'` | Compare ``batch_to_affine`` with the reference, per point and as one batch. |
 | `diff_group_operations` | `diff_group_operations(points: 'Sequence[Point] \| None' = None) -> 'list[Mismatch]'` | Compare addition, doubling, negation, mixed addition, and Jacobian conversion. |
 | `diff_infinity` | `diff_infinity(backends: 'Sequence[str] \| None' = None) -> 'list[Mismatch]'` | Check point-at-infinity handling in every operation that can meet it. |
+| `diff_msm` | `diff_msm(methods: 'Sequence[str] \| None' = None) -> 'list[Mismatch]'` | Compare ``multi_scalar_mult`` with the reference over the MSM corner cases. |
 | `diff_scalar_mult` | `diff_scalar_mult(scalars: 'Iterable[int] \| None' = None, points: 'Sequence[tuple[int, int]] \| None' = None, backends: 'Sequence[str] \| None' = None) -> 'list[Mismatch]'` | Compare ``scalar_mult`` for every backend with the reference (defaults: edge inputs). |
 | `diff_serialization` | `diff_serialization(points: 'Sequence[tuple[int, int]] \| None' = None) -> 'list[Mismatch]'` | Compare SEC1 and x-only encoding and decoding with the reference. |
 | `edge_points` | `edge_points() -> 'tuple[tuple[int, int], ...]'` | Finite points that exercise special cases: G, -G, 2G, lambda*G, and hashed points. |

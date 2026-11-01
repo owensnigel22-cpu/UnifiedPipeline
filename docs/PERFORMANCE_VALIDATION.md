@@ -153,20 +153,56 @@ later, in its own milestone.
 - End-to-end: GLV `scalar_mult` equals the reference on `EDGE_SCALARS` x
   `edge_points()` and on Hypothesis-random inputs.
 
-### Multi-scalar multiplication (later M2)
+### Multi-scalar multiplication
 
-`multi_scalar_mult(pairs)` returns `sum(k_i * P_i)`. Required cases:
+`multi_scalar_mult(pairs, *, method=...)` returns `sum(k_i * P_i)`. Every
+`method` (and every `backend`) must equal `keylab.ec.reference.multi_scalar_mult`
+-- naive accumulation -- on all of these. `diff_msm` in the validation framework
+checks them; `tests/test_msm.py` adds the sweep and Hypothesis.
 
 - **Empty input** -> infinity (`None`).
 - **Singleton** -> equals `scalar_mult(k, P)`.
 - **Duplicate points** `[(a, P), (b, P)]` -> equals `scalar_mult((a + b) % N, P)`.
-- **Infinity cancellation**: a term `(k, None)`, and pairs summing to infinity
-  such as `[(k, P), (N - k, P)]` and `[(1, P), (1, -P)]`.
-- **Threshold cases** around whatever size switches strategy (e.g. Straus vs
-  Pippenger / bucket count): sizes `n-1, n, n+1` at each crossover must all
-  equal the reference `sum(scalar_mult(k_i, P_i))`.
-- Scalars drawn from `EDGE_SCALARS` (including `0`, `N`, `>N`); random
-  Hypothesis batches of mixed sizes.
+- **Duplicate scalars** `[(a, P), (a, Q)]`.
+- **Zero scalars** contribute nothing; an all-zero batch is infinity.
+- **Infinity inputs**: terms `(k, None)` are skipped.
+- **Cancellation to infinity**: `[(k, P), (N - k, P)]` and `[(k, P), (k, -P)]`.
+- **Malformed input** rejected with `ValueError`: a non-(scalar, point) pair, a
+  wrong-length tuple, a negative or non-int scalar, an unknown `method`.
+- **Threshold / boundary cases** around whatever size switches strategy (Straus
+  vs Pippenger / bucket count): sizes `n-1, n, n+1` at each crossover.
+- Scalars drawn from `EDGE_SCALARS` (including `0`, `N`, `>N`); random and
+  Hypothesis batches of mixed sizes; sizes 1, 2, 4, 8, 16, 32, 64, 128.
+
+**Status.** The M2.6 foundation (`method="naive"`, the current `"auto"`) meets
+all of these; it is linear in the number of terms. The Straus/Shamir and
+Pippenger methods below extend `MSM_METHODS` behind this signature and must pass
+the same `diff_msm` cases, including the threshold cases around their crossover.
+
+### Straus / Shamir (later M2)
+
+Simultaneous multiplication sharing one doubling chain across all terms.
+
+- Equals the reference and the naive MSM on every `diff_msm` case.
+- Interleaved wNAF tables: one odd-multiple table per point, built and
+  normalized together (shared inversion); duplicate points may share a table but
+  the result must be unchanged.
+- Correct for a single term (equals `scalar_mult`) and for the empty batch.
+- Measured gain over naive MSM for `n >= 2` recorded in the baseline's Progress
+  section, with the crossover where it overtakes naive.
+
+### Pippenger (later M2)
+
+Bucket method for large `n`.
+
+- Equals the reference on every `diff_msm` case and on random large batches.
+- **Bucket-boundary cases**: `n` and window `c` chosen so the top window is
+  partially filled; empty buckets; a bucket that receives exactly one point;
+  all points landing in one bucket.
+- **Infinity cancellation** inside a bucket (a bucket summing to infinity).
+- Automatic `method="auto"` selects Straus below and Pippenger above a measured
+  crossover; sizes `n-1, n, n+1` at that crossover all match the reference.
+- The crossover size is documented in the baseline.
 
 ### BIP-340 batch verification (later M2)
 

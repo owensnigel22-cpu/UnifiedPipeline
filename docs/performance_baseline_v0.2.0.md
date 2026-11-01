@@ -213,6 +213,28 @@ random scalars). With a native backend installed, k*P runs on libsecp256k1 and
 is unchanged: a balanced ABBA native run gave 1.01x (schnorr-verify) and 1.10x
 (k*P auto), within noise. `python` and `python-glv` remain selectable unchanged.
 
+### M2.6: multi-scalar multiplication foundation
+
+`multi_scalar_mult(pairs, method="auto")` returns `sum(k_i * P_i)`. The
+foundation (`method="naive"`) sums one optimized per-point `k*P` per term and is
+linear in the number of terms; terms are summed streaming, so memory is flat.
+Pure Python:
+
+| n | total ms | us/term | peak KB |
+|---:|---:|---:|---:|
+| 1 | 1.73 | 1732 | 6.3 |
+| 2 | 3.00 | 1499 | 6.6 |
+| 8 | 13.3 | 1662 | 7.3 |
+| 32 | 49.0 | 1531 | 7.4 |
+| 128 | 197 | 1542 | 7.5 |
+
+us/term stays ~1500-1700 (one GLV+wNAF `k*P`), so there is **no crossover yet**:
+the foundation is the linear baseline. Straus/Shamir (M2.7) shares one doubling
+chain across terms to cut us/term for `n >= 2`; Pippenger (later) uses buckets to
+win for large `n`. Both will be measured against this table, and their crossovers
+documented, when they land. Results are bit-identical to
+`keylab.ec.reference.multi_scalar_mult` (`validate_all()` 0 mismatches).
+
 ## Reproducing
 
 ```bash
