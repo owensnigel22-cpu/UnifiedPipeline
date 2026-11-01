@@ -12,7 +12,12 @@ from keylab.ec.musig2 import (
     key_agg_coeff,
     key_sort,
 )
-from keylab.ec.schnorr import schnorr_public_key, schnorr_sign, schnorr_verify
+from keylab.ec.schnorr import (
+    schnorr_public_key,
+    schnorr_sign,
+    schnorr_verify,
+    schnorr_verify_batch,
+)
 from keylab.ec.sec1 import parse_sec1, serialize_sec1, serialize_uncompressed, serialize_xonly
 from keylab.ec.secp256k1 import (
     G,
@@ -68,6 +73,7 @@ __all__ = [
     "schnorr_public_key",
     "schnorr_sign",
     "schnorr_verify",
+    "schnorr_verify_batch",
     "serialize_sec1",
     "serialize_uncompressed",
     "serialize_xonly",

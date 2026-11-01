@@ -204,9 +204,9 @@ Bucket method for large `n`.
   crossover; sizes `n-1, n, n+1` at that crossover all match the reference.
 - The crossover size is documented in the baseline.
 
-### BIP-340 batch verification (later M2)
+### BIP-340 batch verification (implemented, M3.0)
 
-`schnorr_verify_batch(items)` must agree with per-item `schnorr_verify`:
+`schnorr_verify_batch(items)` agrees with per-item `schnorr_verify`; `tests/test_schnorr_batch.py` covers all of the following:
 
 - **Batch == individual.** For any set of items, the batch result equals
   `all(schnorr_verify(m, s, pk) for ...)`; checked on the official BIP-340

@@ -286,6 +286,33 @@ versus Straus's 2n materialized sub-term tables (660 KB, 3.2 MB). So Pippenger
 both wins on speed for large batches and scales in near-constant memory. All
 methods are bit-identical to `keylab.ec.reference.multi_scalar_mult`.
 
+### M3.0: BIP-340 batch verification
+
+`schnorr_verify_batch(items)` checks many signatures as a single MSM with random
+coefficients (first = 1), via the MSM stack (auto: Straus, then Pippenger once
+the ~2n+1 MSM terms pass 128). Pure Python, individual vs batch:
+
+| n | individual ms | batch ms | speed-up | batch peak KB |
+|---:|---:|---:|---:|---:|
+| 2 | 3.93 | 4.23 | 0.93x | 22.2 |
+| 4 | 8.47 | 8.24 | 1.03x | 41.8 |
+| 8 | 23.69 | 16.30 | 1.45x | 80.9 |
+| 16 | 33.10 | 27.85 | 1.19x | 160.5 |
+| 32 | 67.77 | 60.67 | 1.12x | 333.7 |
+| 64 | 144.55 | 108.04 | 1.34x | 45.7 |
+| 128 | 302.60 | 185.95 | 1.63x | 89.3 |
+| 256 | 589.05 | 337.98 | 1.74x | 179.7 |
+| 512 | 1139.54 | 637.01 | 1.79x | 484.1 |
+
+**Crossover n=4** (batch wins from four signatures up), rising to ~1.8x for large
+batches. The gain is below MSM's raw 2x+ because each signature still needs its
+own R and P lifts (a modular square root each), which the MSM cannot share.
+Memory drops at n>=64 as the MSM term count (~2n+1) crosses 128 and `auto`
+switches Straus -> Pippenger (near-constant buckets). With a native backend the
+MSM runs per-term on libsecp256k1, so batch and individual are comparable there;
+the speed-up is a pure-Python win. Batch result equals the AND of individual
+verifications on every input.
+
 ## Reproducing
 
 ```bash

@@ -97,6 +97,7 @@ BIP-340 Schnorr signing and verification primitives for secp256k1.
 | `schnorr_public_key` | `schnorr_public_key(private_scalar: 'int') -> 'bytes'` | Return the 32-byte x-only BIP-340 public key. |
 | `schnorr_sign` | `schnorr_sign(message: 'bytes', private_scalar: 'int', aux_rand: 'bytes \| None' = None) -> 'bytes'` | Sign a BIP-340 message of any length; use fresh auxiliary randomness by default. |
 | `schnorr_verify` | `schnorr_verify(message: 'bytes', signature: 'bytes', public_key_x: 'bytes') -> 'bool'` | Verify a BIP-340 signature over a message of any length against an x-only key. |
+| `schnorr_verify_batch` | `schnorr_verify_batch(items: 'Sequence[tuple[bytes, bytes, bytes]]', *, coefficients: 'Sequence[int] \| None' = None) -> 'bool'` | Verify many BIP-340 signatures at once; equals the AND of individual verifies. |
 | `tagged_hash` | `tagged_hash(tag: 'str', message: 'bytes') -> 'bytes'` | Return ``SHA256(SHA256(tag) // SHA256(tag) // message)``. |
 
 ## `keylab.ec.musig2`

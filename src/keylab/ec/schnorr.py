@@ -8,12 +8,15 @@ sighash, which is simply one particular message length.
 from __future__ import annotations
 
 import secrets
+from collections.abc import Sequence
 
 from keylab.ec.secp256k1 import (
     G,
     N,
     P,
+    Point,
     lift_x,
+    multi_scalar_mult,
     point_add_affine,
     point_negate_affine,
     scalar_mult,
@@ -107,4 +110,99 @@ def schnorr_verify(message: bytes, signature: bytes, public_key_x: bytes) -> boo
     return candidate is not None and candidate[1] % 2 == 0 and candidate[0] == r
 
 
-__all__ = ["schnorr_public_key", "schnorr_sign", "schnorr_verify", "tagged_hash"]
+def _challenge(r_bytes: bytes, public_key_x: bytes, message: bytes) -> int:
+    """BIP-340 challenge e = int(hash_BIP0340/challenge(r || P || m)) mod N."""
+    return int.from_bytes(
+        tagged_hash("BIP0340/challenge", r_bytes + public_key_x + message), "big"
+    ) % N
+
+
+def _parse_batch_item(item: object) -> tuple[Point, Point, int, int] | None:
+    """Return (R, P, s, e) for a structurally valid BIP-340 triple, else None.
+
+    ``item`` is ``(message, signature, public_key_x)`` as taken by
+    :func:`schnorr_verify`. R is the even-y lift of r and P the even-y lift of the
+    x-only key; a bad length, out-of-range r/s, or a coordinate that does not lift
+    all yield None, which fails the whole batch (matching the single verifier).
+    """
+    if not (isinstance(item, (tuple, list)) and len(item) == 3):
+        return None
+    message, signature, public_key_x = item
+    if not isinstance(message, (bytes, bytearray)):
+        return None
+    if not isinstance(signature, bytes) or len(signature) != 64:
+        return None
+    if not isinstance(public_key_x, bytes) or len(public_key_x) != 32:
+        return None
+    r = int.from_bytes(signature[:32], "big")
+    s = int.from_bytes(signature[32:], "big")
+    if r >= P or s >= N:
+        return None
+    public_point = _lift_x_even(int.from_bytes(public_key_x, "big"))
+    nonce_point = _lift_x_even(r)
+    if public_point is None or nonce_point is None:
+        return None
+    e = _challenge(signature[:32], public_key_x, bytes(message))
+    return nonce_point, public_point, s, e
+
+
+def _batch_coefficients(count: int) -> list[int]:
+    """Random batch coefficients in [1, N-1] from a CSPRNG, with the first fixed at 1.
+
+    BIP-340 batch verification requires the first coefficient to be 1 and the rest
+    unpredictable. ``secrets`` (a cryptographically secure source) is used directly;
+    this never falls back to ``random.Random``.
+    """
+    coefficients = [1]
+    coefficients.extend(secrets.randbelow(N - 1) + 1 for _ in range(count - 1))
+    return coefficients
+
+
+def schnorr_verify_batch(
+    items: Sequence[tuple[bytes, bytes, bytes]],
+    *,
+    coefficients: Sequence[int] | None = None,
+) -> bool:
+    """Verify many BIP-340 signatures at once; equals the AND of individual verifies.
+
+    Each item is ``(message, signature, public_key_x)``. Returns ``True`` iff every
+    signature verifies. An empty batch is ``True``.
+
+    With random coefficients a_i (a_1 = 1) the identity
+    ``(sum a_i s_i) G == sum a_i R_i + sum a_i e_i P_i`` holds exactly when every
+    signature is valid, and fails with overwhelming probability otherwise. It is
+    checked as a single multi-scalar multiplication that must be the point at
+    infinity.
+
+    ``coefficients`` is for reproducible testing only: pass an explicit sequence
+    (length ``len(items)``, first element 1, each in ``[1, N-1]``). Omit it in
+    production, where coefficients come from :mod:`secrets`.
+    """
+    parsed: list[tuple[Point, Point, int, int]] = []
+    for item in items:
+        entry = _parse_batch_item(item)
+        if entry is None:
+            return False
+        parsed.append(entry)
+    if not parsed:
+        return True
+
+    if coefficients is None:
+        coefficients = _batch_coefficients(len(parsed))
+    else:
+        coefficients = list(coefficients)
+        if (len(coefficients) != len(parsed) or not coefficients or coefficients[0] != 1
+                or any(type(a) is not int or not 1 <= a < N for a in coefficients)):
+            raise ValueError("coefficients must be len(items) ints in [1, N-1] with the first equal to 1")
+
+    terms: list[tuple[int, Point]] = []
+    left_scalar = 0
+    for (nonce_point, public_point, s, e), a in zip(parsed, coefficients, strict=True):
+        left_scalar = (left_scalar + a * s) % N
+        terms.append(((N - a) % N, nonce_point))          # -a_i * R_i
+        terms.append(((N - a * e) % N, public_point))     # -a_i * e_i * P_i
+    terms.append((left_scalar, G))                        # (sum a_i s_i) * G
+    return multi_scalar_mult(terms) is None
+
+
+__all__ = ["schnorr_public_key", "schnorr_sign", "schnorr_verify", "schnorr_verify_batch", "tagged_hash"]
