@@ -34,6 +34,13 @@ described in the README.
   beside the protocol layer and depends only on the curve layer.
 ```
 
+The proposed ECDSA analysis package (`keylab.research.ecdsa`) is a separate,
+offline research layer. It may depend on the curve and ECDSA verification
+helpers but must not be imported by signing, verification, key derivation, or
+the curve layer. See
+[RESEARCH_SUBSYSTEM_ARCHITECTURE.md](RESEARCH_SUBSYSTEM_ARCHITECTURE.md);
+the package is not implemented by this documentation change.
+
 Dependencies point downward only. `hd` lazily imports `taproot` for BIP-86 to
 avoid an import cycle; `taproot` lazily imports `schnorr` for signing.
 
