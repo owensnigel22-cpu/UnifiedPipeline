@@ -16,6 +16,11 @@
 | Taproot outputs, script trees, sighash, key-path signing | [docs/taproot.md](docs/taproot.md) |
 | Benchmark commands and recorded results | [docs/benchmarks.md](docs/benchmarks.md) |
 | Point halving, doubling quartic, division polynomials | [docs/point_halving.md](docs/point_halving.md) |
+| Proposed ECDSA research subsystem architecture | [docs/RESEARCH_SUBSYSTEM_ARCHITECTURE.md](docs/RESEARCH_SUBSYSTEM_ARCHITECTURE.md) |
+| ECDSA research feature comparison | [docs/FEATURE_COMPARISON.md](docs/FEATURE_COMPARISON.md) |
+| ECDSA research implementation roadmap | [docs/IMPLEMENTATION_ROADMAP.md](docs/IMPLEMENTATION_ROADMAP.md) |
+| ECDSA research test strategy | [docs/TEST_STRATEGY.md](docs/TEST_STRATEGY.md) |
+| ECDSA research security and ethics positioning | [docs/SECURITY_POSITIONING.md](docs/SECURITY_POSITIONING.md) |
 | Official test-vector fixtures and provenance | [tests/vectors/README.md](tests/vectors/README.md) |
 
 ## secp256k1 signatures and key encodings
