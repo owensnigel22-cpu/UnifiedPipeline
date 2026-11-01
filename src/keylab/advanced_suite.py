@@ -49,6 +49,7 @@ import secrets
 import time
 
 from keylab import __version__
+from keylab.ec import secp256k1 as _curve
 from keylab.ec.musig2 import key_agg as _bip327_key_agg
 from keylab.ec.musig2 import key_agg_coeff as _bip327_key_agg_coeff
 from keylab.ec.secp256k1 import decompress_pubkey as _decompress_pubkey
@@ -67,12 +68,19 @@ from keylab.numtheory.core import (
 # secp256k1 Constants & Core Elliptic Curve Operations
 # =============================================================================
 
-SECP256K1_P = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEFFFFFC2F
-SECP256K1_N = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141
-SECP256K1_G = (
-    0x79BE667EF9DCBBAC55A06295CE870B07029BFCDB2DCE28D959F2815B16F81798,
-    0x483ADA7726A3C4655DA4FBFC0E1108A8FD17B448A68554199C47D08FFB10D4B8
-)
+# The curve arithmetic below is a thin compatibility layer over keylab.ec.secp256k1,
+# kept for this suite's public names and its (0, 0) / (0, 0, 0) point-at-infinity
+# convention. Do not reintroduce field or group formulas here:
+# tests/test_advanced_suite_consolidation.py fails if they reappear.
+SECP256K1_P = _curve.P
+SECP256K1_N = _curve.N
+SECP256K1_G = _curve.G
+_JACOBIAN_INFINITY = (0, 0, 0)
+
+
+def _from_core_jacobian(point: tuple[int, int, int]) -> tuple[int, int, int]:
+    """Translate keylab.ec's Jacobian infinity to this suite's (0, 0, 0) convention."""
+    return _JACOBIAN_INFINITY if point[2] % SECP256K1_P == 0 else point
 
 _SHA256_IV = (0x6A09E667, 0xBB67AE85, 0x3C6EF372, 0xA54FF53A,
               0x510E527F, 0x9B05688C, 0x1F83D9AB, 0x5BE0CD19)
@@ -281,25 +289,13 @@ def batch_inv(vals: list[int], p: int = SECP256K1_P) -> list[int]:
         return []
     if type(p) is not int or p <= 1:
         raise ValueError("modulus must be an integer greater than 1")
-    prefixes = [1] * len(vals)
-    product = 1
-    normalized = [0] * len(vals)
-    for index, value in enumerate(vals):
-        if type(value) is not int:
-            raise ValueError("batch inversion values must be integers")
-        value %= p
-        normalized[index] = value
-        prefixes[index] = product
-        if value:
-            product = product * value % p
-
-    inverse_product = mod_inverse_builtin(product, p)
+    if any(type(value) is not int for value in vals):
+        raise ValueError("batch inversion values must be integers")
+    nonzero = [index for index, value in enumerate(vals) if value % p]
     result = [0] * len(vals)
-    for i in range(len(vals) - 1, -1, -1):
-        value = normalized[i]
-        if value:
-            result[i] = inverse_product * prefixes[i] % p
-            inverse_product = inverse_product * value % p
+    inverses = _curve.batch_inverse([vals[index] for index in nonzero], p)
+    for index, inverse in zip(nonzero, inverses, strict=True):
+        result[index] = inverse
     return result
 
 def scalar_inv(d: int, n: int = SECP256K1_N) -> int:
@@ -308,19 +304,20 @@ def scalar_inv(d: int, n: int = SECP256K1_N) -> int:
 
 def point_negate(pt: tuple[int, int]) -> tuple[int, int]:
     """Group additive inverse -P = (x, P - y mod P)."""
+    # Kept as a plain coordinate negation: unlike keylab.ec's point_negate_affine it
+    # accepts this suite's (0, 0) infinity and does not validate the point.
     return (pt[0], (-pt[1]) % SECP256K1_P)
 
 def jacobian_double(p1: tuple[int, int, int]) -> tuple[int, int, int]:
     """Fast Point Doubling in Jacobian Projective coordinates (a=0)."""
-    X1, Y1, Z1 = p1
-    if Y1 == 0:
-        return (0, 0, 0)
-    S = (4 * X1 * Y1**2) % SECP256K1_P
-    M = (3 * X1**2) % SECP256K1_P
-    X3 = (M**2 - 2 * S) % SECP256K1_P
-    Y3 = (M * (S - X3) - 8 * Y1**4) % SECP256K1_P
-    Z3 = (2 * Y1 * Z1) % SECP256K1_P
-    return (X3, Y3, Z3)
+    if p1[1] == 0:
+        return _JACOBIAN_INFINITY
+    if p1[2] % SECP256K1_P == 0:
+        # Non-canonical infinity (Z = 0, Y != 0): X3 and Y3 do not depend on Z, so
+        # doubling (X, Y, 1) reproduces the previous raw output; Z3 = 2*Y*Z = 0.
+        x3, y3, _ = _curve.point_double((p1[0], p1[1], 1))
+        return (x3, y3, 2 * p1[1] * p1[2] % SECP256K1_P)
+    return _from_core_jacobian(_curve.point_double(p1))
 
 def jacobian_add(p1: tuple[int, int, int], p2: tuple[int, int, int]) -> tuple[int, int, int]:
     """Full Point Addition in Jacobian Projective coordinates."""
@@ -328,24 +325,7 @@ def jacobian_add(p1: tuple[int, int, int], p2: tuple[int, int, int]) -> tuple[in
         return p2
     if p2[2] == 0:
         return p1
-    X1, Y1, Z1 = p1
-    X2, Y2, Z2 = p2
-    U1 = (X1 * Z2**2) % SECP256K1_P
-    U2 = (X2 * Z1**2) % SECP256K1_P
-    S1 = (Y1 * Z2**3) % SECP256K1_P
-    S2 = (Y2 * Z1**3) % SECP256K1_P
-    if U1 == U2:
-        if S1 != S2:
-            return (0, 0, 0)
-        return jacobian_double(p1)
-    H = (U2 - U1) % SECP256K1_P
-    R = (S2 - S1) % SECP256K1_P
-    H2 = (H * H) % SECP256K1_P
-    H3 = (H * H2) % SECP256K1_P
-    X3 = (R**2 - H3 - 2 * U1 * H2) % SECP256K1_P
-    Y3 = (R * (U1 * H2 - X3) - S1 * H3) % SECP256K1_P
-    Z3 = (H * Z1 * Z2) % SECP256K1_P
-    return (X3, Y3, Z3)
+    return _from_core_jacobian(_curve.point_add(p1, p2))
 
 def jacobian_add_mixed(p1: tuple[int, int, int], p2_aff: tuple[int, int]) -> tuple[int, int, int]:
     """Optimized Mixed Point Addition (Jacobian + Affine)."""
@@ -353,105 +333,40 @@ def jacobian_add_mixed(p1: tuple[int, int, int], p2_aff: tuple[int, int]) -> tup
         return (p2_aff[0], p2_aff[1], 1)
     if p2_aff == (0, 0):
         return p1
-    X1, Y1, Z1 = p1
-    X2, Y2 = p2_aff
-    Z1_2 = (Z1 * Z1) % SECP256K1_P
-    U2 = (X2 * Z1_2) % SECP256K1_P
-    S2 = (Y2 * Z1 * Z1_2) % SECP256K1_P
-    if X1 == U2:
-        if Y1 != S2:
-            return (0, 0, 0)
-        return jacobian_double(p1)
-    H = (U2 - X1) % SECP256K1_P
-    R = (S2 - Y1) % SECP256K1_P
-    H2 = (H * H) % SECP256K1_P
-    H3 = (H * H2) % SECP256K1_P
-    X3 = (R**2 - H3 - 2 * X1 * H2) % SECP256K1_P
-    Y3 = (R * (X1 * H2 - X3) - Y1 * H3) % SECP256K1_P
-    Z3 = (H * Z1) % SECP256K1_P
-    return (X3, Y3, Z3)
+    return _from_core_jacobian(_curve._point_add_mixed(p1, p2_aff))
 
 def jacobian_to_affine(p1: tuple[int, int, int]) -> tuple[int, int]:
     """Converts Jacobian projective point (X, Y, Z) to Affine (x, y)."""
-    X, Y, Z = p1
-    if Z == 0:
+    if p1[2] == 0:
         return (0, 0)
-    z_inv = eea_mod_inv(Z, SECP256K1_P)
-    z_inv2 = (z_inv * z_inv) % SECP256K1_P
-    z_inv3 = (z_inv2 * z_inv) % SECP256K1_P
-    return ((X * z_inv2) % SECP256K1_P, (Y * z_inv3) % SECP256K1_P)
+    if p1[2] % SECP256K1_P == 0:
+        eea_mod_inv(p1[2], SECP256K1_P)  # raises, as before: Z has no inverse
+    affine = _curve._to_affine(p1)
+    assert affine is not None
+    return affine
 
 # =============================================================================
 # Precomputed Fixed 4-Bit Affine Window Table for Generator G
 # =============================================================================
 
-_G_PRECOMP_AFFINE: list[list[tuple[int, int]]] = []
-
 def _init_g_precomp_table():
     """Initializes fixed 4-bit affine window table for generator G at startup."""
-    if _G_PRECOMP_AFFINE:
-        return
-    
-    G_JAC = (SECP256K1_G[0], SECP256K1_G[1], 1)
-    curr = G_JAC
-    all_jac = []
-    
-    for window in range(64):
-        table_w = [(0, 0, 0)]
-        table_w.append(curr)
-        for mult in range(2, 16):
-            table_w.append(jacobian_add(table_w[-1], curr))
-        all_jac.append(table_w)
-        for _ in range(4):
-            curr = jacobian_double(curr)
-
-    z_coords = []
-    for w in range(64):
-        for mult in range(1, 16):
-            z_coords.append(all_jac[w][mult][2])
-
-    inv_z = batch_inv(z_coords, SECP256K1_P)
-    
-    idx = 0
-    for w in range(64):
-        table_aff = [(0, 0)]
-        for mult in range(1, 16):
-            zi = inv_z[idx]
-            idx += 1
-            zi2 = (zi * zi) % SECP256K1_P
-            zi3 = (zi2 * zi) % SECP256K1_P
-            X, Y, _ = all_jac[w][mult]
-            table_aff.append(((X * zi2) % SECP256K1_P, (Y * zi3) % SECP256K1_P))
-        _G_PRECOMP_AFFINE.append(table_aff)
+    _curve._generator_affine_window_table()  # the shared, cached 64-window table
 
 def scalar_mult_g_fast(k: int) -> tuple[int, int]:
     """Optimized fixed-base scalar multiplication k * G using 4-bit affine window table."""
     k %= SECP256K1_N
     if k == 0:
         return (0, 0)
-    if not _G_PRECOMP_AFFINE:
-        _init_g_precomp_table()
-    R = (0, 0, 0)
-    for window in range(64):
-        val = (k >> (4 * window)) & 0xF
-        if val > 0:
-            R = jacobian_add_mixed(R, _G_PRECOMP_AFFINE[window][val])
-    return jacobian_to_affine(R)
+    point = _curve._scalar_mult_generator_affine_window(k)
+    assert point is not None
+    return point
 
 def compute_naf(k: int) -> list[int]:
     """Derives Non-Adjacent Form (NAF) signed binary representation for scalar k."""
     if k < 0:
         raise ValueError("NAF input must be non-negative")
-    naf = []
-    while k > 0:
-        if k % 2 == 1:
-            ki = 2 - (k % 4)
-            k -= ki
-        else:
-            ki = 0
-        naf.append(ki)
-        k //= 2
-    return naf
+    return list(_curve.wnaf_digits(k, 2))  # width-2 NAF: digits in {-1, 0, 1}
 
 def scalar_mult_naf_jacobian(k: int, pt: tuple[int, int]) -> tuple[int, int, int]:
     """Multiply an arbitrary point without converting the result to affine form."""
@@ -559,21 +474,9 @@ def curve_add_geometry(p1: tuple[int, int], p2: tuple[int, int]) -> dict[str, ob
         return {"slope": None, "third_intersection": p2, "sum": p2}
     if p2 == (0, 0):
         return {"slope": None, "third_intersection": p1, "sum": p1}
-    x1, y1 = p1
-    x2, y2 = p2
-    if x1 == x2 and (y1 + y2) % SECP256K1_P == 0:
-        return {"slope": None, "third_intersection": (0, 0), "sum": (0, 0)}
-    if p1 == p2:
-        if y1 == 0:
-            return {"slope": None, "third_intersection": (x1, 0), "sum": (0, 0)}
-        slope = (3 * x1 * x1 * mod_inverse_builtin(2 * y1, SECP256K1_P)) % SECP256K1_P
-    else:
-        slope = ((y2 - y1) * mod_inverse_builtin(x2 - x1, SECP256K1_P)) % SECP256K1_P
-    x3 = (slope * slope - x1 - x2) % SECP256K1_P
-    y_line = (slope * (x3 - x1) + y1) % SECP256K1_P
-    third = (x3, y_line)
-    total = (x3, (-y_line) % SECP256K1_P)
-    return {"slope": slope, "third_intersection": third, "sum": total}
+    geometry = _curve.point_add_geometry(p1, p2)
+    return {key: (0, 0) if key != "slope" and value is None else value
+            for key, value in geometry.items()}
 
 def y_equals_x_report(x: int) -> dict[str, int | bool]:
     """Evaluate the curve equation after substituting y=x, in the base field."""
@@ -654,18 +557,7 @@ def compress_pubkey(pt: tuple[int, int]) -> bytes:
 
 def batch_jacobian_to_affine(points: list[tuple[int, int, int]]) -> list[tuple[int, int]]:
     """Convert many Jacobian points with one batch inversion."""
-    if not points:
-        return []
-    z_inverses = batch_inv([point[2] for point in points], SECP256K1_P)
-    result = []
-    for (x, y, z), z_inv in zip(points, z_inverses):
-        if z == 0:
-            result.append((0, 0))
-            continue
-        z_inv2 = z_inv * z_inv % SECP256K1_P
-        z_inv3 = z_inv2 * z_inv % SECP256K1_P
-        result.append((x * z_inv2 % SECP256K1_P, y * z_inv3 % SECP256K1_P))
-    return result
+    return [(0, 0) if point is None else point for point in _curve.batch_to_affine(points)]
 
 def advance_public_key(pubkey_hex: str, steps: int = 10) -> dict[str, object]:
     """Advance a public point by repeatedly adding G, with batched output conversion.
@@ -851,18 +743,16 @@ def hash_to_curve_try_and_increment(seed_str: str) -> dict[str, object]:
     while True:
         candidate_bytes = hashlib.sha256(seed_str.encode('utf-8') + counter.to_bytes(4, 'big')).digest()
         x_candidate = int.from_bytes(candidate_bytes, 'big') % SECP256K1_P
-        rhs = (pow(x_candidate, 3, SECP256K1_P) + 7) % SECP256K1_P
-        
-        # Test for quadratic residue
-        if rhs == 0 or pow(rhs, (SECP256K1_P - 1) // 2, SECP256K1_P) == 1:
-            y_even = pow(rhs, (SECP256K1_P + 1) // 4, SECP256K1_P)
-            pt = (x_candidate, y_even)
+        # Shared square root: (x^3 + 7)^((P+1)/4) mod P when x lifts to the curve, else None.
+        y_root = _curve.sqrt_mod_p(pow(x_candidate, 3, SECP256K1_P) + 7)
+        if y_root is not None:
+            pt = (x_candidate, y_root)
             return {
                 "seed": seed_str,
                 "tries": counter,
                 "point_x_hex": f"0x{pt[0]:064x}",
                 "point_y_hex": f"0x{pt[1]:064x}",
-                "on_curve": pow(pt[1], 2, SECP256K1_P) == (pow(pt[0], 3, SECP256K1_P) + 7) % SECP256K1_P
+                "on_curve": _curve.is_on_curve(pt),
             }
         counter += 1
 

@@ -33,6 +33,11 @@ All notable changes to Keylab are recorded here. The format follows
   writes `M/...` for `N(m/...)`; it previously returned the private key, the
   same as `m/...`. Derivation is unchanged (hardened steps still work from a
   private key); only the returned key type differs. `m/...` is unaffected.
+- `keylab.advanced_suite`'s curve arithmetic (Jacobian addition, doubling, and
+  mixed addition, Jacobian-to-affine conversion, the generator window table,
+  NAF digits, batch inversion and conversion, addition geometry, and the
+  hash-to-curve square root) now calls `keylab.ec.secp256k1` instead of keeping
+  its own copies. Every public name, CLI flag, and output is unchanged.
 
 ### Performance
 - `scalar_mult(backend="auto")` checks whether coincurve and fastecdsa are

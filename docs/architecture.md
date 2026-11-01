@@ -47,9 +47,13 @@ avoid an import cycle; `taproot` lazily imports `schnorr` for signing.
 | HASH160 and address encodings | `encoding/address.py` | hd, benchmarks, CLI |
 | CompactSize / script serialization | `encoding/transaction.py` | taproot sighash |
 
-`advanced_suite.py` keeps its own Jacobian/NAF arithmetic and RSA code for
-its step-by-step traces; tests check those paths against the package.
-Migrating them onto the shared code is on the roadmap.
+`advanced_suite.py` keeps its public curve functions (`jacobian_add`,
+`scalar_mult_naf`, `batch_inv`, `scalar_mult_g_fast`, ...) as a compatibility
+layer over `ec/secp256k1.py`: they translate the suite's `(0, 0)` / `(0, 0, 0)`
+point-at-infinity convention and otherwise call the shared code.
+`tests/test_advanced_suite_consolidation.py` checks that they reproduce their
+earlier outputs exactly and fails if field formulas reappear in the module.
+The suite's RSA code is still separate from `numtheory/rsa.py`.
 
 ## Cryptographic assumptions
 
