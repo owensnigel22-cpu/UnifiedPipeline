@@ -163,3 +163,24 @@ def test_ec_benchmark_cli_prints_reproducibility_metadata(capsys) -> None:
 def test_audit_alias_runs_feature_audit(capsys) -> None:
     assert main(["audit"]) == 0
     assert '"audit"' in capsys.readouterr().out
+
+
+def test_ec_benchmark_gate_uses_the_frozen_reference() -> None:
+    report = benchmark_ec(count=2, seed=7, repetitions=1, backend="python-glv")
+    assert report["reference_implementation"] == "keylab.ec.reference"
+    assert report["methods"][0]["outputs_match_reference"] is True
+
+
+def test_ec_benchmark_gate_rejects_a_wrong_method(monkeypatch) -> None:
+    from keylab import benchmarks
+    from keylab.ec.secp256k1 import G
+
+    real = benchmarks.scalar_mult
+
+    def broken(scalar, point=G, *, backend="auto"):
+        result = real(scalar, point, backend=backend)
+        return real(scalar + 1, point, backend=backend) if backend == "python-glv" else result
+
+    monkeypatch.setattr(benchmarks, "scalar_mult", broken)
+    with pytest.raises(ArithmeticError, match="keylab.ec.reference"):
+        benchmark_ec(count=2, seed=7, repetitions=1, backend="python-glv")

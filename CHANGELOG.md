@@ -13,6 +13,15 @@ All notable changes to Keylab are recorded here. The format follows
   `N`, and the BIP-327 MuSig2 API. `ec.secp256k1` and `encoding.{address,
   bech32, base58, wif}` declare `__all__`; `docs/api.md` gains an API-stability
   section.
+- `keylab.ec.reference`: a frozen textbook implementation of secp256k1 (affine
+  formulas, double-and-add, its own constants) used as the oracle for every
+  optimization, and `keylab.ec.validation`: differential checks of scalar
+  multiplication, addition, doubling, Jacobian conversion, serialization, and
+  infinity handling against it. `scalar_mult` accepts `backend="python-reference"`
+  and `backend="python-optimized"` (exactly the pure-Python path `auto` uses
+  without a native backend). See `docs/PERFORMANCE_VALIDATION.md`.
+- `benchmark-ec` and `benchmark-signatures` check their results against the
+  frozen reference before timing.
 
 ### Changed
 - **`ExtendedKey.derive("M/...")` returns the extended public key.** BIP-32

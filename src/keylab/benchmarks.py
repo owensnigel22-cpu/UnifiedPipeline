@@ -94,7 +94,8 @@ def benchmark_ec(
 
     rng = random.Random(seed)
     scalars = tuple(rng.randrange(1, N) for _ in range(count))
-    references = tuple(scalar_mult(scalar, backend="python") for scalar in scalars)
+    # The frozen textbook oracle (keylab.ec.reference), independent of every method timed here.
+    references = tuple(scalar_mult(scalar, backend="python-reference") for scalar in scalars)
     if any(point is None for point in references):
         raise ArithmeticError("reference multiplication unexpectedly produced infinity")
 
@@ -115,7 +116,7 @@ def benchmark_ec(
         warmup_ms[name] = (perf_counter_ns() - started) / 1_000_000
         for scalar, reference in zip(scalars, references, strict=True):
             if functions[name](scalar) != reference:
-                raise ArithmeticError(f"{name} produced a public point different from the Python reference")
+                raise ArithmeticError(f"{name} produced a public point different from keylab.ec.reference")
 
     elapsed_by_method: dict[str, list[int]] = {name: [] for name in methods}
     order_rng = random.Random(seed ^ 0x4B65794C61624543)
@@ -149,6 +150,7 @@ def benchmark_ec(
         )
     return {
         "benchmark": "secp256k1-generator-scalar-multiplication",
+        "reference_implementation": "keylab.ec.reference",
         "count": count,
         "seed": seed,
         "repetitions": repetitions,
@@ -666,6 +668,8 @@ def benchmark_signatures(
         raise ValueError("no implementations selected")
 
     for i in corpus:  # correctness gate for Keylab's implementations
+        if points[i] != scalar_mult(scalars[i], backend="python-reference"):
+            raise ArithmeticError("public key differs from keylab.ec.reference")
         if not schnorr_verify(messages[i], schnorr_sigs[i], xonly[i]):
             raise ArithmeticError("BIP-340 signature failed verification")
         if not ecdsa_verify_digest(messages[i], ecdsa_sigs[i], points[i]):
@@ -680,7 +684,8 @@ def benchmark_signatures(
         for member in group:  # independent sum of a_i * P_i
             expected_aggregate = point_add_affine(
                 expected_aggregate,
-                scalar_mult(key_agg_coeff(group, member), decompress_pubkey(member), backend="python"),
+                scalar_mult(key_agg_coeff(group, member), decompress_pubkey(member),
+                            backend="python-reference"),
             )
         if key_agg(group).point != expected_aggregate:
             raise ArithmeticError("BIP-327 KeyAgg disagrees with the coefficient-wise sum")

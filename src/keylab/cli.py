@@ -1473,7 +1473,7 @@ def _benchmark_ec(args: argparse.Namespace, parser: argparse.ArgumentParser) -> 
             f"{row['median_ms_per_corpus']:>19.3f}"
         )
     print(f"v65 table setup (excluded): {report['v65_table_setup_ms_excluded']:.3f} ms")
-    print("Correctness: every method matched the Python reference on the shared scalar corpus.")
+    print("Correctness: every method matched the frozen reference (keylab.ec.reference) on the shared scalar corpus.")
     print(report["note"])
     return 0
 

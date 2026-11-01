@@ -9,6 +9,7 @@ from functools import lru_cache
 from importlib.util import find_spec
 from typing import TypeGuard
 
+from keylab.ec import reference
 from keylab.numtheory.core import mod_inverse_builtin
 
 P = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEFFFFFC2F
@@ -438,6 +439,19 @@ def _scalar_mult_fastecdsa(scalar: int, point: Point) -> Point:
     return int(result.x), int(result.y)
 
 
+def _scalar_mult_pure_python(scalar: int, point: Point) -> Point:
+    """KeyLab's pure-Python production path: what ``auto`` runs without a native backend.
+
+    Selectable directly as ``backend="python-optimized"``. This is the function
+    M2 optimizations change; docs/PERFORMANCE_VALIDATION.md requires it to match
+    ``keylab.ec.reference`` for every input. ``scalar`` is already reduced mod N
+    and non-zero, and ``point`` is a validated finite point.
+    """
+    if point == G:
+        return _scalar_mult_generator_affine_window(scalar)
+    return _scalar_mult_python(scalar, point)
+
+
 _INSTALLED_BACKENDS: dict[tuple[object, str], bool] = {}
 
 
@@ -457,6 +471,19 @@ def _backend_installed(name: str) -> bool:
     return installed
 
 
+SCALAR_MULT_BACKENDS = (
+    "auto",
+    "python",
+    "python-optimized",
+    "python-reference",
+    "python-affine-window",
+    "python-glv",
+    "python-wnaf",
+    "coincurve",
+    "fastecdsa",
+)
+
+
 def scalar_mult(
     scalar: int,
     point: Point = G,
@@ -466,18 +493,16 @@ def scalar_mult(
     """Multiply a point, preferring installed native backends and retaining Python fallback.
 
     ``backend`` may be ``auto``, ``python``, ``python-affine-window``,
-    ``python-glv``, ``python-wnaf``, ``coincurve``, or ``fastecdsa``.
-    The Python implementation is retained as the reference path. For secret-key
+    ``python-glv``, ``python-wnaf``, ``coincurve``, or ``fastecdsa``, or one of
+    the validation-contract names: ``python-optimized`` (exactly what ``auto``
+    runs when no native backend is installed) and ``python-reference`` (the
+    frozen textbook oracle in :mod:`keylab.ec.reference`). For secret-key
     operations, prefer a reviewed native library such as libsecp256k1.
     """
     if scalar < 0:
         raise ValueError("scalar must be non-negative")
-    if backend not in {
-        "auto", "python", "python-affine-window", "python-glv", "python-wnaf", "coincurve", "fastecdsa"
-    }:
-        raise ValueError(
-            "backend must be auto, python, python-affine-window, python-glv, python-wnaf, coincurve, or fastecdsa"
-        )
+    if backend not in SCALAR_MULT_BACKENDS:
+        raise ValueError(f"backend must be one of: {', '.join(SCALAR_MULT_BACKENDS)}")
     if point is None or scalar == 0:
         return None
     if not is_on_curve(point):
@@ -496,9 +521,11 @@ def scalar_mult(
                     return operation(scalar, point)
                 except (ImportError, OSError):
                     continue
-        if point == G:
-            return _scalar_mult_generator_affine_window(scalar)
-        return _scalar_mult_python(scalar, point)
+        return _scalar_mult_pure_python(scalar, point)
+    if backend == "python-optimized":
+        return _scalar_mult_pure_python(scalar, point)
+    if backend == "python-reference":
+        return reference.scalar_mult(scalar, point)
     if backend == "coincurve":
         try:
             return _scalar_mult_coincurve(scalar, point)
@@ -697,6 +724,7 @@ def decompress_pubkey(data: bytes) -> tuple[int, int]:
 __all__ = [
     "BETA",
     "LAMBDA",
+    "SCALAR_MULT_BACKENDS",
     "G",
     "N",
     "P",

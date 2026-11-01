@@ -15,6 +15,8 @@ CLI commands are listed by `keylab --help` and `keylab-advanced --help`;
 - [`keylab.ec.schnorr`](#keylabecschnorr) — BIP-340 Schnorr signatures
 - [`keylab.ec.musig2`](#keylabecmusig2) — BIP-327 MuSig2 key aggregation
 - [`keylab.ec.ecdsa_recovery`](#keylabececdsa_recovery) — ECDSA public-key recovery
+- [`keylab.ec.reference`](#keylabecreference) — Frozen textbook oracle for validating optimizations
+- [`keylab.ec.validation`](#keylabecvalidation) — Differential validation against the reference
 - [`keylab.hd`](#keylabhd) — BIP-32/39/44/49/84/86 hierarchical deterministic keys
 - [`keylab.encoding.taproot`](#keylabencodingtaproot) — BIP-341 Taproot outputs, script trees, key-path signing
 - [`keylab.encoding.transaction`](#keylabencodingtransaction) — Transaction parsing and BIP-341 signature hashing
@@ -62,6 +64,7 @@ Reference secp256k1 point arithmetic; not constant-time and not a full-key-searc
 | `require_scalar` | `require_scalar(scalar: 'int', *, name: 'str' = 'scalar') -> 'int'` | Validate an integer scalar in ``[1, N-1]``. |
 | `rfc6979_nonce_from_digest` | `rfc6979_nonce_from_digest(private_scalar: 'int', digest: 'bytes') -> 'int'` | Return the RFC 6979 HMAC-SHA-256 nonce for a 32-byte digest and valid key. |
 | `scalar_mult` | `scalar_mult(scalar: 'int', point: 'Point' = (55066263022277343669578718895168534326250603453777594175500187360389116729240, 32670510020758816978083085130507043184471273380659243275938904335757337482424), *, backend: 'str' = 'auto') -> 'Point'` | Multiply a point, preferring installed native backends and retaining Python fallback. |
+| `SCALAR_MULT_BACKENDS` | `SCALAR_MULT_BACKENDS = tuple` |  |
 | `sqrt_mod_p` | `sqrt_mod_p(value: 'int') -> 'int \| None'` | Return a square root of ``value`` modulo P, or ``None`` for a non-residue. |
 | `wnaf_digits` | `wnaf_digits(scalar: 'int', window: 'int' = 5) -> 'tuple[int, ...]'` | Return least-significant-first width-w NAF digits for a nonnegative scalar. |
 | `y_from_x` | `y_from_x(x: 'int', *, odd: 'bool' = False) -> 'int'` | Return the curve y coordinate for ``x`` with the requested parity. |
@@ -119,6 +122,51 @@ ECDSA public-key recovery from a digest and signature (forensic utility).
 | Name | Signature / value | Summary |
 |---|---|---|
 | `recover_public_keys_from_signature` | `recover_public_keys_from_signature(digest: 'bytes', signature: 'tuple[int, int]') -> 'tuple[Point, ...]'` | Return all valid secp256k1 public-key candidates for an ECDSA signature. |
+
+## `keylab.ec.reference`
+
+Frozen textbook oracle for validating optimizations.
+
+Frozen textbook secp256k1 arithmetic: the oracle for validating optimizations.
+
+| Name | Signature / value | Summary |
+|---|---|---|
+| `add` | `add(left: 'Point', right: 'Point') -> 'Point'` | Add two affine points with the chord-and-tangent rule. |
+| `B` | `B = 7` |  |
+| `decode` | `decode(data: 'bytes') -> 'tuple[int, int]'` | Decode a SEC1 compressed or uncompressed public key, validating the point. |
+| `double` | `double(point: 'Point') -> 'Point'` | Double an affine point with the tangent rule (a = 0 for secp256k1). |
+| `encode_compressed` | `encode_compressed(point: 'Point') -> 'bytes'` | SEC1 compressed encoding: 0x02/0x03 by y parity, then x (33 bytes). |
+| `encode_uncompressed` | `encode_uncompressed(point: 'Point') -> 'bytes'` | SEC1 uncompressed encoding: 0x04, x, y (65 bytes). |
+| `encode_xonly` | `encode_xonly(point: 'Point') -> 'bytes'` | BIP-340 x-only encoding: the 32-byte x coordinate. |
+| `G` | `G = tuple` |  |
+| `is_on_curve` | `is_on_curve(point: 'Point') -> 'bool'` | Return whether ``point`` is infinity or a field point with y^2 = x^3 + 7. |
+| `N` | `N = int` |  |
+| `negate` | `negate(point: 'Point') -> 'Point'` | Return -point: (x, -y), with -infinity = infinity. |
+| `P` | `P = int` |  |
+| `scalar_mult` | `scalar_mult(scalar: 'int', point: 'Point' = (55066263022277343669578718895168534326250603453777594175500187360389116729240, 32670510020758816978083085130507043184471273380659243275938904335757337482424)) -> 'Point'` | Return scalar * point by left-to-right double-and-add. |
+
+## `keylab.ec.validation`
+
+Differential validation against the reference.
+
+Differential validation of secp256k1 implementations against the frozen reference.
+
+| Name | Signature / value | Summary |
+|---|---|---|
+| `assert_no_mismatches` | `assert_no_mismatches(mismatches: 'Sequence[Mismatch]', *, limit: 'int' = 10) -> 'None'` | Raise ``AssertionError`` listing up to ``limit`` mismatches, if there are any. |
+| `available_backends` | `available_backends(*, include_strategies: 'bool' = True) -> 'tuple[str, ...]'` | Return the contract backends usable here (native ones only if installed). |
+| `CONTRACT_BACKENDS` | `CONTRACT_BACKENDS = tuple` |  |
+| `diff_group_operations` | `diff_group_operations(points: 'Sequence[Point] \| None' = None) -> 'list[Mismatch]'` | Compare addition, doubling, negation, mixed addition, and Jacobian conversion. |
+| `diff_infinity` | `diff_infinity(backends: 'Sequence[str] \| None' = None) -> 'list[Mismatch]'` | Check point-at-infinity handling in every operation that can meet it. |
+| `diff_scalar_mult` | `diff_scalar_mult(scalars: 'Iterable[int] \| None' = None, points: 'Sequence[tuple[int, int]] \| None' = None, backends: 'Sequence[str] \| None' = None) -> 'list[Mismatch]'` | Compare ``scalar_mult`` for every backend with the reference (defaults: edge inputs). |
+| `diff_serialization` | `diff_serialization(points: 'Sequence[tuple[int, int]] \| None' = None) -> 'list[Mismatch]'` | Compare SEC1 and x-only encoding and decoding with the reference. |
+| `edge_points` | `edge_points() -> 'tuple[tuple[int, int], ...]'` | Finite points that exercise special cases: G, -G, 2G, lambda*G, and hashed points. |
+| `EDGE_SCALARS` | `EDGE_SCALARS = tuple` |  |
+| `hashed_point` | `hashed_point(label: 'str') -> 'tuple[int, int]'` | Return a deterministic finite point k*G with k derived from ``label``. |
+| `Mismatch` | `class Mismatch(operation: 'str', implementation: 'str', inputs: 'str', expected: 'str', actual: 'str') -> None` | One input on which an implementation disagreed with the reference. |
+| `NATIVE_BACKENDS` | `NATIVE_BACKENDS = ('coincurve', 'fastecdsa')` |  |
+| `PYTHON_STRATEGIES` | `PYTHON_STRATEGIES = tuple` |  |
+| `validate_all` | `validate_all(scalars: 'Iterable[int] \| None' = None) -> 'list[Mismatch]'` | Run every differential check; the gate for any arithmetic change. |
 
 ## `keylab.hd`
 

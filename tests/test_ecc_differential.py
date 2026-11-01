@@ -12,6 +12,7 @@ import random
 
 import pytest
 
+from keylab.ec import reference
 from keylab.ec.ecdsa_recovery import recover_public_keys_from_signature
 from keylab.ec.schnorr import schnorr_public_key, schnorr_sign, schnorr_verify
 from keylab.ec.sec1 import parse_sec1, serialize_sec1, serialize_xonly
@@ -163,3 +164,14 @@ def test_multiplication_matches_fastecdsa_when_installed(scalar: int) -> None:
     base = _point(random.Random(scalar).randrange(1, N))
     assert scalar_mult(scalar, base, backend="fastecdsa") == scalar_mult(scalar, base, backend="python")
     assert scalar_mult(scalar, G, backend="fastecdsa") == scalar_mult(scalar, G, backend="python")
+
+
+@pytest.mark.parametrize("backend", ["coincurve", "fastecdsa"])
+def test_native_libraries_match_the_frozen_reference(backend: str) -> None:
+    # libsecp256k1 / fastecdsa against keylab.ec.reference directly, independent of KeyLab's
+    # optimized Python paths: each side is checked by something that shares no code with it.
+    pytest.importorskip(backend)
+    points = [G, *(_point(s) for s in SCALARS[-3:])]
+    for scalar in SCALARS[:12] + [0, N, N + 5]:
+        for base in points:
+            assert scalar_mult(scalar, base, backend=backend) == reference.scalar_mult(scalar, base)

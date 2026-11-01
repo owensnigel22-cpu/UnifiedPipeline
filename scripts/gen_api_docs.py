@@ -28,6 +28,8 @@ MODULES = (
     ("keylab.ec.schnorr", "BIP-340 Schnorr signatures"),
     ("keylab.ec.musig2", "BIP-327 MuSig2 key aggregation"),
     ("keylab.ec.ecdsa_recovery", "ECDSA public-key recovery"),
+    ("keylab.ec.reference", "Frozen textbook oracle for validating optimizations"),
+    ("keylab.ec.validation", "Differential validation against the reference"),
     ("keylab.hd", "BIP-32/39/44/49/84/86 hierarchical deterministic keys"),
     ("keylab.encoding.taproot", "BIP-341 Taproot outputs, script trees, key-path signing"),
     ("keylab.encoding.transaction", "Transaction parsing and BIP-341 signature hashing"),
