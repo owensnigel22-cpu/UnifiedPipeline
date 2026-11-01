@@ -146,6 +146,38 @@ regression (Taproot output 1.10×, BIP-340 sign 1.02×, k·G 1.00×). An earlier
 run in which the new code always ran second showed a spurious 0.6× from that
 ordering.
 
+### M2.4: generator-table optimization (fixed-base comb, 4-bit -> 8-bit window)
+
+k*G uses a fixed-base comb; widening its window from 4 to 8 bits halves the
+per-call additions (64 -> 32). Pure Python, same machine:
+
+| Metric | 4-bit (v0.2.0) | 8-bit (M2.4) | Change |
+|---|---:|---:|---:|
+| Warm k*G | 589 us | 325 us | **1.81x faster** |
+| Table build (one-off, lazy, cached) | 19.8 ms | 159 ms | +139 ms |
+| Table size | 185 KB (960 pts) | 1.5 MB (8160 pts) | +1.35 MB |
+| Cold first call (fresh process, incl. build) | 46 ms | 198 ms | +152 ms |
+
+Downstream `benchmark-signatures`, pure Python, v0.2.0 vs M2.4 (cumulative with
+M2.0's discovery-cache win; k*G-heavy operations gain most):
+
+| Operation | v0.2.0 us | M2.4 us | Speed-up |
+|---|---:|---:|---:|
+| ecdsa-sign | 1,530 | 374 | 4.09x |
+| bip32-ckdpriv | 3,105 | 740 | 4.20x |
+| taproot-tweak-seckey | 1,482 | 328 | 4.52x |
+| taproot-sign | 10,917 | 5,121 | 2.13x |
+| schnorr-sign | 8,943 | 4,432 | 2.02x |
+| schnorr-verify | 5,738 | 3,710 | 1.55x |
+| ecdsa-verify | 5,798 | 3,819 | 1.52x |
+| musig2-key-agg | 10,158 | 7,321 | 1.39x |
+
+Verification gains less because only one of its two multiplications is k*G (the
+other is k*P on an arbitrary point, which GLV+wNAF will address next). Results
+are bit-identical to the reference: `validate_all()` reports 0 mismatches and
+the comb table is the same points at both widths, just laid out in wider
+windows. Still a plain unsigned comb -- no signed-digit recoding, no GLV.
+
 ## Reproducing
 
 ```bash

@@ -141,11 +141,13 @@ def test_generator_table_is_built_with_one_inversion(inversions) -> None:
     secp256k1._generator_affine_window_table.cache_clear()
     table = secp256k1._generator_affine_window_table()
     assert inversions == [P]
+    bits, windows = secp256k1._AFFINE_WINDOW_BITS, secp256k1._AFFINE_WINDOW_COUNT
     flat = [point for window in table for point in window[1:]]
-    assert len(flat) == 960
-    # Spot-check against the reference: window w, digit d is d * 16^w * G.
-    for window, digit in ((0, 1), (0, 15), (1, 3), (31, 7), (63, 15)):
-        assert table[window][digit] == ref.scalar_mult(digit * 16**window)
+    assert len(flat) == windows * ((1 << bits) - 1)  # all nonzero multiples, any window width
+    # Spot-check against the reference: window w, digit d is d * (2**bits)**w * G.
+    radix = 1 << bits
+    for window, digit in ((0, 1), (0, radix - 1), (1, 3), (windows - 1, 7), (windows - 1, radix - 1)):
+        assert table[window][digit] == ref.scalar_mult(digit * radix**window)
     secp256k1._generator_affine_window_table.cache_clear()
 
 

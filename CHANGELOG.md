@@ -40,6 +40,11 @@ All notable changes to Keylab are recorded here. The format follows
   its own copies. Every public name, CLI flag, and output is unchanged.
 
 ### Performance
+- Fixed-base scalar multiplication `k*G` is about 1.8x faster in pure Python:
+  the generator comb's window widened from 4 to 8 bits (32 point additions per
+  call instead of 64). The lazily built, cached table is correspondingly larger
+  (~1.5 MB, ~0.16 s to build, once per process). Results are unchanged. With a
+  native backend installed, `k*G` still runs on libsecp256k1 and is unaffected.
 - `scalar_mult(backend="auto")` checks whether coincurve and fastecdsa are
   installed once per process instead of on every call. Without a native backend
   each check searched `sys.path`; removing it makes pure-Python signing,

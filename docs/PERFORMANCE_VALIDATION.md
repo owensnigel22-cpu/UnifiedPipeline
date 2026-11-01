@@ -130,3 +130,61 @@ A change to curve arithmetic is accepted only if **all** of these hold:
 7. **Readable reference paths stay.** Optimizations add strategies; they do not
    delete the existing readable implementations, which remain selectable by
    their backend names.
+
+## Future-optimization requirements
+
+Additional differential checks each later M2 step must add to the framework and
+pass (against `python-reference`, `python-optimized`, `coincurve`, and
+`fastecdsa`) before it is accepted. These are specified now; the code comes
+later, in its own milestone.
+
+### GLV (M2 GLV + wNAF)
+
+- **Decomposition identity.** For the split `k -> (k1, k2)`, assert
+  `scalar_mult(k, P) == point_add(scalar_mult(k1, P), scalar_mult(k2, phi(P)))`
+  where `phi(P) = (BETA * x mod P, y)` and `phi(P) == scalar_mult(LAMBDA, P)`,
+  over the edge points and random points.
+- **Decomposition bounds.** Assert `k == (k1 + k2 * LAMBDA) mod N` and that both
+  `|k1|` and `|k2|` fit in about `ceil(bitlen(N) / 2) + 1` bits, for edge and
+  random scalars; a split that exceeds the bound is a failure even if the
+  product still verifies.
+- **Lambda edge cases.** `k in {0, 1, N-1, LAMBDA, LAMBDA^2 mod N, N-LAMBDA}`;
+  `k1` or `k2` zero or negative; the point being infinity; `phi(infinity)`.
+- End-to-end: GLV `scalar_mult` equals the reference on `EDGE_SCALARS` x
+  `edge_points()` and on Hypothesis-random inputs.
+
+### Multi-scalar multiplication (later M2)
+
+`multi_scalar_mult(pairs)` returns `sum(k_i * P_i)`. Required cases:
+
+- **Empty input** -> infinity (`None`).
+- **Singleton** -> equals `scalar_mult(k, P)`.
+- **Duplicate points** `[(a, P), (b, P)]` -> equals `scalar_mult((a + b) % N, P)`.
+- **Infinity cancellation**: a term `(k, None)`, and pairs summing to infinity
+  such as `[(k, P), (N - k, P)]` and `[(1, P), (1, -P)]`.
+- **Threshold cases** around whatever size switches strategy (e.g. Straus vs
+  Pippenger / bucket count): sizes `n-1, n, n+1` at each crossover must all
+  equal the reference `sum(scalar_mult(k_i, P_i))`.
+- Scalars drawn from `EDGE_SCALARS` (including `0`, `N`, `>N`); random
+  Hypothesis batches of mixed sizes.
+
+### BIP-340 batch verification (later M2)
+
+`schnorr_verify_batch(items)` must agree with per-item `schnorr_verify`:
+
+- **Batch == individual.** For any set of items, the batch result equals
+  `all(schnorr_verify(m, s, pk) for ...)`; checked on the official BIP-340
+  vectors and random valid batches.
+- **One bad apple.** A batch with exactly one invalid signature returns
+  `False`; verified for the invalid item at the first, middle, and last
+  position.
+- **Malformed keys / signatures.** Non-32-byte x-only keys, x-only keys that
+  do not lift to a curve point, signatures of the wrong length, and `r`/`s`
+  out of range are rejected (return `False`), never raised, matching
+  `schnorr_verify`.
+- **Deterministic coefficient test.** The random batch coefficients must come
+  from `secrets`, never a seeded PRNG. A test injects a known coefficient
+  source to confirm a forged batch (two signatures swapped) is rejected, so a
+  pass cannot come from coefficients that happen to cancel. The first
+  coefficient is fixed at 1, per the standard construction.
+- Empty batch -> `True`; singleton batch -> equals the single `schnorr_verify`.

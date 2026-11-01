@@ -22,7 +22,14 @@ Point = tuple[int, int] | None
 Jacobian = tuple[int, int, int]
 _INFINITY: Jacobian = (0, 1, 0)
 _GENERATOR_WINDOW_BITS = 4
-_AFFINE_WINDOW_BITS = 4
+# Fixed-base comb for k*G (the path `auto`/`python-optimized` run without a native
+# backend). An 8-bit window needs ceil(256/8) = 32 mixed additions per call, half
+# the 4-bit count, for ~1.85x faster k*G in pure Python. The cost is a larger
+# one-time, lazily built, cached table: 32*255 = 8160 affine points (~1.5 MB,
+# ~0.16 s to build) versus 960 points (~185 KB) at 4 bits. Measured tradeoffs are
+# in docs/performance_baseline_v0.2.0.md. Still a plain unsigned comb: no
+# signed-digit (wNAF) recoding and no GLV.
+_AFFINE_WINDOW_BITS = 8
 _AFFINE_WINDOW_COUNT = (256 + _AFFINE_WINDOW_BITS - 1) // _AFFINE_WINDOW_BITS
 _WNAF_WINDOW_BITS = 5
 BETA = 0x7AE96A2B657C07106E64479EAC3434E99CF0497512F58995C1396C28719501EE
