@@ -7,7 +7,7 @@ import platform
 import random
 import secrets
 import sys
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from functools import lru_cache
 from importlib.util import find_spec
 from pathlib import Path
@@ -740,12 +740,57 @@ def benchmark_signatures(
     }
 
 
+def benchmark_mnemonic(count: int = 100, *, bits: int = 128, seed: int = 20261101) -> dict[str, object]:
+    """Time BIP-39 entropy->mnemonic, mnemonic->entropy, and mnemonic->seed.
+
+    Correctness-gated: every generated mnemonic must round-trip to its entropy
+    before any timing is recorded. No secrets are printed; the seeded corpus is
+    synthetic entropy, not a user wallet.
+    """
+    from keylab import mnemonic as _mnemonic
+
+    if type(count) is not int or count < 1:
+        raise ValueError("count must be a positive integer")
+    if bits not in _mnemonic.VALID_ENTROPY_BITS:
+        raise ValueError(f"bits must be one of {_mnemonic.VALID_ENTROPY_BITS}")
+    rng = random.Random(seed)
+    corpus = [rng.getrandbits(bits).to_bytes(bits // 8, "big") for _ in range(count)]
+    phrases = [_mnemonic.entropy_to_mnemonic(e) for e in corpus]
+    for entropy, phrase in zip(corpus, phrases, strict=True):  # correctness gate
+        if _mnemonic.mnemonic_to_entropy(phrase) != entropy:
+            raise ArithmeticError("BIP-39 mnemonic did not round-trip to its entropy")
+
+    def _time(operation: Callable[[int], object]) -> float:
+        start = perf_counter_ns()
+        for index in range(count):
+            operation(index)
+        return (perf_counter_ns() - start) / count / 1000.0
+
+    results = {
+        "entropy_to_mnemonic_us": _time(lambda i: _mnemonic.entropy_to_mnemonic(corpus[i])),
+        "mnemonic_to_entropy_us": _time(lambda i: _mnemonic.mnemonic_to_entropy(phrases[i])),
+        "mnemonic_to_seed_us": _time(lambda i: _mnemonic.mnemonic_to_seed(phrases[i], "")),
+    }
+    return {
+        "benchmark": "bip39-mnemonic",
+        "count": count,
+        "entropy_bits": bits,
+        "seed": seed,
+        "outputs_round_trip": True,
+        "timings_us_per_op": {k: round(v, 2) for k, v in results.items()},
+        "machine": platform.platform(),
+        "python_version": sys.version.split()[0],
+        "note": "Metrics only; synthetic entropy, no user secrets printed.",
+    }
+
+
 __all__ = [
     "MUSIG2_GROUP_SIZE",
     "SIGNATURE_OPERATIONS",
     "available_scalar_backends",
     "benchmark_ec",
     "benchmark_hash160_only",
+    "benchmark_mnemonic",
     "benchmark_multiple_wifs",
     "benchmark_repeated_wifs",
     "benchmark_signatures",

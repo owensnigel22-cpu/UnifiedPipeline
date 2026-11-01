@@ -18,6 +18,12 @@ protect real keys or funds.
 - **Not a consensus implementation.** `keylab.encoding.transaction` computes
   BIP-341 signature hashes for study; it does not validate transactions or
   execute Script.
+- **Not a source of real-wallet mnemonics.** `keylab.mnemonic` implements
+  BIP-39 generation and recovery for study and testing. It draws entropy from
+  `secrets`, but the process is not audited, does not erase the entropy,
+  mnemonic, or seed from memory, and runs in non-constant time. **Do not use a
+  generated mnemonic to hold funds.** Create real seed phrases with mature,
+  audited wallet software, offline, on hardware you trust.
 - **Not independently audited.**
 
 For any real secret key, use a reviewed implementation such as

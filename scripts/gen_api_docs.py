@@ -31,6 +31,7 @@ MODULES = (
     ("keylab.ec.reference", "Frozen textbook oracle for validating optimizations"),
     ("keylab.ec.validation", "Differential validation against the reference"),
     ("keylab.hd", "BIP-32/39/44/49/84/86 hierarchical deterministic keys"),
+    ("keylab.mnemonic", "BIP-39 mnemonic generation, validation, seed derivation"),
     ("keylab.encoding.taproot", "BIP-341 Taproot outputs, script trees, key-path signing"),
     ("keylab.encoding.transaction", "Transaction parsing and BIP-341 signature hashing"),
     ("keylab.encoding.address", "Address encoding and verification"),

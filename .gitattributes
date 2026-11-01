@@ -1,0 +1,2 @@
+# BIP-39 wordlist must stay LF so its SHA-256 matches the canonical file.
+src/keylab/data/bip39_english.txt text eol=lf

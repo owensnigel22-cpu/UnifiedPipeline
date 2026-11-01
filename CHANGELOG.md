@@ -6,6 +6,13 @@ All notable changes to Keylab are recorded here. The format follows
 ## [Unreleased]
 
 ### Added
+- `keylab.mnemonic`: complete BIP-39 support for the English word list --
+  entropy generation (`secrets`), `entropy_to_mnemonic` / `mnemonic_to_entropy`
+  (word and checksum validation), `mnemonic_to_seed`, `generate_mnemonic`, and
+  `is_valid_mnemonic`, for 128/160/192/224/256-bit entropy. The packaged
+  official word list is pinned by checksum. All 24 official vectors pass in both
+  directions. Generated mnemonics are for study, not real funds (see SECURITY.md).
+- `keylab.benchmarks.benchmark_mnemonic`: correctness-gated BIP-39 timings.
 - `keylab.ec.schnorr_verify_batch(items)`: BIP-340 batch verification, re-exported
   from `keylab.ec`. It checks many signatures as one multi-scalar multiplication
   with cryptographically random coefficients (first = 1, rest from `secrets`), and

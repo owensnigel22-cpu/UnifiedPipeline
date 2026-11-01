@@ -18,6 +18,7 @@ CLI commands are listed by `keylab --help` and `keylab-advanced --help`;
 - [`keylab.ec.reference`](#keylabecreference) — Frozen textbook oracle for validating optimizations
 - [`keylab.ec.validation`](#keylabecvalidation) — Differential validation against the reference
 - [`keylab.hd`](#keylabhd) — BIP-32/39/44/49/84/86 hierarchical deterministic keys
+- [`keylab.mnemonic`](#keylabmnemonic) — BIP-39 mnemonic generation, validation, seed derivation
 - [`keylab.encoding.taproot`](#keylabencodingtaproot) — BIP-341 Taproot outputs, script trees, key-path signing
 - [`keylab.encoding.transaction`](#keylabencodingtransaction) — Transaction parsing and BIP-341 signature hashing
 - [`keylab.encoding.address`](#keylabencodingaddress) — Address encoding and verification
@@ -205,6 +206,25 @@ BIP-39 seed and BIP-32 hierarchical deterministic key helpers for secp256k1.
 | `mnemonic_to_seed` | `mnemonic_to_seed(mnemonic: 'str', passphrase: 'str' = '') -> 'bytes'` | Derive the standard 64-byte BIP-39 seed (NFKD, PBKDF2-HMAC-SHA512/2048). |
 | `parse_path` | `parse_path(path: 'str') -> 'tuple[int, ...]'` | Parse BIP-32 paths such as ``m/44'/0'/1'/0/5``. |
 | `recover_unhardened_parent_private_key` | `recover_unhardened_parent_private_key(child_key: 'bytes', parent_chain_code: 'bytes', parent_public_key: 'bytes', index: 'int') -> 'bytes'` | Recover a BIP-32 parent private scalar from a compromised non-hardened child. |
+
+## `keylab.mnemonic`
+
+BIP-39 mnemonic generation, validation, seed derivation.
+
+BIP-39 mnemonic generation, validation, and seed derivation (English wordlist).
+
+| Name | Signature / value | Summary |
+|---|---|---|
+| `ENGLISH_WORDLIST` | `ENGLISH_WORDLIST = tuple` |  |
+| `entropy_to_mnemonic` | `entropy_to_mnemonic(entropy: 'bytes') -> 'str'` | Encode entropy as a space-separated BIP-39 English mnemonic. |
+| `generate_entropy` | `generate_entropy(bits: 'int' = 128) -> 'bytes'` | Return cryptographically secure entropy of a BIP-39-valid size, from ``secrets``. |
+| `generate_mnemonic` | `generate_mnemonic(bits: 'int' = 128) -> 'str'` | Generate fresh entropy and return its BIP-39 mnemonic (not for real funds). |
+| `is_valid_mnemonic` | `is_valid_mnemonic(mnemonic: 'str') -> 'bool'` | Return whether ``mnemonic`` is a well-formed BIP-39 mnemonic with a valid checksum. |
+| `mnemonic_to_entropy` | `mnemonic_to_entropy(mnemonic: 'str') -> 'bytes'` | Decode a BIP-39 mnemonic to its entropy, validating words and checksum. |
+| `mnemonic_to_seed` | `mnemonic_to_seed(mnemonic: 'str', passphrase: 'str' = '') -> 'bytes'` | Derive the 64-byte BIP-39 seed (NFKD, PBKDF2-HMAC-SHA512, 2048 iterations). |
+| `normalize_mnemonic` | `normalize_mnemonic(mnemonic: 'str') -> 'str'` | NFKD-normalize and collapse whitespace to the canonical single-space form. |
+| `VALID_ENTROPY_BITS` | `VALID_ENTROPY_BITS = (128, 160, 192, 224, 256)` |  |
+| `VALID_WORD_COUNTS` | `VALID_WORD_COUNTS = (12, 15, 18, 21, 24)` |  |
 
 ## `keylab.encoding.taproot`
 
@@ -394,6 +414,7 @@ Small reproducible performance probes for public-key conversion paths.
 | `available_scalar_backends` | `available_scalar_backends() -> 'tuple[str, ...]'` | List explicit scalar backends currently importable on this machine. |
 | `benchmark_ec` | `benchmark_ec(*, count: 'int' = 12, seed: 'int' = 20261020, repetitions: 'int' = 5, backend: 'str' = 'all') -> 'dict[str, object]'` | Compare generator multiplication on one seeded corpus with median timings. |
 | `benchmark_hash160_only` | `benchmark_hash160_only(count: 'int' = 10000, *, backend: 'str' = 'auto') -> 'dict[str, object]'` | Measure HASH160 on unique valid compressed public-key fixtures. |
+| `benchmark_mnemonic` | `benchmark_mnemonic(count: 'int' = 100, *, bits: 'int' = 128, seed: 'int' = 20261101) -> 'dict[str, object]'` | Time BIP-39 entropy->mnemonic, mnemonic->entropy, and mnemonic->seed. |
 | `benchmark_multiple_wifs` | `benchmark_multiple_wifs(wifs: 'Iterable[str]', *, backend: 'str' = 'auto', derive_addresses: 'bool' = True, address_types: 'Iterable[str] \| None' = None, warmup: 'int' = 3, corpus_source: 'str' = 'provided') -> 'dict[str, object]'` | Profile independent WIFs without printing or returning keys or addresses. |
 | `benchmark_repeated_wifs` | `benchmark_repeated_wifs(wifs: 'Iterable[str]', *, repetitions: 'int' = 5, backend: 'str' = 'auto', derive_addresses: 'bool' = True, address_types: 'Iterable[str] \| None' = None, warmup: 'int' = 3, corpus_source: 'str' = 'provided') -> 'dict[str, object]'` | Benchmark one fixed WIF corpus repeatedly and report median timings. |
 | `benchmark_signatures` | `benchmark_signatures(*, count: 'int' = 8, seed: 'int' = 20261030, repetitions: 'int' = 5, backend: 'str' = 'all') -> 'dict[str, object]'` | Time BIP-340, ECDSA, BIP-32, Taproot, and MuSig2 operations on a seeded public corpus. |
