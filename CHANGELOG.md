@@ -40,6 +40,12 @@ All notable changes to Keylab are recorded here. The format follows
   its own copies. Every public name, CLI flag, and output is unchanged.
 
 ### Performance
+- Arbitrary-point scalar multiplication `k*P` is about 2.1x faster in pure
+  Python: the GLV endomorphism splits k into two ~128-bit halves evaluated as
+  interleaved width-4 wNAF. This also speeds BIP-340 and ECDSA verification
+  (~3x vs 0.2.0), whose slower half is a `k*P`. Results are unchanged, and the
+  readable `python` and bitwise `python-glv` paths remain selectable. With a
+  native backend, `k*P` still runs on libsecp256k1.
 - Fixed-base scalar multiplication `k*G` is about 1.8x faster in pure Python:
   the generator comb's window widened from 4 to 8 bits (32 point additions per
   call instead of 64). The lazily built, cached table is correspondingly larger

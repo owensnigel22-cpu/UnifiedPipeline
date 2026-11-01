@@ -32,6 +32,12 @@ _GENERATOR_WINDOW_BITS = 4
 _AFFINE_WINDOW_BITS = 8
 _AFFINE_WINDOW_COUNT = (256 + _AFFINE_WINDOW_BITS - 1) // _AFFINE_WINDOW_BITS
 _WNAF_WINDOW_BITS = 5
+# Width of the interleaved wNAF applied to each GLV half for arbitrary-point k*P
+# (the path `auto`/`python-optimized` run without a native backend). Width 4 was
+# the fastest in pure Python: ~2x the plain double-and-add (docs/
+# performance_baseline_v0.2.0.md). Wider windows cost more in table precompute
+# than they save on the ~128-bit halves.
+_GLV_WNAF_WINDOW = 4
 BETA = 0x7AE96A2B657C07106E64479EAC3434E99CF0497512F58995C1396C28719501EE
 LAMBDA = 0x5363AD4CC05C30E0A5261C028812645A122E22EA20816678DF02967C1B23BD72
 _GLV_MINUS_B1 = 0xE4437ED6010E88286F547FA90ABFE4C3
@@ -462,6 +468,57 @@ def _scalar_mult_glv(scalar: int, point: Point) -> Point:
     return _to_affine(result)
 
 
+def _odd_multiple_table(point_jacobian: Jacobian, count: int) -> list[Jacobian]:
+    """Return Jacobian [1P, 3P, 5P, ...], ``count`` odd multiples of a point."""
+    multiples = [point_jacobian]
+    twice = point_double(point_jacobian)
+    for _ in range(1, count):
+        multiples.append(point_add(multiples[-1], twice))
+    return multiples
+
+
+def _scalar_mult_glv_wnaf(scalar: int, point: Point) -> Point:
+    """Multiply an arbitrary point via GLV decomposition and interleaved wNAF.
+
+    The GLV endomorphism splits k into two ~128-bit signed halves k1, k2 with
+    ``k == k1 + k2*LAMBDA (mod N)`` and ``phi(P) = (BETA*x, y) = LAMBDA*P``. Each
+    half is recoded as width-``_GLV_WNAF_WINDOW`` NAF and the two are evaluated in
+    one interleaved left-to-right pass, so ~128 doublings are shared instead of
+    ~256. The odd-multiple tables for P and phi(P) are normalized to affine with a
+    single shared modular inversion (Montgomery's trick) for mixed additions.
+    ``scalar`` is already reduced mod N and non-zero; ``point`` is a validated
+    finite point. Matches keylab.ec.reference for every input.
+    """
+    assert point is not None
+    k1, k2 = glv_decompose(scalar)
+    base1 = point_negate_affine(point) if k1 < 0 else point
+    endomorphism = (BETA * point[0] % P, point[1])
+    base2 = point_negate_affine(endomorphism) if k2 < 0 else endomorphism
+    digits1 = wnaf_digits(abs(k1), _GLV_WNAF_WINDOW)
+    digits2 = wnaf_digits(abs(k2), _GLV_WNAF_WINDOW)
+
+    odd_count = 1 << (_GLV_WNAF_WINDOW - 2)  # odd multiples 1,3,...,2^(w-1)-1
+    assert base1 is not None and base2 is not None
+    jacobian1 = _odd_multiple_table(_to_jacobian(base1), odd_count)
+    jacobian2 = _odd_multiple_table(_to_jacobian(base2), odd_count)
+    affine = batch_to_affine(jacobian1 + jacobian2)
+    table1, table2 = affine[:odd_count], affine[odd_count:]
+
+    def addend(table: list[Point], digit: int) -> Point:
+        entry = table[(abs(digit) - 1) >> 1]
+        assert entry is not None
+        return entry if digit > 0 else (entry[0], (-entry[1]) % P)
+
+    result = _INFINITY
+    for index in range(max(len(digits1), len(digits2)) - 1, -1, -1):
+        result = point_double(result)
+        if index < len(digits1) and digits1[index]:
+            result = _point_add_mixed(result, addend(table1, digits1[index]))
+        if index < len(digits2) and digits2[index]:
+            result = _point_add_mixed(result, addend(table2, digits2[index]))
+    return _to_affine(result)
+
+
 def _scalar_mult_coincurve(scalar: int, point: Point) -> Point:
     """Use libsecp256k1 through coincurve for fast secp256k1 multiplication."""
     from coincurve import PrivateKey, PublicKey
@@ -501,7 +558,7 @@ def _scalar_mult_pure_python(scalar: int, point: Point) -> Point:
     """
     if point == G:
         return _scalar_mult_generator_affine_window(scalar)
-    return _scalar_mult_python(scalar, point)
+    return _scalar_mult_glv_wnaf(scalar, point)
 
 
 _INSTALLED_BACKENDS: dict[tuple[object, str], bool] = {}

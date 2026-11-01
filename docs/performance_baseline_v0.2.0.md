@@ -178,6 +178,41 @@ are bit-identical to the reference: `validate_all()` reports 0 mismatches and
 the comb table is the same points at both widths, just laid out in wider
 windows. Still a plain unsigned comb -- no signed-digit recoding, no GLV.
 
+### M2.5: GLV + wNAF for arbitrary-point k*P
+
+`k*P` (arbitrary point) was plain double-and-add. It now uses the GLV
+endomorphism to split k into two ~128-bit signed halves and evaluates both as
+width-4 interleaved wNAF, sharing ~128 doublings and one modular inversion for
+the odd-multiple tables. Pure Python, same machine:
+
+| k*P method | us per k*P | vs plain |
+|---|---:|---:|
+| `python` (plain double-and-add) | 3227 | 1.00x |
+| `python-glv` (bitwise GLV, pre-existing) | 2048 | 1.58x |
+| `python-optimized` (GLV + wNAF, M2.5) | 1523 | **2.12x** |
+
+Downstream `benchmark-signatures`, pure Python, v0.2.0 -> M2.5 (cumulative with
+M2.0 + M2.4; verification now gains because its k*P half is optimized):
+
+| Operation | v0.2.0 us | M2.5 us | Speed-up |
+|---|---:|---:|---:|
+| bip32-ckdpriv | 3,105 | 629 | 4.93x |
+| taproot-tweak-seckey | 1,482 | 309 | 4.79x |
+| ecdsa-sign | 1,530 | 372 | 4.11x |
+| taproot-sign | 10,917 | 3,032 | 3.60x |
+| schnorr-sign | 8,943 | 2,711 | 3.30x |
+| ecdsa-verify | 5,798 | 1,849 | 3.14x |
+| schnorr-verify | 5,738 | 1,960 | 2.93x |
+| taproot-tweak-pubkey | 1,802 | 654 | 2.76x |
+| bip32-ckdpub | 2,083 | 769 | 2.71x |
+| musig2-key-agg | 10,158 | 3,827 | 2.65x |
+
+Results are bit-identical to the reference (`validate_all()` 0 mismatches; the
+GLV+wNAF path equals keylab.ec.reference and both native backends over edge and
+random scalars). With a native backend installed, k*P runs on libsecp256k1 and
+is unchanged: a balanced ABBA native run gave 1.01x (schnorr-verify) and 1.10x
+(k*P auto), within noise. `python` and `python-glv` remain selectable unchanged.
+
 ## Reproducing
 
 ```bash
