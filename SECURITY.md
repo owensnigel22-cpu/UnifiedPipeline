@@ -16,8 +16,9 @@ protect real keys or funds.
 - **Not a wallet.** There is no key storage, encryption at rest, PSBT
   handling, coin selection, fee logic, or transaction broadcast.
 - **Not a consensus implementation.** `keylab.encoding.transaction` computes
-  BIP-341 signature hashes for study; it does not validate transactions or
-  execute Script.
+  BIP-341 and BIP-143 (SegWit v0) signature hashes for study; it does not
+  validate transactions, execute Script, or process `OP_CODESEPARATOR` (the
+  caller supplies the reduced scriptCode).
 - **Not a source of real-wallet mnemonics.** `keylab.mnemonic` implements
   BIP-39 generation and recovery for study and testing. It draws entropy from
   `secrets`, but the process is not audited, does not erase the entropy,

@@ -19,6 +19,7 @@ SIGHASH_NONE = 0x02
 SIGHASH_SINGLE = 0x03
 SIGHASH_ANYONECANPAY = 0x80
 _VALID_TAPROOT_HASH_TYPES = frozenset({0x00, 0x01, 0x02, 0x03, 0x81, 0x82, 0x83})
+_VALID_BIP143_HASH_TYPES = frozenset({0x01, 0x02, 0x03, 0x81, 0x82, 0x83})
 
 
 def compact_size(value: int) -> bytes:
@@ -133,6 +134,10 @@ def _sha256(data: bytes) -> bytes:
     return hashlib.sha256(data).digest()
 
 
+def _dsha256(data: bytes) -> bytes:
+    return hashlib.sha256(hashlib.sha256(data).digest()).digest()
+
+
 def taproot_precomputed_hashes(tx: Transaction, spent_outputs: Sequence[TxOut]) -> dict[str, bytes]:
     """Return BIP-341's single-SHA256 transaction-wide hashes."""
     if len(spent_outputs) != len(tx.inputs):
@@ -220,6 +225,93 @@ def taproot_sighash(
     ))
 
 
+def bip143_precomputed_hashes(tx: Transaction, input_index: int, hash_type: int) -> dict[str, bytes]:
+    """Return BIP-143's ``hashPrevouts``/``hashSequence``/``hashOutputs`` for this input.
+
+    Each is the double-SHA256 the preimage actually commits to for ``hash_type``,
+    i.e. with the ANYONECANPAY/NONE/SINGLE zeroing rules already applied (a zeroed
+    field is 32 zero bytes). The three may be reused across inputs of the same
+    transaction that share a hash type.
+    """
+    if hash_type not in _VALID_BIP143_HASH_TYPES:
+        raise ValueError("invalid BIP-143 hash type")
+    if not 0 <= input_index < len(tx.inputs):
+        raise ValueError("input index is out of range")
+    anyone_can_pay = bool(hash_type & SIGHASH_ANYONECANPAY)
+    base_type = hash_type & 0x1F
+    zero = b"\x00" * 32
+
+    hash_prevouts = zero
+    if not anyone_can_pay:
+        hash_prevouts = _dsha256(b"".join(txin.outpoint for txin in tx.inputs))
+
+    hash_sequence = zero
+    if not anyone_can_pay and base_type not in (SIGHASH_SINGLE, SIGHASH_NONE):
+        hash_sequence = _dsha256(b"".join(txin.sequence.to_bytes(4, "little") for txin in tx.inputs))
+
+    if base_type not in (SIGHASH_SINGLE, SIGHASH_NONE):
+        hash_outputs = _dsha256(b"".join(out.serialize() for out in tx.outputs))
+    elif base_type == SIGHASH_SINGLE and input_index < len(tx.outputs):
+        hash_outputs = _dsha256(tx.outputs[input_index].serialize())
+    else:
+        hash_outputs = zero
+
+    return {"hashPrevouts": hash_prevouts, "hashSequence": hash_sequence, "hashOutputs": hash_outputs}
+
+
+def bip143_signature_message(
+    tx: Transaction,
+    input_index: int,
+    script_code: bytes,
+    amount: int,
+    hash_type: int = SIGHASH_ALL,
+) -> bytes:
+    """Return BIP-143's witness-v0 sighash preimage for a P2WPKH/P2WSH-style input.
+
+    ``script_code`` is the raw script the signature commits to, *without* a
+    CompactSize length prefix (it is length-prefixed here, as Bitcoin serializes a
+    script inside a CTxOut). For P2WPKH it is ``0x76a914{20-byte-hash}88ac``; for
+    P2WSH it is the witnessScript, already reduced for any executed
+    ``OP_CODESEPARATOR`` as BIP-143 specifies (this is a hash calculator, not a
+    Script interpreter, so the caller supplies the reduced scriptCode). ``amount``
+    is the value in satoshis of the output being spent.
+    """
+    if not 0 <= input_index < len(tx.inputs):
+        raise ValueError("input index is out of range")
+    if hash_type not in _VALID_BIP143_HASH_TYPES:
+        raise ValueError("invalid BIP-143 hash type")
+    if not isinstance(script_code, (bytes, bytearray)):
+        raise TypeError("script_code must be bytes")
+    if type(amount) is not int or not 0 <= amount < (1 << 64):
+        raise ValueError("amount must be an unsigned 64-bit integer (satoshis)")
+
+    hashes = bip143_precomputed_hashes(tx, input_index, hash_type)
+    txin = tx.inputs[input_index]
+    return b"".join((
+        tx.version.to_bytes(4, "little"),
+        hashes["hashPrevouts"],
+        hashes["hashSequence"],
+        txin.outpoint,
+        ser_string(bytes(script_code)),
+        amount.to_bytes(8, "little"),
+        txin.sequence.to_bytes(4, "little"),
+        hashes["hashOutputs"],
+        tx.locktime.to_bytes(4, "little"),
+        hash_type.to_bytes(4, "little"),
+    ))
+
+
+def bip143_sighash(
+    tx: Transaction,
+    input_index: int,
+    script_code: bytes,
+    amount: int,
+    hash_type: int = SIGHASH_ALL,
+) -> bytes:
+    """Return the 32-byte BIP-143 witness-v0 signature hash (double-SHA256 of the preimage)."""
+    return _dsha256(bip143_signature_message(tx, input_index, script_code, amount, hash_type))
+
+
 __all__ = [
     "SIGHASH_ALL",
     "SIGHASH_ANYONECANPAY",
@@ -229,6 +321,9 @@ __all__ = [
     "Transaction",
     "TxIn",
     "TxOut",
+    "bip143_precomputed_hashes",
+    "bip143_sighash",
+    "bip143_signature_message",
     "compact_size",
     "parse_transaction",
     "ser_string",

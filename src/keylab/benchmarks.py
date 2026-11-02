@@ -784,10 +784,55 @@ def benchmark_mnemonic(count: int = 100, *, bits: int = 128, seed: int = 2026110
     }
 
 
+def benchmark_bip143_sighash(count: int = 200) -> dict[str, object]:
+    """Time BIP-143 witness-v0 sighash computation over the official vector cases.
+
+    Correctness-gated: every case must reproduce its published sighash before any
+    timing is recorded. Public vector data only; no secrets are printed.
+    """
+    import json
+
+    from keylab.encoding.transaction import bip143_sighash, parse_transaction
+
+    if type(count) is not int or count < 1:
+        raise ValueError("count must be a positive integer")
+
+    vectors = json.loads(
+        (Path(__file__).resolve().parent.parent.parent / "tests" / "vectors" / "bip143_sighash_vectors.json")
+        .read_text(encoding="utf-8")
+    )["cases"]
+    work = [
+        (parse_transaction(bytes.fromhex(c["unsigned_tx"])), c["input_index"],
+         bytes.fromhex(c["script_code"]), c["amount"], c["hash_type"], c["sighash"])
+        for c in vectors
+    ]
+    for tx, index, script_code, amount, hash_type, expected in work:  # correctness gate
+        if bip143_sighash(tx, index, script_code, amount, hash_type).hex() != expected:
+            raise ArithmeticError("BIP-143 sighash did not match the official vector")
+
+    start = perf_counter_ns()
+    for _ in range(count):
+        for tx, index, script_code, amount, hash_type, _expected in work:
+            bip143_sighash(tx, index, script_code, amount, hash_type)
+    elapsed_us = (perf_counter_ns() - start) / 1000.0
+    ops = count * len(work)
+    return {
+        "benchmark": "bip143-sighash",
+        "count": count,
+        "cases": len(work),
+        "outputs_match_vectors": True,
+        "us_per_sighash": round(elapsed_us / ops, 3),
+        "machine": platform.platform(),
+        "python_version": sys.version.split()[0],
+        "note": "Metrics only; public BIP-143 vector data, no secrets printed.",
+    }
+
+
 __all__ = [
     "MUSIG2_GROUP_SIZE",
     "SIGNATURE_OPERATIONS",
     "available_scalar_backends",
+    "benchmark_bip143_sighash",
     "benchmark_ec",
     "benchmark_hash160_only",
     "benchmark_mnemonic",
