@@ -20,7 +20,7 @@ CLI commands are listed by `keylab --help` and `keylab-advanced --help`;
 - [`keylab.hd`](#keylabhd) — BIP-32/39/44/49/84/86 hierarchical deterministic keys
 - [`keylab.mnemonic`](#keylabmnemonic) — BIP-39 mnemonic generation, validation, seed derivation
 - [`keylab.encoding.taproot`](#keylabencodingtaproot) — BIP-341 Taproot outputs, script trees, key-path signing
-- [`keylab.encoding.transaction`](#keylabencodingtransaction) — Transaction parsing and BIP-341 signature hashing
+- [`keylab.encoding.transaction`](#keylabencodingtransaction) — Transaction parsing and BIP-341 / BIP-143 signature hashing
 - [`keylab.encoding.address`](#keylabencodingaddress) — Address encoding and verification
 - [`keylab.encoding.bech32`](#keylabencodingbech32) — BIP-173 Bech32 / BIP-350 Bech32m
 - [`keylab.encoding.base58`](#keylabencodingbase58) — Base58 and Base58Check
@@ -256,12 +256,15 @@ BIP-341 Taproot output-key and script-path commitment utilities.
 
 ## `keylab.encoding.transaction`
 
-Transaction parsing and BIP-341 signature hashing.
+Transaction parsing and BIP-341 / BIP-143 signature hashing.
 
 Minimal Bitcoin transaction parsing and BIP-341 Taproot signature hashing.
 
 | Name | Signature / value | Summary |
 |---|---|---|
+| `bip143_precomputed_hashes` | `bip143_precomputed_hashes(tx: 'Transaction', input_index: 'int', hash_type: 'int') -> 'dict[str, bytes]'` | Return BIP-143's ``hashPrevouts``/``hashSequence``/``hashOutputs`` for this input. |
+| `bip143_sighash` | `bip143_sighash(tx: 'Transaction', input_index: 'int', script_code: 'bytes', amount: 'int', hash_type: 'int' = 1) -> 'bytes'` | Return the 32-byte BIP-143 witness-v0 signature hash (double-SHA256 of the preimage). |
+| `bip143_signature_message` | `bip143_signature_message(tx: 'Transaction', input_index: 'int', script_code: 'bytes', amount: 'int', hash_type: 'int' = 1) -> 'bytes'` | Return BIP-143's witness-v0 sighash preimage for a P2WPKH/P2WSH-style input. |
 | `compact_size` | `compact_size(value: 'int') -> 'bytes'` | Serialize Bitcoin's CompactSize unsigned integer. |
 | `parse_transaction` | `parse_transaction(raw: 'bytes') -> 'Transaction'` | Parse a legacy or SegWit (BIP-144) serialized transaction. |
 | `ser_string` | `ser_string(data: 'bytes') -> 'bytes'` | Serialize bytes with a CompactSize length prefix. |
@@ -412,6 +415,7 @@ Small reproducible performance probes for public-key conversion paths.
 | Name | Signature / value | Summary |
 |---|---|---|
 | `available_scalar_backends` | `available_scalar_backends() -> 'tuple[str, ...]'` | List explicit scalar backends currently importable on this machine. |
+| `benchmark_bip143_sighash` | `benchmark_bip143_sighash(count: 'int' = 200) -> 'dict[str, object]'` | Time BIP-143 witness-v0 sighash computation over the official vector cases. |
 | `benchmark_ec` | `benchmark_ec(*, count: 'int' = 12, seed: 'int' = 20261020, repetitions: 'int' = 5, backend: 'str' = 'all') -> 'dict[str, object]'` | Compare generator multiplication on one seeded corpus with median timings. |
 | `benchmark_hash160_only` | `benchmark_hash160_only(count: 'int' = 10000, *, backend: 'str' = 'auto') -> 'dict[str, object]'` | Measure HASH160 on unique valid compressed public-key fixtures. |
 | `benchmark_mnemonic` | `benchmark_mnemonic(count: 'int' = 100, *, bits: 'int' = 128, seed: 'int' = 20261101) -> 'dict[str, object]'` | Time BIP-39 entropy->mnemonic, mnemonic->entropy, and mnemonic->seed. |

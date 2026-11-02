@@ -6,6 +6,16 @@ All notable changes to Keylab are recorded here. The format follows
 ## [Unreleased]
 
 ### Added
+- `keylab.encoding.transaction`: BIP-143 witness-v0 (SegWit v0) signature
+  hashing -- `bip143_sighash`, `bip143_signature_message`, and
+  `bip143_precomputed_hashes`. Reproduces every official BIP-143 vector
+  (P2WPKH, P2SH-P2WPKH, P2WSH, P2SH-P2WSH, and the No-FindAndDelete case):
+  the `hashPrevouts`/`hashSequence`/`hashOutputs` intermediates, the full
+  preimage, and the final sighash for every hash type, including
+  `OP_CODESEPARATOR` and the SINGLE-with-no-output edge. The caller supplies the
+  reduced scriptCode; this is a hash calculator, not a consensus or Script
+  engine (see SECURITY.md).
+- `keylab.benchmarks.benchmark_bip143_sighash`: correctness-gated BIP-143 timings.
 - `keylab.mnemonic`: complete BIP-39 support for the English word list --
   entropy generation (`secrets`), `entropy_to_mnemonic` / `mnemonic_to_entropy`
   (word and checksum validation), `mnemonic_to_seed`, `generate_mnemonic`, and

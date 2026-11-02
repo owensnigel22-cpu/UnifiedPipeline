@@ -33,7 +33,7 @@ MODULES = (
     ("keylab.hd", "BIP-32/39/44/49/84/86 hierarchical deterministic keys"),
     ("keylab.mnemonic", "BIP-39 mnemonic generation, validation, seed derivation"),
     ("keylab.encoding.taproot", "BIP-341 Taproot outputs, script trees, key-path signing"),
-    ("keylab.encoding.transaction", "Transaction parsing and BIP-341 signature hashing"),
+    ("keylab.encoding.transaction", "Transaction parsing and BIP-341 / BIP-143 signature hashing"),
     ("keylab.encoding.address", "Address encoding and verification"),
     ("keylab.encoding.bech32", "BIP-173 Bech32 / BIP-350 Bech32m"),
     ("keylab.encoding.base58", "Base58 and Base58Check"),
