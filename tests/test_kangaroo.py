@@ -7,7 +7,7 @@ import random
 import pytest
 
 from keylab.ec.secp256k1 import G, N, scalar_mult
-from keylab.recovery.kangaroo import pollard_kangaroo, recover_via_kangaroo
+from keylab.research.ecdlp.kangaroo import pollard_kangaroo, recover_via_kangaroo
 
 
 def test_kangaroo_recovers_k_in_small_intervals() -> None:

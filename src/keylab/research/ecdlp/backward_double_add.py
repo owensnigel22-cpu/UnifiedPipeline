@@ -12,7 +12,7 @@ double-and-add ladder from a public key ``Q = k*G`` is a binary tree of depth
 are valid curve points, indistinguishable by structure. Enumerating the tree to
 find the path back to the identity recovers ``k``, but costs ``2**bit_length(k)``
 -- it is exactly brute force, i.e. the ECDLP, with no shortcut. For a *bounded*
-scalar interval use :mod:`keylab.recovery.kangaroo` (``O(sqrt(width))``) instead.
+scalar interval use :mod:`keylab.research.ecdlp.kangaroo` (``O(sqrt(width))``) instead.
 
 Teaching aid only: this is never selected by ``scalar_mult``, signing, or
 verification, and recovers nothing that iterating ``k`` and checking ``k*G == Q``

@@ -16,8 +16,8 @@ All notable changes to Keylab are recorded here. The format follows
   reduced scriptCode; this is a hash calculator, not a consensus or Script
   engine (see SECURITY.md).
 - `keylab.benchmarks.benchmark_bip143_sighash`: correctness-gated BIP-143 timings.
-- `keylab.recovery` (educational scalar-recovery demonstrations, not attacks):
-  `backward_double_add` reverses the double-and-add ladder from `Q = k*G`
+- `keylab.research.ecdlp` (educational bounded-interval discrete-log demonstrations,
+  not attacks): `backward_double_add` reverses the double-and-add ladder from `Q = k*G`
   (`point_halve`, `backward_step`, `backward_traverse_to_identity`,
   `recover_via_backward`, `cost_table`) -- this is exactly the ECDLP, costs
   `2**bit_length(k)`, and only resolves small scalars; and `kangaroo`

@@ -12,7 +12,7 @@ import random
 import pytest
 
 from keylab.ec.secp256k1 import G, N, P, point_add_affine, point_negate_affine, scalar_mult
-from keylab.recovery.backward_double_add import (
+from keylab.research.ecdlp.backward_double_add import (
     HALF_SCALAR,
     MAX_DEPTH,
     backward_step,

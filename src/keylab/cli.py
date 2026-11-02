@@ -1621,7 +1621,7 @@ def _backward_traverse(args: argparse.Namespace, parser: argparse.ArgumentParser
     small, explicitly supplied scalars; it is not an attack on real keys.
     """
     from keylab.ec.secp256k1 import G, N, scalar_mult
-    from keylab.recovery.backward_double_add import cost_table, recover_via_backward
+    from keylab.research.ecdlp.backward_double_add import cost_table, recover_via_backward
 
     if args.show_wall:
         print("backward double-and-add cost (2**bit_length(k) leaves; this is the ECDLP):")
@@ -1653,7 +1653,7 @@ def build_parser() -> argparse.ArgumentParser:
             "Reverses the secp256k1 double-and-add ladder from Q = k*G. This is exactly the "
             "ECDLP (2**bit_length(k) leaves) and only resolves small, explicitly supplied "
             "scalars; it is not an attack on real keys. For a bounded interval, Pollard's "
-            "kangaroo (keylab.recovery.kangaroo) is the right O(sqrt(width)) tool."
+            "kangaroo (keylab.research.ecdlp.kangaroo) is the right O(sqrt(width)) tool."
         ),
     )
     backward.add_argument("scalar", nargs="?", help="known scalar k in hex; its public key k*G is recovered")

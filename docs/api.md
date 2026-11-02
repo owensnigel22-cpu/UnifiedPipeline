@@ -29,8 +29,8 @@ CLI commands are listed by `keylab --help` and `keylab-advanced --help`;
 - [`keylab.ec.division_polynomials`](#keylabecdivision_polynomials) — Research: division polynomials over F_p
 - [`keylab.ec.quartic`](#keylabecquartic) — Research: doubling-quartic inversion
 - [`keylab.ec.halving`](#keylabechalving) — Research: point halving
-- [`keylab.recovery.backward_double_add`](#keylabrecoverybackward_double_add) — Research: backward double-and-add scalar recovery (ECDLP)
-- [`keylab.recovery.kangaroo`](#keylabrecoverykangaroo) — Research: Pollard's kangaroo bounded-interval ECDLP
+- [`keylab.research.ecdlp.backward_double_add`](#keylabresearchecdlpbackward_double_add) — Research: backward double-and-add scalar recovery (ECDLP)
+- [`keylab.research.ecdlp.kangaroo`](#keylabresearchecdlpkangaroo) — Research: Pollard's kangaroo bounded-interval ECDLP
 - [`keylab.benchmarks`](#keylabbenchmarks) — Benchmarks
 - [API stability](#api-stability)
 
@@ -408,7 +408,7 @@ Point halving and doubling-inversion helpers.
 | `halve_point_via_quartic` | `halve_point_via_quartic(point: 'tuple[int, int]') -> 'tuple[int, int]'` | Halve a secp256k1 point by solving the doubling quartic (research path). |
 | `halving_chain` | `halving_chain(point: 'tuple[int, int]', steps: 'int') -> 'list[tuple[int, int]]'` | Return successive halves ``Q/2, Q/4, ...`` (``steps`` entries). |
 
-## `keylab.recovery.backward_double_add`
+## `keylab.research.ecdlp.backward_double_add`
 
 Research: backward double-and-add scalar recovery (ECDLP).
 
@@ -424,7 +424,7 @@ Backward double-and-add traversal for secp256k1 (educational).
 | `point_halve` | `point_halve(point: 'Point') -> 'Point'` | Return the unique P with ``2P == point`` (``((N+1)/2)*point``); ``None`` stays ``None``. |
 | `recover_via_backward` | `recover_via_backward(point: 'Point', max_depth: 'int') -> 'dict[str, object]'` | Recover the scalar behind ``point`` by backward traversal, verifying ``k*G == point``. |
 
-## `keylab.recovery.kangaroo`
+## `keylab.research.ecdlp.kangaroo`
 
 Research: Pollard's kangaroo bounded-interval ECDLP.
 

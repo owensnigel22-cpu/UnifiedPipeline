@@ -70,7 +70,7 @@ logarithm is just as unknown, and the recovery demonstrations require the
 specific leaked secrets their docstrings name (a reused nonce, or a
 non-hardened child private key plus the parent chain code).
 
-The `keylab.recovery` package is also educational. `backward_double_add` reverses
+The `keylab.research.ecdlp` package is also educational. `backward_double_add` reverses
 the double-and-add ladder from a public key; this is **exactly the ECDLP**, costs
 `2**bit_length(k)`, and only resolves small, explicitly supplied scalars — it has
 no advantage over brute force and no bearing on real keys. `kangaroo` (Pollard's

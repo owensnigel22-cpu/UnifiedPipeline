@@ -13,13 +13,13 @@ from __future__ import annotations
 import random
 
 from keylab.ec.secp256k1 import G, point_add_affine, point_negate_affine, scalar_mult
-from keylab.recovery.backward_double_add import (
+from keylab.research.ecdlp.backward_double_add import (
     backward_step,
     cost_table,
     point_halve,
     recover_via_backward,
 )
-from keylab.recovery.kangaroo import recover_via_kangaroo
+from keylab.research.ecdlp.kangaroo import recover_via_kangaroo
 
 RULE = "=" * 72
 
