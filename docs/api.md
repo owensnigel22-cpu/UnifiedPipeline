@@ -29,6 +29,8 @@ CLI commands are listed by `keylab --help` and `keylab-advanced --help`;
 - [`keylab.ec.division_polynomials`](#keylabecdivision_polynomials) — Research: division polynomials over F_p
 - [`keylab.ec.quartic`](#keylabecquartic) — Research: doubling-quartic inversion
 - [`keylab.ec.halving`](#keylabechalving) — Research: point halving
+- [`keylab.recovery.backward_double_add`](#keylabrecoverybackward_double_add) — Research: backward double-and-add scalar recovery (ECDLP)
+- [`keylab.recovery.kangaroo`](#keylabrecoverykangaroo) — Research: Pollard's kangaroo bounded-interval ECDLP
 - [`keylab.benchmarks`](#keylabbenchmarks) — Benchmarks
 - [API stability](#api-stability)
 
@@ -405,6 +407,33 @@ Point halving and doubling-inversion helpers.
 | `halve_point` | `halve_point(point: 'Point') -> 'Point'` | Return the unique secp256k1 point H with 2H == point (scalar shortcut). |
 | `halve_point_via_quartic` | `halve_point_via_quartic(point: 'tuple[int, int]') -> 'tuple[int, int]'` | Halve a secp256k1 point by solving the doubling quartic (research path). |
 | `halving_chain` | `halving_chain(point: 'tuple[int, int]', steps: 'int') -> 'list[tuple[int, int]]'` | Return successive halves ``Q/2, Q/4, ...`` (``steps`` entries). |
+
+## `keylab.recovery.backward_double_add`
+
+Research: backward double-and-add scalar recovery (ECDLP).
+
+Backward double-and-add traversal for secp256k1 (educational).
+
+| Name | Signature / value | Summary |
+|---|---|---|
+| `backward_step` | `backward_step(point: 'Point') -> 'tuple[Point, Point]'` | Return the two double-and-add predecessors of ``point``: ``(halve(Q), halve(Q - G))``. |
+| `backward_traverse_to_identity` | `backward_traverse_to_identity(point: 'Point', max_depth: 'int') -> 'dict[str, object]'` | Breadth-first reverse the ladder from ``point``, seeking the path to infinity. |
+| `cost_table` | `cost_table() -> 'list[tuple[int, int, str]]'` | Return ``(scalar_bits, 2**bits leaves, feasibility)`` rows for the honest wall. |
+| `HALF_SCALAR` | `HALF_SCALAR = int` |  |
+| `MAX_DEPTH` | `MAX_DEPTH = 64` |  |
+| `point_halve` | `point_halve(point: 'Point') -> 'Point'` | Return the unique P with ``2P == point`` (``((N+1)/2)*point``); ``None`` stays ``None``. |
+| `recover_via_backward` | `recover_via_backward(point: 'Point', max_depth: 'int') -> 'dict[str, object]'` | Recover the scalar behind ``point`` by backward traversal, verifying ``k*G == point``. |
+
+## `keylab.recovery.kangaroo`
+
+Research: Pollard's kangaroo bounded-interval ECDLP.
+
+Pollard's kangaroo (lambda) method for the bounded-interval ECDLP on secp256k1.
+
+| Name | Signature / value | Summary |
+|---|---|---|
+| `pollard_kangaroo` | `pollard_kangaroo(point: 'Point', lo: 'int', hi: 'int', *, max_steps: 'int \| None' = None) -> 'int \| None'` | Recover ``k`` in ``[lo, hi]`` with ``k*G == point`` via Pollard's kangaroo. |
+| `recover_via_kangaroo` | `recover_via_kangaroo(point: 'Point', lo: 'int', hi: 'int', *, max_steps: 'int \| None' = None) -> 'dict[str, object]'` | Recover ``k`` in ``[lo, hi]`` and report timing, as a dict mirroring the backward API. |
 
 ## `keylab.benchmarks`
 

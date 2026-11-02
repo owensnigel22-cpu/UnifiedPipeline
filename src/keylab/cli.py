@@ -1614,11 +1614,51 @@ def _sat_solve(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int
     return 0 if result.status != "UNKNOWN" else 1
 
 
+def _backward_traverse(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
+    """Educational: recover a scalar from its public key by reversing double-and-add.
+
+    This is exactly the ECDLP (2**bit_length(k) leaves) and is feasible only for
+    small, explicitly supplied scalars; it is not an attack on real keys.
+    """
+    from keylab.ec.secp256k1 import G, N, scalar_mult
+    from keylab.recovery.backward_double_add import cost_table, recover_via_backward
+
+    if args.show_wall:
+        print("backward double-and-add cost (2**bit_length(k) leaves; this is the ECDLP):")
+        for bits, leaves, label in cost_table():
+            print(f"  k={bits:>3} bits  leaves=2^{bits:<3} = {leaves:<24}  {label}")
+        return 0
+    if args.scalar is None:
+        parser.error("a hex scalar is required (or use --show-wall)")
+    try:
+        k = int(args.scalar, 16) % N
+    except ValueError:
+        parser.error("scalar must be hexadecimal")
+    if k == 0:
+        parser.error("scalar must be non-zero mod N")
+    report = recover_via_backward(scalar_mult(k, G), max_depth=args.max_depth)
+    print(json.dumps(report, sort_keys=True))
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="keylab", description=__doc__)
     parser.add_argument("--version", action="version", version=f"keylab {__version__}")
     commands = parser.add_subparsers(dest="command", required=True)
     commands.add_parser("backends", help="list installed optional crypto, math, and SAT backends")
+    backward = commands.add_parser(
+        "backward-traverse",
+        help="educational: reverse double-and-add to recover a small scalar from its public key",
+        description=(
+            "Reverses the secp256k1 double-and-add ladder from Q = k*G. This is exactly the "
+            "ECDLP (2**bit_length(k) leaves) and only resolves small, explicitly supplied "
+            "scalars; it is not an attack on real keys. For a bounded interval, Pollard's "
+            "kangaroo (keylab.recovery.kangaroo) is the right O(sqrt(width)) tool."
+        ),
+    )
+    backward.add_argument("scalar", nargs="?", help="known scalar k in hex; its public key k*G is recovered")
+    backward.add_argument("--max-depth", type=int, default=12, help="maximum backward depth (2**depth leaves; cost grows exponentially)")
+    backward.add_argument("--show-wall", action="store_true", help="print the cost/feasibility table and exit")
     commands.add_parser(
         "audit", aliases=("feature-audit",), help="report implemented features and available evidence files"
     )
@@ -2238,6 +2278,8 @@ def main(argv: list[str] | None = None) -> int:
         return _sha256_forward_feed_cli(args, parser)
     if args.command == "sha256-backward-ledger":
         return _sha256_backward_ledger(args, parser)
+    if args.command == "backward-traverse":
+        return _backward_traverse(args, parser)
     print(f"{args.command}: not yet implemented", file=sys.stderr)
     return 2
 

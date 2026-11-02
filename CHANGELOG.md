@@ -16,6 +16,15 @@ All notable changes to Keylab are recorded here. The format follows
   reduced scriptCode; this is a hash calculator, not a consensus or Script
   engine (see SECURITY.md).
 - `keylab.benchmarks.benchmark_bip143_sighash`: correctness-gated BIP-143 timings.
+- `keylab.recovery` (educational scalar-recovery demonstrations, not attacks):
+  `backward_double_add` reverses the double-and-add ladder from `Q = k*G`
+  (`point_halve`, `backward_step`, `backward_traverse_to_identity`,
+  `recover_via_backward`, `cost_table`) -- this is exactly the ECDLP, costs
+  `2**bit_length(k)`, and only resolves small scalars; and `kangaroo`
+  (`pollard_kangaroo`, `recover_via_kangaroo`) solves the bounded-interval ECDLP
+  in ~`O(sqrt(width))`. Both forward-verify every candidate, reuse
+  `keylab.ec.halving`, and are never on the signing path (see SECURITY.md). New
+  CLI subcommand `keylab backward-traverse` (with `--show-wall`).
 - `keylab.mnemonic`: complete BIP-39 support for the English word list --
   entropy generation (`secrets`), `entropy_to_mnemonic` / `mnemonic_to_entropy`
   (word and checksum validation), `mnemonic_to_seed`, `generate_mnemonic`, and

@@ -42,6 +42,8 @@ MODULES = (
     ("keylab.ec.division_polynomials", "Research: division polynomials over F_p"),
     ("keylab.ec.quartic", "Research: doubling-quartic inversion"),
     ("keylab.ec.halving", "Research: point halving"),
+    ("keylab.recovery.backward_double_add", "Research: backward double-and-add scalar recovery (ECDLP)"),
+    ("keylab.recovery.kangaroo", "Research: Pollard's kangaroo bounded-interval ECDLP"),
     ("keylab.benchmarks", "Benchmarks"),
 )
 

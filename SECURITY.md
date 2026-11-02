@@ -70,6 +70,14 @@ logarithm is just as unknown, and the recovery demonstrations require the
 specific leaked secrets their docstrings name (a reused nonce, or a
 non-hardened child private key plus the parent chain code).
 
+The `keylab.recovery` package is also educational. `backward_double_add` reverses
+the double-and-add ladder from a public key; this is **exactly the ECDLP**, costs
+`2**bit_length(k)`, and only resolves small, explicitly supplied scalars — it has
+no advantage over brute force and no bearing on real keys. `kangaroo` (Pollard's
+kangaroo) solves the *bounded-interval* ECDLP in ~`O(sqrt(width))`; a full 256-bit
+key would need ~`2**128` hops. Neither is selected by `scalar_mult`, signing, or
+verification, and every candidate they return is forward-verified (`k*G == Q`).
+
 ## Reporting a vulnerability
 
 If you find a correctness bug (a mismatch with a BIP, RFC, or libsecp256k1),
