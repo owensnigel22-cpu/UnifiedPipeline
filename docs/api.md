@@ -31,6 +31,7 @@ CLI commands are listed by `keylab --help` and `keylab-advanced --help`;
 - [`keylab.ec.halving`](#keylabechalving) — Research: point halving
 - [`keylab.research.ecdlp.backward_double_add`](#keylabresearchecdlpbackward_double_add) — Research: backward double-and-add scalar recovery (ECDLP)
 - [`keylab.research.ecdlp.kangaroo`](#keylabresearchecdlpkangaroo) — Research: Pollard's kangaroo bounded-interval ECDLP
+- [`keylab.research.hnp_lattice`](#keylabresearchhnp_lattice) — Research: toy Hidden Number Problem lattice demonstration
 - [`keylab.benchmarks`](#keylabbenchmarks) — Benchmarks
 - [API stability](#api-stability)
 
@@ -434,6 +435,24 @@ Pollard's kangaroo (lambda) method for the bounded-interval ECDLP on secp256k1.
 |---|---|---|
 | `pollard_kangaroo` | `pollard_kangaroo(point: 'Point', lo: 'int', hi: 'int', *, max_steps: 'int \| None' = None) -> 'int \| None'` | Recover ``k`` in ``[lo, hi]`` with ``k*G == point`` via Pollard's kangaroo. |
 | `recover_via_kangaroo` | `recover_via_kangaroo(point: 'Point', lo: 'int', hi: 'int', *, max_steps: 'int \| None' = None) -> 'dict[str, object]'` | Recover ``k`` in ``[lo, hi]`` and report timing, as a dict mirroring the backward API. |
+
+## `keylab.research.hnp_lattice`
+
+Research: toy Hidden Number Problem lattice demonstration.
+
+Synthetic, tiny-parameter Hidden Number Problem (HNP) lattice demonstration.
+
+| Name | Signature / value | Summary |
+|---|---|---|
+| `demo` | `demo() -> 'int'` | Print the toy HNP recovery and return the recovered ``x`` (for ``python -m``). |
+| `ERROR_BOUND` | `ERROR_BOUND = 2` |  |
+| `make_instance` | `make_instance(q: 'int' = 1009) -> 'tuple[int, list[int], list[int], list[int]]'` | Create a deterministic HNP instance ``t_i = a_i*x + e_i (mod q)`` with bounded ``e_i``. |
+| `MAX_MODULUS` | `MAX_MODULUS = 100000` |  |
+| `run_demo` | `run_demo(q: 'int' = 1009) -> 'dict[str, object]'` | Recover the synthetic toy ``x`` over modulus ``q`` and verify every equation. |
+| `SAMPLE_COUNT` | `SAMPLE_COUNT = 8` |  |
+| `SEED` | `SEED = 20261021` |  |
+| `TOY_Q` | `TOY_Q = 1009` |  |
+| `TOY_X` | `TOY_X = 37` |  |
 
 ## `keylab.benchmarks`
 

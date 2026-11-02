@@ -44,6 +44,7 @@ MODULES = (
     ("keylab.ec.halving", "Research: point halving"),
     ("keylab.research.ecdlp.backward_double_add", "Research: backward double-and-add scalar recovery (ECDLP)"),
     ("keylab.research.ecdlp.kangaroo", "Research: Pollard's kangaroo bounded-interval ECDLP"),
+    ("keylab.research.hnp_lattice", "Research: toy Hidden Number Problem lattice demonstration"),
     ("keylab.benchmarks", "Benchmarks"),
 )
 
