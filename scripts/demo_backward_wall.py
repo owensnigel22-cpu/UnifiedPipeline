@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Live demonstration of backward double-and-add, its limits, and Pollard's kangaroo.
 
 Run: python scripts/demo_backward_wall.py
