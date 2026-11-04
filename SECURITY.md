@@ -16,18 +16,22 @@ protect real keys or funds.
 - **Not a wallet.** There is no key storage, encryption at rest, coin
   selection, fee logic, or transaction broadcast. `keylab.psbt` parses,
   validates (BIP-174 rules), and re-serializes Partially Signed Bitcoin
-  Transactions, and implements the BIP-174 **Signer** and **Finalizer** roles
-  for P2WPKH and P2SH-P2WPKH inputs (deterministic ECDSA partial signatures,
-  then final scriptSig/scriptWitness construction), for study and test-vector
-  verification only. It does **not** extract or broadcast a transaction, combine
-  or merge PSBTs; it does not handle P2WSH, Taproot, or multisig inputs; and it
-  is not production wallet software. The signer takes a private scalar supplied
-  by the caller, uses the existing deterministic (RFC 6979, low-S) ECDSA
-  primitive, verifies each signature it produces before emitting it, and never
-  logs or prints key material. The finalizer **consumes existing signatures
-  only** -- it never creates a signature, never alters the unsigned
-  transaction, verifies each partial signature before finalizing, and leaves
-  unrelated inputs and unknown fields untouched.
+  Transactions, and implements the BIP-174 **Signer**, **Finalizer**, and
+  **Extractor** roles for P2WPKH and P2SH-P2WPKH inputs (deterministic ECDSA
+  partial signatures, final scriptSig/scriptWitness construction, and final
+  BIP-144 transaction assembly), for study and test-vector verification only. It
+  does **not** broadcast a transaction, combine or merge PSBTs; it does not
+  handle P2WSH, Taproot, or multisig inputs; and it is not production wallet
+  software. The signer takes a private scalar supplied by the caller, uses the
+  existing deterministic (RFC 6979, low-S) ECDSA primitive, verifies each
+  signature it produces before emitting it, and never logs or prints key
+  material. The finalizer **consumes existing signatures only** -- it never
+  creates a signature, never alters the unsigned transaction, verifies each
+  partial signature before finalizing, and leaves unrelated inputs and unknown
+  fields untouched. The extractor performs **no cryptography** -- it assembles
+  the final transaction from already-finalized fields without signing,
+  verifying, or altering transaction contents, and returns bytes only (it does
+  not broadcast).
 - **Not a consensus implementation.** `keylab.encoding.transaction` computes
   BIP-341 and BIP-143 (SegWit v0) signature hashes for study; it does not
   validate transactions, execute Script, or process `OP_CODESEPARATOR` (the

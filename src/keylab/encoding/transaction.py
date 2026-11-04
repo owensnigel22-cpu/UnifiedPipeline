@@ -130,6 +130,35 @@ def parse_transaction(raw: bytes) -> Transaction:
     return Transaction(version, inputs, outputs, locktime)
 
 
+def serialize_transaction(tx: Transaction) -> bytes:
+    """Serialize ``tx`` to raw bytes; the exact inverse of :func:`parse_transaction`.
+
+    Uses BIP-144 SegWit serialization (marker ``0x00``, flag ``0x01``, a witness
+    stack per input) when any input carries witness data, and legacy
+    serialization otherwise. An input with no witness items is written as an
+    empty stack (``compact_size(0)``) in the SegWit form, exactly as the parser
+    reads it.
+    """
+    segwit = any(txin.witness for txin in tx.inputs)
+    out = bytearray(tx.version.to_bytes(4, "little"))
+    if segwit:
+        out += b"\x00\x01"
+    out += compact_size(len(tx.inputs))
+    for txin in tx.inputs:
+        out += txin.prev_txid + txin.prev_index.to_bytes(4, "little")
+        out += ser_string(txin.script_sig) + txin.sequence.to_bytes(4, "little")
+    out += compact_size(len(tx.outputs))
+    for txout in tx.outputs:
+        out += txout.serialize()
+    if segwit:
+        for txin in tx.inputs:
+            out += compact_size(len(txin.witness))
+            for item in txin.witness:
+                out += ser_string(item)
+    out += tx.locktime.to_bytes(4, "little")
+    return bytes(out)
+
+
 def _sha256(data: bytes) -> bytes:
     return hashlib.sha256(data).digest()
 
@@ -327,6 +356,7 @@ __all__ = [
     "compact_size",
     "parse_transaction",
     "ser_string",
+    "serialize_transaction",
     "taproot_precomputed_hashes",
     "taproot_sighash",
     "taproot_signature_message",

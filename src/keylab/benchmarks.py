@@ -1027,6 +1027,87 @@ def benchmark_psbt_finalize(count: int = 200) -> dict[str, object]:
     }
 
 
+def benchmark_psbt_extract(count: int = 200) -> dict[str, object]:
+    """Time BIP-174 Extractor-role extraction of a single-input and multi-input PSBT.
+
+    Correctness-gated: each extracted transaction must reproduce the BIP-143
+    worked-example final signed transaction before any timing is recorded. Public
+    vector data only; no secrets are printed.
+    """
+    import json
+
+    from keylab import psbt as _psbt
+    from keylab.encoding.transaction import compact_size, parse_transaction, ser_string
+    from keylab.psbt.model import (
+        PSBT_GLOBAL_UNSIGNED_TX,
+        PSBT_IN_FINAL_SCRIPTSIG,
+        PSBT_IN_REDEEM_SCRIPT,
+        PSBT_IN_WITNESS_UTXO,
+        PSBT_MAGIC,
+        KeyPair,
+    )
+
+    if type(count) is not int or count < 1:
+        raise ValueError("count must be a positive integer")
+
+    cases = json.loads(
+        (Path(__file__).resolve().parent.parent.parent / "tests" / "vectors" / "bip143_signing_vectors.json")
+        .read_text(encoding="utf-8")
+    )["cases"]
+
+    def _record(key: bytes, value: bytes) -> bytes:
+        return compact_size(len(key)) + key + compact_size(len(value)) + value
+
+    def _build_finalized(case: dict):
+        unsigned_tx = bytes.fromhex(case["unsigned_tx"])
+        tx = parse_transaction(unsigned_tx)
+        out = bytearray(PSBT_MAGIC)
+        out += _record(bytes([PSBT_GLOBAL_UNSIGNED_TX]), unsigned_tx) + b"\x00"
+        for index in range(len(tx.inputs)):
+            if index == case["input_index"]:
+                wu = case["amount"].to_bytes(8, "little") + ser_string(bytes.fromhex(case["scriptpubkey"]))
+                out += _record(bytes([PSBT_IN_WITNESS_UTXO]), wu)
+                if "redeem_script" in case:
+                    out += _record(bytes([PSBT_IN_REDEEM_SCRIPT]), bytes.fromhex(case["redeem_script"]))
+            out += b"\x00"
+        out += b"\x00" * len(tx.outputs)
+        signed = _psbt.sign_input(_psbt.parse(bytes(out)), case["input_index"], int(case["private_key"], 16))
+        final = _psbt.finalize_input(signed, case["input_index"])
+        # inject any out-of-scope inputs' finalized scriptSigs from the official final tx
+        final_tx_inputs = parse_transaction(bytes.fromhex(case["final_tx"])).inputs
+        for index in range(len(tx.inputs)):
+            if index != case["input_index"]:
+                final.inputs[index].pairs.append(
+                    KeyPair(bytes([PSBT_IN_FINAL_SCRIPTSIG]), final_tx_inputs[index].script_sig)
+                )
+        return final
+
+    work = [(_build_finalized(c), c["final_tx"],
+             len(parse_transaction(bytes.fromhex(c["unsigned_tx"])).inputs)) for c in cases]
+    for final, expected, _nin in work:  # correctness gate
+        if _psbt.extract(final).hex() != expected:
+            raise ArithmeticError("PSBT extraction did not match the BIP-143 worked example")
+
+    start = perf_counter_ns()
+    for _ in range(count):
+        for final, _expected, _nin in work:
+            _psbt.extract(final)
+    elapsed_us = (perf_counter_ns() - start) / 1000.0
+    ops = count * len(work)
+    return {
+        "benchmark": "bip174-psbt-extract",
+        "count": count,
+        "cases": len(work),
+        "single_input_cases": sum(1 for *_, nin in work if nin == 1),
+        "multi_input_cases": sum(1 for *_, nin in work if nin > 1),
+        "outputs_match_vectors": True,
+        "us_per_extract": round(elapsed_us / ops, 3),
+        "machine": platform.platform(),
+        "python_version": sys.version.split()[0],
+        "note": "Metrics only; public BIP-143 vector data, no secrets printed.",
+    }
+
+
 __all__ = [
     "MUSIG2_GROUP_SIZE",
     "SIGNATURE_OPERATIONS",
@@ -1037,6 +1118,7 @@ __all__ = [
     "benchmark_mnemonic",
     "benchmark_multiple_wifs",
     "benchmark_psbt",
+    "benchmark_psbt_extract",
     "benchmark_psbt_finalize",
     "benchmark_psbt_sign",
     "benchmark_repeated_wifs",

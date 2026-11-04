@@ -6,6 +6,20 @@ All notable changes to Keylab are recorded here. The format follows
 ## [Unreleased]
 
 ### Added
+- `keylab.psbt`: BIP-174 **Extractor** role for P2WPKH and P2SH-P2WPKH inputs --
+  `extract`, `extract_transaction`, and `PsbtExtractError`. Assembles the final
+  network transaction from a finalized PSBT by injecting each input's final
+  scriptSig/scriptWitness, then serializes it with the new
+  `keylab.encoding.transaction.serialize_transaction` (BIP-144, the exact inverse
+  of `parse_transaction`). Reproduces the BIP-143 worked-example final
+  transactions byte-for-byte. Performs no cryptography -- never signs, verifies,
+  or alters transaction contents, and never mutates the input PSBT. No broadcast,
+  combine/merge, or P2WSH/Taproot/multisig (see SECURITY.md). Adds
+  `keylab.benchmarks.benchmark_psbt_extract` (correctness-gated, single- and
+  multi-input).
+- `keylab.encoding.transaction.serialize_transaction`: serialize a `Transaction`
+  to raw bytes (legacy, or BIP-144 SegWit when any input carries witness data) --
+  the exact inverse of `parse_transaction`.
 - `keylab.psbt`: BIP-174 **Finalizer** role for P2WPKH and P2SH-P2WPKH inputs --
   `finalize`, `finalize_input`, `is_finalized`, and `PsbtFinalizeError`. Builds
   the final `scriptWitness` (and, for P2SH-P2WPKH, `scriptSig`) from an existing

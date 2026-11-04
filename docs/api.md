@@ -20,8 +20,8 @@ CLI commands are listed by `keylab --help` and `keylab-advanced --help`;
 - [`keylab.hd`](#keylabhd) — BIP-32/39/44/49/84/86 hierarchical deterministic keys
 - [`keylab.mnemonic`](#keylabmnemonic) — BIP-39 mnemonic generation, validation, seed derivation
 - [`keylab.encoding.taproot`](#keylabencodingtaproot) — BIP-341 Taproot outputs, script trees, key-path signing
-- [`keylab.encoding.transaction`](#keylabencodingtransaction) — Transaction parsing and BIP-341 / BIP-143 signature hashing
-- [`keylab.psbt`](#keylabpsbt) — BIP-174 PSBT parsing, validation, serialization, and P2WPKH/P2SH-P2WPKH signing + finalization
+- [`keylab.encoding.transaction`](#keylabencodingtransaction) — Transaction parsing/serialization and BIP-341 / BIP-143 signature hashing
+- [`keylab.psbt`](#keylabpsbt) — BIP-174 PSBT parse/validate/serialize and P2WPKH/P2SH-P2WPKH sign + finalize + extract
 - [`keylab.encoding.address`](#keylabencodingaddress) — Address encoding and verification
 - [`keylab.encoding.bech32`](#keylabencodingbech32) — BIP-173 Bech32 / BIP-350 Bech32m
 - [`keylab.encoding.base58`](#keylabencodingbase58) — Base58 and Base58Check
@@ -260,7 +260,7 @@ BIP-341 Taproot output-key and script-path commitment utilities.
 
 ## `keylab.encoding.transaction`
 
-Transaction parsing and BIP-341 / BIP-143 signature hashing.
+Transaction parsing/serialization and BIP-341 / BIP-143 signature hashing.
 
 Minimal Bitcoin transaction parsing and BIP-341 Taproot signature hashing.
 
@@ -272,6 +272,7 @@ Minimal Bitcoin transaction parsing and BIP-341 Taproot signature hashing.
 | `compact_size` | `compact_size(value: 'int') -> 'bytes'` | Serialize Bitcoin's CompactSize unsigned integer. |
 | `parse_transaction` | `parse_transaction(raw: 'bytes') -> 'Transaction'` | Parse a legacy or SegWit (BIP-144) serialized transaction. |
 | `ser_string` | `ser_string(data: 'bytes') -> 'bytes'` | Serialize bytes with a CompactSize length prefix. |
+| `serialize_transaction` | `serialize_transaction(tx: 'Transaction') -> 'bytes'` | Serialize ``tx`` to raw bytes; the exact inverse of :func:`parse_transaction`. |
 | `SIGHASH_ALL` | `SIGHASH_ALL = 1` |  |
 | `SIGHASH_ANYONECANPAY` | `SIGHASH_ANYONECANPAY = 128` |  |
 | `SIGHASH_DEFAULT` | `SIGHASH_DEFAULT = 0` |  |
@@ -286,13 +287,15 @@ Minimal Bitcoin transaction parsing and BIP-341 Taproot signature hashing.
 
 ## `keylab.psbt`
 
-BIP-174 PSBT parsing, validation, serialization, and P2WPKH/P2SH-P2WPKH signing + finalization.
+BIP-174 PSBT parse/validate/serialize and P2WPKH/P2SH-P2WPKH sign + finalize + extract.
 
 BIP-174 Partially Signed Bitcoin Transaction (PSBT) parsing, validation, serialization.
 
 | Name | Signature / value | Summary |
 |---|---|---|
 | `deserialize` | `deserialize(raw: 'bytes') -> 'Psbt'` | Parse ``raw`` PSBT bytes into a :class:`Psbt`, preserving every record verbatim. |
+| `extract` | `extract(psbt: 'Psbt') -> 'bytes'` | Return the final network-serialized (BIP-144) transaction from a finalized PSBT. |
+| `extract_transaction` | `extract_transaction(psbt: 'Psbt') -> 'Transaction'` | Assemble the final :class:`Transaction` from a fully finalized PSBT. |
 | `finalize` | `finalize(psbt: 'Psbt') -> 'Psbt'` | Finalize every input that carries a matching partial signature, returning a new PSBT. |
 | `finalize_input` | `finalize_input(psbt: 'Psbt', index: 'int', *, verify: 'bool' = True) -> 'Psbt'` | Finalize input ``index`` and return a new PSBT; raise :class:`PsbtFinalizeError` otherwise. |
 | `is_finalized` | `is_finalized(psbt: 'Psbt') -> 'bool'` | Return whether every input of ``psbt`` has been finalized. |
@@ -301,6 +304,7 @@ BIP-174 Partially Signed Bitcoin Transaction (PSBT) parsing, validation, seriali
 | `Psbt` | `class Psbt(global_map: 'PsbtMap', inputs: 'list[PsbtMap]', outputs: 'list[PsbtMap]') -> None` | A parsed PSBT: a global map plus one map per transaction input and output. |
 | `PSBT_MAGIC` | `PSBT_MAGIC = b'psbt\xff'` |  |
 | `PsbtError` | `class PsbtError` | Raised on a malformed PSBT or a BIP-174 validation failure. |
+| `PsbtExtractError` | `class PsbtExtractError` | Raised when a transaction cannot be extracted from a PSBT (a subclass of :class:`PsbtError`). |
 | `PsbtFinalizeError` | `class PsbtFinalizeError` | Raised when a PSBT input cannot be finalized (a subclass of :class:`PsbtError`). |
 | `PsbtMap` | `class PsbtMap(pairs: 'list[KeyPair]' = <factory>) -> None` | An ordered PSBT key-value map (global, input, or output). |
 | `PsbtSignError` | `class PsbtSignError` | Raised when a PSBT input cannot be signed as requested (a subclass of :class:`PsbtError`). |
@@ -496,6 +500,7 @@ Small reproducible performance probes for public-key conversion paths.
 | `benchmark_mnemonic` | `benchmark_mnemonic(count: 'int' = 100, *, bits: 'int' = 128, seed: 'int' = 20261101) -> 'dict[str, object]'` | Time BIP-39 entropy->mnemonic, mnemonic->entropy, and mnemonic->seed. |
 | `benchmark_multiple_wifs` | `benchmark_multiple_wifs(wifs: 'Iterable[str]', *, backend: 'str' = 'auto', derive_addresses: 'bool' = True, address_types: 'Iterable[str] \| None' = None, warmup: 'int' = 3, corpus_source: 'str' = 'provided') -> 'dict[str, object]'` | Profile independent WIFs without printing or returning keys or addresses. |
 | `benchmark_psbt` | `benchmark_psbt(count: 'int' = 200) -> 'dict[str, object]'` | Time BIP-174 PSBT parse, serialize, and validate over the official valid vectors. |
+| `benchmark_psbt_extract` | `benchmark_psbt_extract(count: 'int' = 200) -> 'dict[str, object]'` | Time BIP-174 Extractor-role extraction of a single-input and multi-input PSBT. |
 | `benchmark_psbt_finalize` | `benchmark_psbt_finalize(count: 'int' = 200) -> 'dict[str, object]'` | Time BIP-174 Finalizer-role finalization of a single-input and multi-input PSBT. |
 | `benchmark_psbt_sign` | `benchmark_psbt_sign(count: 'int' = 200) -> 'dict[str, object]'` | Time BIP-174 Signer-role signing of a single-input and a multi-input PSBT. |
 | `benchmark_repeated_wifs` | `benchmark_repeated_wifs(wifs: 'Iterable[str]', *, repetitions: 'int' = 5, backend: 'str' = 'auto', derive_addresses: 'bool' = True, address_types: 'Iterable[str] \| None' = None, warmup: 'int' = 3, corpus_source: 'str' = 'provided') -> 'dict[str, object]'` | Benchmark one fixed WIF corpus repeatedly and report median timings. |

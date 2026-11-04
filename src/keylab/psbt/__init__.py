@@ -4,8 +4,9 @@ This is a structural PSBT library for study and test-vector verification: it
 parses, validates (BIP-174 rules), re-serializes PSBTs preserving unknown key
 types, and implements the BIP-174 **Signer** and **Finalizer** roles for P2WPKH
 and P2SH-P2WPKH inputs (deterministic ECDSA partial signatures, then final
-scriptSig/scriptWitness construction). It is **not** a wallet, and it does not
-extract, broadcast, or combine/merge. See SECURITY.md.
+scriptSig/scriptWitness construction) and the **Extractor** role (final BIP-144
+transaction from a finalized PSBT). It is **not** a wallet, and it does not
+broadcast or combine/merge. See SECURITY.md.
 
 Typical use::
 
@@ -14,10 +15,12 @@ Typical use::
     assert psbt.serialize(parsed) == raw_bytes
     signed = psbt.sign(parsed, [private_scalar])   # add partial signatures
     final = psbt.finalize(signed)                  # build scriptSig/scriptWitness
+    tx = psbt.extract(final)                       # final network-serialized tx
 """
 
 from __future__ import annotations
 
+from keylab.psbt.extractor import PsbtExtractError, extract, extract_transaction
 from keylab.psbt.finalizer import PsbtFinalizeError, finalize, finalize_input, is_finalized
 from keylab.psbt.model import (
     PSBT_MAGIC,
@@ -44,10 +47,13 @@ __all__ = [
     "KeyPair",
     "Psbt",
     "PsbtError",
+    "PsbtExtractError",
     "PsbtFinalizeError",
     "PsbtMap",
     "PsbtSignError",
     "deserialize",
+    "extract",
+    "extract_transaction",
     "finalize",
     "finalize_input",
     "is_finalized",
