@@ -6,6 +6,18 @@ All notable changes to Keylab are recorded here. The format follows
 ## [Unreleased]
 
 ### Added
+- `keylab.psbt`: BIP-174 **Finalizer** role for P2WPKH and P2SH-P2WPKH inputs --
+  `finalize`, `finalize_input`, `is_finalized`, and `PsbtFinalizeError`. Builds
+  the final `scriptWitness` (and, for P2SH-P2WPKH, `scriptSig`) from an existing
+  partial signature, verifies that signature against the BIP-143 sighash before
+  finalizing, and removes the now-redundant signing fields (partial sig, sighash
+  type, redeem/witness script, BIP-32 derivation) while keeping the UTXO and
+  proprietary/unknown records. Reproduces the BIP-143 worked-example final
+  witness/scriptSig byte-for-byte. Consumes signatures only -- never creates a
+  signature, never alters the unsigned transaction, never mutates unrelated
+  inputs. No extraction, broadcast, combine/merge, or P2WSH/Taproot/multisig
+  (see SECURITY.md). Adds `keylab.benchmarks.benchmark_psbt_finalize`
+  (correctness-gated, single- and multi-input).
 - `keylab.psbt`: BIP-174 **Signer** role for P2WPKH and P2SH-P2WPKH inputs --
   `sign`, `sign_input`, `signable_inputs`, and `PsbtSignError`. Computes the
   BIP-143 witness-v0 sighash, signs it with the existing deterministic

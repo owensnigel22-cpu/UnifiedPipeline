@@ -949,6 +949,84 @@ def benchmark_psbt_sign(count: int = 200) -> dict[str, object]:
     }
 
 
+def benchmark_psbt_finalize(count: int = 200) -> dict[str, object]:
+    """Time BIP-174 Finalizer-role finalization of a single-input and multi-input PSBT.
+
+    Correctness-gated: each finalized input must reproduce the BIP-143
+    worked-example final scriptSig/scriptWitness before any timing is recorded.
+    Public vector data only; no secrets are printed.
+    """
+    import json
+
+    from keylab import psbt as _psbt
+    from keylab.encoding.transaction import compact_size, parse_transaction, ser_string
+    from keylab.psbt.model import (
+        PSBT_GLOBAL_UNSIGNED_TX,
+        PSBT_IN_FINAL_SCRIPTSIG,
+        PSBT_IN_FINAL_SCRIPTWITNESS,
+        PSBT_IN_REDEEM_SCRIPT,
+        PSBT_IN_WITNESS_UTXO,
+        PSBT_MAGIC,
+    )
+
+    if type(count) is not int or count < 1:
+        raise ValueError("count must be a positive integer")
+
+    cases = json.loads(
+        (Path(__file__).resolve().parent.parent.parent / "tests" / "vectors" / "bip143_signing_vectors.json")
+        .read_text(encoding="utf-8")
+    )["cases"]
+
+    def _record(key: bytes, value: bytes) -> bytes:
+        return compact_size(len(key)) + key + compact_size(len(value)) + value
+
+    def _build_signed(case: dict):
+        unsigned_tx = bytes.fromhex(case["unsigned_tx"])
+        tx = parse_transaction(unsigned_tx)
+        out = bytearray(PSBT_MAGIC)
+        out += _record(bytes([PSBT_GLOBAL_UNSIGNED_TX]), unsigned_tx) + b"\x00"
+        for index in range(len(tx.inputs)):
+            if index == case["input_index"]:
+                wu = case["amount"].to_bytes(8, "little") + ser_string(bytes.fromhex(case["scriptpubkey"]))
+                out += _record(bytes([PSBT_IN_WITNESS_UTXO]), wu)
+                if "redeem_script" in case:
+                    out += _record(bytes([PSBT_IN_REDEEM_SCRIPT]), bytes.fromhex(case["redeem_script"]))
+            out += b"\x00"
+        out += b"\x00" * len(tx.outputs)
+        return _psbt.sign_input(_psbt.parse(bytes(out)), case["input_index"], int(case["private_key"], 16))
+
+    work = [
+        (_build_signed(c), c["input_index"], c.get("final_scriptsig", ""), c["final_scriptwitness"],
+         len(parse_transaction(bytes.fromhex(c["unsigned_tx"])).inputs))
+        for c in cases
+    ]
+    for signed, index, exp_sig, exp_wit, _nin in work:  # correctness gate
+        final = _psbt.finalize_input(signed, index)
+        got_sig = final.inputs[index].get(PSBT_IN_FINAL_SCRIPTSIG)
+        got_wit = final.inputs[index].get(PSBT_IN_FINAL_SCRIPTWITNESS)
+        if (got_sig.hex() if got_sig is not None else "") != exp_sig or got_wit.hex() != exp_wit:
+            raise ArithmeticError("PSBT finalization did not match the BIP-143 worked example")
+
+    start = perf_counter_ns()
+    for _ in range(count):
+        for signed, index, _exp_sig, _exp_wit, _nin in work:
+            _psbt.finalize_input(signed, index)
+    elapsed_us = (perf_counter_ns() - start) / 1000.0
+    ops = count * len(work)
+    return {
+        "benchmark": "bip174-psbt-finalize",
+        "count": count,
+        "cases": len(work),
+        "single_input_cases": sum(1 for *_, nin in work if nin == 1),
+        "multi_input_cases": sum(1 for *_, nin in work if nin > 1),
+        "outputs_match_vectors": True,
+        "us_per_finalize": round(elapsed_us / ops, 3),
+        "machine": platform.platform(),
+        "python_version": sys.version.split()[0],
+        "note": "Metrics only; public BIP-143 vector data, no secrets printed.",
+    }
+
+
 __all__ = [
     "MUSIG2_GROUP_SIZE",
     "SIGNATURE_OPERATIONS",
@@ -959,6 +1037,7 @@ __all__ = [
     "benchmark_mnemonic",
     "benchmark_multiple_wifs",
     "benchmark_psbt",
+    "benchmark_psbt_finalize",
     "benchmark_psbt_sign",
     "benchmark_repeated_wifs",
     "benchmark_signatures",

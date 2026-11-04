@@ -21,7 +21,7 @@ CLI commands are listed by `keylab --help` and `keylab-advanced --help`;
 - [`keylab.mnemonic`](#keylabmnemonic) — BIP-39 mnemonic generation, validation, seed derivation
 - [`keylab.encoding.taproot`](#keylabencodingtaproot) — BIP-341 Taproot outputs, script trees, key-path signing
 - [`keylab.encoding.transaction`](#keylabencodingtransaction) — Transaction parsing and BIP-341 / BIP-143 signature hashing
-- [`keylab.psbt`](#keylabpsbt) — BIP-174 PSBT parsing, validation, serialization, and P2WPKH/P2SH-P2WPKH signing
+- [`keylab.psbt`](#keylabpsbt) — BIP-174 PSBT parsing, validation, serialization, and P2WPKH/P2SH-P2WPKH signing + finalization
 - [`keylab.encoding.address`](#keylabencodingaddress) — Address encoding and verification
 - [`keylab.encoding.bech32`](#keylabencodingbech32) — BIP-173 Bech32 / BIP-350 Bech32m
 - [`keylab.encoding.base58`](#keylabencodingbase58) — Base58 and Base58Check
@@ -286,18 +286,22 @@ Minimal Bitcoin transaction parsing and BIP-341 Taproot signature hashing.
 
 ## `keylab.psbt`
 
-BIP-174 PSBT parsing, validation, serialization, and P2WPKH/P2SH-P2WPKH signing.
+BIP-174 PSBT parsing, validation, serialization, and P2WPKH/P2SH-P2WPKH signing + finalization.
 
 BIP-174 Partially Signed Bitcoin Transaction (PSBT) parsing, validation, serialization.
 
 | Name | Signature / value | Summary |
 |---|---|---|
 | `deserialize` | `deserialize(raw: 'bytes') -> 'Psbt'` | Parse ``raw`` PSBT bytes into a :class:`Psbt`, preserving every record verbatim. |
+| `finalize` | `finalize(psbt: 'Psbt') -> 'Psbt'` | Finalize every input that carries a matching partial signature, returning a new PSBT. |
+| `finalize_input` | `finalize_input(psbt: 'Psbt', index: 'int', *, verify: 'bool' = True) -> 'Psbt'` | Finalize input ``index`` and return a new PSBT; raise :class:`PsbtFinalizeError` otherwise. |
+| `is_finalized` | `is_finalized(psbt: 'Psbt') -> 'bool'` | Return whether every input of ``psbt`` has been finalized. |
 | `KeyPair` | `class KeyPair(key: 'bytes', value: 'bytes') -> None` | One ``<key><value>`` record. ``key`` includes the key-type varint and keydata. |
 | `parse` | `parse(raw: 'bytes') -> 'Psbt'` | Deserialize ``raw`` and apply the BIP-174 validation rules; raise :class:`PsbtError` on failure. |
 | `Psbt` | `class Psbt(global_map: 'PsbtMap', inputs: 'list[PsbtMap]', outputs: 'list[PsbtMap]') -> None` | A parsed PSBT: a global map plus one map per transaction input and output. |
 | `PSBT_MAGIC` | `PSBT_MAGIC = b'psbt\xff'` |  |
 | `PsbtError` | `class PsbtError` | Raised on a malformed PSBT or a BIP-174 validation failure. |
+| `PsbtFinalizeError` | `class PsbtFinalizeError` | Raised when a PSBT input cannot be finalized (a subclass of :class:`PsbtError`). |
 | `PsbtMap` | `class PsbtMap(pairs: 'list[KeyPair]' = <factory>) -> None` | An ordered PSBT key-value map (global, input, or output). |
 | `PsbtSignError` | `class PsbtSignError` | Raised when a PSBT input cannot be signed as requested (a subclass of :class:`PsbtError`). |
 | `serialize` | `serialize(psbt: 'Psbt') -> 'bytes'` | Serialize a :class:`Psbt` back to raw BIP-174 bytes. |
@@ -492,6 +496,7 @@ Small reproducible performance probes for public-key conversion paths.
 | `benchmark_mnemonic` | `benchmark_mnemonic(count: 'int' = 100, *, bits: 'int' = 128, seed: 'int' = 20261101) -> 'dict[str, object]'` | Time BIP-39 entropy->mnemonic, mnemonic->entropy, and mnemonic->seed. |
 | `benchmark_multiple_wifs` | `benchmark_multiple_wifs(wifs: 'Iterable[str]', *, backend: 'str' = 'auto', derive_addresses: 'bool' = True, address_types: 'Iterable[str] \| None' = None, warmup: 'int' = 3, corpus_source: 'str' = 'provided') -> 'dict[str, object]'` | Profile independent WIFs without printing or returning keys or addresses. |
 | `benchmark_psbt` | `benchmark_psbt(count: 'int' = 200) -> 'dict[str, object]'` | Time BIP-174 PSBT parse, serialize, and validate over the official valid vectors. |
+| `benchmark_psbt_finalize` | `benchmark_psbt_finalize(count: 'int' = 200) -> 'dict[str, object]'` | Time BIP-174 Finalizer-role finalization of a single-input and multi-input PSBT. |
 | `benchmark_psbt_sign` | `benchmark_psbt_sign(count: 'int' = 200) -> 'dict[str, object]'` | Time BIP-174 Signer-role signing of a single-input and a multi-input PSBT. |
 | `benchmark_repeated_wifs` | `benchmark_repeated_wifs(wifs: 'Iterable[str]', *, repetitions: 'int' = 5, backend: 'str' = 'auto', derive_addresses: 'bool' = True, address_types: 'Iterable[str] \| None' = None, warmup: 'int' = 3, corpus_source: 'str' = 'provided') -> 'dict[str, object]'` | Benchmark one fixed WIF corpus repeatedly and report median timings. |
 | `benchmark_signatures` | `benchmark_signatures(*, count: 'int' = 8, seed: 'int' = 20261030, repetitions: 'int' = 5, backend: 'str' = 'all') -> 'dict[str, object]'` | Time BIP-340, ECDSA, BIP-32, Taproot, and MuSig2 operations on a seeded public corpus. |

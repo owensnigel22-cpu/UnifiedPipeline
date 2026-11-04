@@ -92,7 +92,7 @@
       ]
     },
     "bip143_signing_vectors.json": {
-      "sha256": "ec9c71bc0498d596f1ec95b18fe9ed570f32cc0e835ffc7f35a2b3be8579188a",
+      "sha256": "9d4de463e949c30e703ffa0316162be16156fe9937c8647e54dc05059002b1e2",
       "sources": [
         {
           "repo": "bitcoin/bips",
