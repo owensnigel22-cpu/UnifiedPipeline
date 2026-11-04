@@ -21,7 +21,7 @@ CLI commands are listed by `keylab --help` and `keylab-advanced --help`;
 - [`keylab.mnemonic`](#keylabmnemonic) — BIP-39 mnemonic generation, validation, seed derivation
 - [`keylab.encoding.taproot`](#keylabencodingtaproot) — BIP-341 Taproot outputs, script trees, key-path signing
 - [`keylab.encoding.transaction`](#keylabencodingtransaction) — Transaction parsing and BIP-341 / BIP-143 signature hashing
-- [`keylab.psbt`](#keylabpsbt) — BIP-174 PSBT parsing, validation, and serialization
+- [`keylab.psbt`](#keylabpsbt) — BIP-174 PSBT parsing, validation, serialization, and P2WPKH/P2SH-P2WPKH signing
 - [`keylab.encoding.address`](#keylabencodingaddress) — Address encoding and verification
 - [`keylab.encoding.bech32`](#keylabencodingbech32) — BIP-173 Bech32 / BIP-350 Bech32m
 - [`keylab.encoding.base58`](#keylabencodingbase58) — Base58 and Base58Check
@@ -286,7 +286,7 @@ Minimal Bitcoin transaction parsing and BIP-341 Taproot signature hashing.
 
 ## `keylab.psbt`
 
-BIP-174 PSBT parsing, validation, and serialization.
+BIP-174 PSBT parsing, validation, serialization, and P2WPKH/P2SH-P2WPKH signing.
 
 BIP-174 Partially Signed Bitcoin Transaction (PSBT) parsing, validation, serialization.
 
@@ -299,7 +299,11 @@ BIP-174 Partially Signed Bitcoin Transaction (PSBT) parsing, validation, seriali
 | `PSBT_MAGIC` | `PSBT_MAGIC = b'psbt\xff'` |  |
 | `PsbtError` | `class PsbtError` | Raised on a malformed PSBT or a BIP-174 validation failure. |
 | `PsbtMap` | `class PsbtMap(pairs: 'list[KeyPair]' = <factory>) -> None` | An ordered PSBT key-value map (global, input, or output). |
+| `PsbtSignError` | `class PsbtSignError` | Raised when a PSBT input cannot be signed as requested (a subclass of :class:`PsbtError`). |
 | `serialize` | `serialize(psbt: 'Psbt') -> 'bytes'` | Serialize a :class:`Psbt` back to raw BIP-174 bytes. |
+| `sign` | `sign(psbt: 'Psbt', keys: 'Iterable[int \| bytes]', *, sighash_type: 'int' = 1) -> 'Psbt'` | Sign every input that one of ``keys`` can sign, returning a new PSBT. |
+| `sign_input` | `sign_input(psbt: 'Psbt', index: 'int', private_key: 'int \| bytes', *, sighash_type: 'int' = 1) -> 'Psbt'` | Sign input ``index`` with ``private_key`` and return a new PSBT with the partial signature added. |
+| `signable_inputs` | `signable_inputs(psbt: 'Psbt', keys: 'Iterable[int \| bytes]') -> 'list[int]'` | Return the indices of P2WPKH / P2SH-P2WPKH inputs one of ``keys`` can sign (and has not yet). |
 | `validate` | `validate(psbt: 'Psbt') -> 'None'` | Raise :class:`PsbtError` unless ``psbt`` satisfies the BIP-174 rules checked here. |
 
 ## `keylab.encoding.address`
@@ -488,6 +492,7 @@ Small reproducible performance probes for public-key conversion paths.
 | `benchmark_mnemonic` | `benchmark_mnemonic(count: 'int' = 100, *, bits: 'int' = 128, seed: 'int' = 20261101) -> 'dict[str, object]'` | Time BIP-39 entropy->mnemonic, mnemonic->entropy, and mnemonic->seed. |
 | `benchmark_multiple_wifs` | `benchmark_multiple_wifs(wifs: 'Iterable[str]', *, backend: 'str' = 'auto', derive_addresses: 'bool' = True, address_types: 'Iterable[str] \| None' = None, warmup: 'int' = 3, corpus_source: 'str' = 'provided') -> 'dict[str, object]'` | Profile independent WIFs without printing or returning keys or addresses. |
 | `benchmark_psbt` | `benchmark_psbt(count: 'int' = 200) -> 'dict[str, object]'` | Time BIP-174 PSBT parse, serialize, and validate over the official valid vectors. |
+| `benchmark_psbt_sign` | `benchmark_psbt_sign(count: 'int' = 200) -> 'dict[str, object]'` | Time BIP-174 Signer-role signing of a single-input and a multi-input PSBT. |
 | `benchmark_repeated_wifs` | `benchmark_repeated_wifs(wifs: 'Iterable[str]', *, repetitions: 'int' = 5, backend: 'str' = 'auto', derive_addresses: 'bool' = True, address_types: 'Iterable[str] \| None' = None, warmup: 'int' = 3, corpus_source: 'str' = 'provided') -> 'dict[str, object]'` | Benchmark one fixed WIF corpus repeatedly and report median timings. |
 | `benchmark_signatures` | `benchmark_signatures(*, count: 'int' = 8, seed: 'int' = 20261030, repetitions: 'int' = 5, backend: 'str' = 'all') -> 'dict[str, object]'` | Time BIP-340, ECDSA, BIP-32, Taproot, and MuSig2 operations on a seeded public corpus. |
 | `benchmark_synthetic_wifs` | `benchmark_synthetic_wifs(count: 'int' = 1000, *, backend: 'str' = 'auto', derive_addresses: 'bool' = True, address_types: 'Iterable[str] \| None' = None, warmup: 'int' = 3, repetitions: 'int' = 1) -> 'dict[str, object]'` | Create a random synthetic WIF corpus, then benchmark without printing keys. |

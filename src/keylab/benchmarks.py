@@ -874,6 +874,81 @@ def benchmark_psbt(count: int = 200) -> dict[str, object]:
     }
 
 
+def benchmark_psbt_sign(count: int = 200) -> dict[str, object]:
+    """Time BIP-174 Signer-role signing of a single-input and a multi-input PSBT.
+
+    Correctness-gated: each input's partial signature must reproduce the BIP-143
+    worked-example DER signature before any timing is recorded. Public vector data
+    only; the example private keys are published in BIP-143, and no key is printed.
+    """
+    import json
+
+    from keylab import psbt as _psbt
+    from keylab.encoding.transaction import compact_size, parse_transaction, ser_string
+    from keylab.psbt.model import (
+        PSBT_GLOBAL_UNSIGNED_TX,
+        PSBT_IN_PARTIAL_SIG,
+        PSBT_IN_REDEEM_SCRIPT,
+        PSBT_IN_WITNESS_UTXO,
+        PSBT_MAGIC,
+    )
+
+    if type(count) is not int or count < 1:
+        raise ValueError("count must be a positive integer")
+
+    cases = json.loads(
+        (Path(__file__).resolve().parent.parent.parent / "tests" / "vectors" / "bip143_signing_vectors.json")
+        .read_text(encoding="utf-8")
+    )["cases"]
+
+    def _record(key: bytes, value: bytes) -> bytes:
+        return compact_size(len(key)) + key + compact_size(len(value)) + value
+
+    def _build(case: dict) -> bytes:
+        unsigned_tx = bytes.fromhex(case["unsigned_tx"])
+        tx = parse_transaction(unsigned_tx)
+        out = bytearray(PSBT_MAGIC)
+        out += _record(bytes([PSBT_GLOBAL_UNSIGNED_TX]), unsigned_tx) + b"\x00"
+        for index in range(len(tx.inputs)):
+            if index == case["input_index"]:
+                wu = case["amount"].to_bytes(8, "little") + ser_string(bytes.fromhex(case["scriptpubkey"]))
+                out += _record(bytes([PSBT_IN_WITNESS_UTXO]), wu)
+                if "redeem_script" in case:
+                    out += _record(bytes([PSBT_IN_REDEEM_SCRIPT]), bytes.fromhex(case["redeem_script"]))
+            out += b"\x00"
+        out += b"\x00" * len(tx.outputs)
+        return bytes(out)
+
+    work = [
+        (_psbt.parse(_build(c)), c["input_index"], int(c["private_key"], 16),
+         bytes.fromhex(c["public_key"]), c["der_signature"], len(parse_transaction(bytes.fromhex(c["unsigned_tx"])).inputs))
+        for c in cases
+    ]
+    for parsed, index, scalar, pubkey, expected, _nin in work:  # correctness gate
+        signed = _psbt.sign_input(parsed, index, scalar)
+        if signed.inputs[index].get(PSBT_IN_PARTIAL_SIG, pubkey).hex() != expected:
+            raise ArithmeticError("PSBT signing did not match the BIP-143 worked example")
+
+    start = perf_counter_ns()
+    for _ in range(count):
+        for parsed, index, scalar, _pubkey, _expected, _nin in work:
+            _psbt.sign_input(parsed, index, scalar)
+    elapsed_us = (perf_counter_ns() - start) / 1000.0
+    ops = count * len(work)
+    return {
+        "benchmark": "bip174-psbt-sign",
+        "count": count,
+        "cases": len(work),
+        "single_input_cases": sum(1 for *_, nin in work if nin == 1),
+        "multi_input_cases": sum(1 for *_, nin in work if nin > 1),
+        "outputs_match_vectors": True,
+        "us_per_sign": round(elapsed_us / ops, 3),
+        "machine": platform.platform(),
+        "python_version": sys.version.split()[0],
+        "note": "Metrics only; public BIP-143 vector data, no secrets printed.",
+    }
+
+
 __all__ = [
     "MUSIG2_GROUP_SIZE",
     "SIGNATURE_OPERATIONS",
@@ -884,6 +959,7 @@ __all__ = [
     "benchmark_mnemonic",
     "benchmark_multiple_wifs",
     "benchmark_psbt",
+    "benchmark_psbt_sign",
     "benchmark_repeated_wifs",
     "benchmark_signatures",
     "benchmark_synthetic_wifs",

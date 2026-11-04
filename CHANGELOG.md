@@ -6,6 +6,16 @@ All notable changes to Keylab are recorded here. The format follows
 ## [Unreleased]
 
 ### Added
+- `keylab.psbt`: BIP-174 **Signer** role for P2WPKH and P2SH-P2WPKH inputs --
+  `sign`, `sign_input`, `signable_inputs`, and `PsbtSignError`. Computes the
+  BIP-143 witness-v0 sighash, signs it with the existing deterministic
+  (RFC 6979, low-S) ECDSA primitive, and inserts a `PSBT_IN_PARTIAL_SIG` record,
+  preserving existing records and unknown keys. Reproduces the BIP-143
+  worked-example signatures byte-for-byte for both supported types; verifies
+  every signature before emitting it; never mutates the input PSBT. Signer only
+  -- no finalizing, extraction, combining, broadcast, or P2WSH/Taproot/multisig
+  signing (see SECURITY.md). Adds `keylab.benchmarks.benchmark_psbt_sign`
+  (correctness-gated, single- and multi-input).
 - `keylab.psbt`: BIP-174 Partially Signed Bitcoin Transaction support --
   `deserialize`, `serialize`, `validate`, and `parse` (deserialize + validate),
   with a verbatim-preserving model (`Psbt`, `PsbtMap`, `KeyPair`) that keeps

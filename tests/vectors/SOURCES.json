@@ -91,6 +91,18 @@
         }
       ]
     },
+    "bip143_signing_vectors.json": {
+      "sha256": "ec9c71bc0498d596f1ec95b18fe9ed570f32cc0e835ffc7f35a2b3be8579188a",
+      "sources": [
+        {
+          "repo": "bitcoin/bips",
+          "path": "bip-0143.mediawiki",
+          "commit": "24e96e870fffaa257b465ce1f0370c14aac588e8",
+          "mode": "extracted",
+          "sha256": "62bc71351563e68baeb12643c68355d217953ae9eb6a6e68b2b0323275b6beec"
+        }
+      ]
+    },
     "bip39_trezor_vectors.json": {
       "sha256": "e970b12cad641313707307d202bb13071355a0af735e6cc077da0aa409a5ba41",
       "sources": [
