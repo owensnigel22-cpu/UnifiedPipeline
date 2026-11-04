@@ -4,6 +4,11 @@ on:
   schedule:
     - cron: "0 3 * * *"   # 03:00 UTC daily
   workflow_dispatch:
+    inputs:
+      seconds:
+        description: "Seconds per target (scheduled runs use 300)"
+        default: "300"
+        required: false
 
 permissions:
   contents: read
@@ -33,8 +38,8 @@ jobs:
             fuzz-corpus-
       # Longer budget per target, no fixed seed (broad exploration). A crash or
       # timeout fails the run.
-      - name: Fuzz extended (all targets, 300s each)
-        run: python scripts/run_fuzz.py all --time 300
+      - name: Fuzz extended (all targets)
+        run: python scripts/run_fuzz.py all --time ${{ github.event.inputs.seconds || 300 }}
       - name: Upload evolved corpus
         if: always()
         uses: actions/upload-artifact@v4
