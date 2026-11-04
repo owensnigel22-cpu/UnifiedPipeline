@@ -21,6 +21,7 @@
 | ECDSA research implementation roadmap | [docs/IMPLEMENTATION_ROADMAP.md](docs/IMPLEMENTATION_ROADMAP.md) |
 | ECDSA research test strategy | [docs/TEST_STRATEGY.md](docs/TEST_STRATEGY.md) |
 | Coverage-guided fuzzing of the parsers (Atheris, CI) | [docs/fuzzing.md](docs/fuzzing.md) |
+| Algorithm allow-list, constant-time compare, HKDF domain separation | [docs/crypto_policy.md](docs/crypto_policy.md) |
 | ECDSA research security and ethics positioning | [docs/SECURITY_POSITIONING.md](docs/SECURITY_POSITIONING.md) |
 | Official test-vector fixtures and provenance | [tests/vectors/README.md](tests/vectors/README.md) |
 

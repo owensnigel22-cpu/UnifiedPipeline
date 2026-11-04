@@ -23,7 +23,15 @@ def hkdf(
     info: bytes = b"",
     hash_name: str = "sha256",
 ) -> bytes:
-    """Derive key material with RFC 5869 HKDF using SHA-256 or SHA-512."""
+    """Derive key material with RFC 5869 HKDF using SHA-256 or SHA-512.
+
+    **Domain separation.** ``info`` is the context/application label. Distinct
+    ``info`` values derive independent keys from the *same* ``ikm``, so a caller
+    deriving several keys from one master secret must give each a distinct
+    ``info`` label (e.g. ``b"enc"`` vs ``b"mac"``); reusing one label for two
+    purposes lets one key stand in for another. ``salt`` and ``hash_name`` also
+    change the output. See docs/crypto_policy.md.
+    """
     if not isinstance(ikm, bytes) or not isinstance(salt, bytes) or not isinstance(info, bytes):
         raise TypeError("ikm, salt, and info must be bytes")
     if type(length) is not int or length < 0:
