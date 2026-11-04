@@ -828,6 +828,52 @@ def benchmark_bip143_sighash(count: int = 200) -> dict[str, object]:
     }
 
 
+def benchmark_psbt(count: int = 200) -> dict[str, object]:
+    """Time BIP-174 PSBT parse, serialize, and validate over the official valid vectors.
+
+    Correctness-gated: every valid vector must parse and re-serialize byte-exactly
+    before any timing is recorded. Public vector data only; no secrets printed.
+    """
+    import json
+
+    from keylab import psbt as _psbt
+
+    if type(count) is not int or count < 1:
+        raise ValueError("count must be a positive integer")
+
+    vectors = json.loads(
+        (Path(__file__).resolve().parent.parent.parent / "tests" / "vectors" / "bip174_psbt_vectors.json")
+        .read_text(encoding="utf-8")
+    )["valid"]
+    raws = [bytes.fromhex(c["hex"]) for c in vectors]
+    parsed = [_psbt.deserialize(r) for r in raws]
+    for raw, obj in zip(raws, parsed, strict=True):  # correctness gate
+        if _psbt.serialize(obj) != raw:
+            raise ArithmeticError("PSBT did not round-trip to its bytes")
+
+    def _time(operation: Callable[[int], object]) -> float:
+        start = perf_counter_ns()
+        for _ in range(count):
+            for index in range(len(raws)):
+                operation(index)
+        return (perf_counter_ns() - start) / (count * len(raws)) / 1000.0
+
+    return {
+        "benchmark": "bip174-psbt",
+        "count": count,
+        "vectors": len(raws),
+        "outputs_round_trip": True,
+        "timings_us_per_op": {
+            "deserialize_us": round(_time(lambda i: _psbt.deserialize(raws[i])), 3),
+            "serialize_us": round(_time(lambda i: _psbt.serialize(parsed[i])), 3),
+            "validate_us": round(_time(lambda i: _psbt.validate(parsed[i])), 3),
+        },
+        "machine": platform.platform(),
+        "python_version": sys.version.split()[0],
+        "note": "Metrics only; public BIP-174 vector data, no secrets printed.",
+    }
+
+
 __all__ = [
     "MUSIG2_GROUP_SIZE",
     "SIGNATURE_OPERATIONS",
@@ -837,6 +883,7 @@ __all__ = [
     "benchmark_hash160_only",
     "benchmark_mnemonic",
     "benchmark_multiple_wifs",
+    "benchmark_psbt",
     "benchmark_repeated_wifs",
     "benchmark_signatures",
     "benchmark_synthetic_wifs",

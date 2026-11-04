@@ -6,6 +6,15 @@ All notable changes to Keylab are recorded here. The format follows
 ## [Unreleased]
 
 ### Added
+- `keylab.psbt`: BIP-174 Partially Signed Bitcoin Transaction support --
+  `deserialize`, `serialize`, `validate`, and `parse` (deserialize + validate),
+  with a verbatim-preserving model (`Psbt`, `PsbtMap`, `KeyPair`) that keeps
+  unknown key types for forward compatibility. Reproduces every official BIP-174
+  vector: 20 invalid PSBTs rejected and 14 valid PSBTs parse/validate/re-serialize
+  byte-exactly. Reuses `keylab.encoding.transaction` primitives. Parser /
+  validator / serializer only -- no signing, finalizing, extraction, combining,
+  or broadcast (see SECURITY.md). Adds `keylab.benchmarks.benchmark_psbt`
+  (correctness-gated).
 - `keylab.encoding.transaction`: BIP-143 witness-v0 (SegWit v0) signature
   hashing -- `bip143_sighash`, `bip143_signature_message`, and
   `bip143_precomputed_hashes`. Reproduces every official BIP-143 vector

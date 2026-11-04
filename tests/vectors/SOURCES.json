@@ -67,6 +67,18 @@
         }
       ]
     },
+    "bip174_psbt_vectors.json": {
+      "sha256": "f37b4a5bea869b4e02276cfcd7e53b2a1d4b48b0a88326639bb61e097d2aefd3",
+      "sources": [
+        {
+          "repo": "bitcoin/bips",
+          "path": "bip-0174.mediawiki",
+          "commit": "24e96e870fffaa257b465ce1f0370c14aac588e8",
+          "mode": "extracted",
+          "sha256": "b83581ca80929f892e404f3566de6badf68c736a39512621171de357b24b6f2c"
+        }
+      ]
+    },
     "bip143_sighash_vectors.json": {
       "sha256": "e92f14edcc2176fae6d7f046767116e5e03ae85b03eac88a29bbcd7a1c3284ca",
       "sources": [

@@ -13,8 +13,12 @@ protect real keys or funds.
 - **Not side-channel hardened.** No blinding, no memory zeroization, no
   protection against fault injection beyond the self-verification noted below.
   Python cannot reliably erase secrets from memory.
-- **Not a wallet.** There is no key storage, encryption at rest, PSBT
-  handling, coin selection, fee logic, or transaction broadcast.
+- **Not a wallet.** There is no key storage, encryption at rest, coin
+  selection, fee logic, or transaction broadcast. `keylab.psbt` parses,
+  validates (BIP-174 rules), and re-serializes Partially Signed Bitcoin
+  Transactions for study and test-vector verification only: it does **not**
+  sign, finalize, extract, combine, or broadcast, and it is not production
+  wallet software.
 - **Not a consensus implementation.** `keylab.encoding.transaction` computes
   BIP-341 and BIP-143 (SegWit v0) signature hashes for study; it does not
   validate transactions, execute Script, or process `OP_CODESEPARATOR` (the
