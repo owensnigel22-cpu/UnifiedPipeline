@@ -115,3 +115,30 @@ jobs:
       - run: python -m pip install -e ".[dev]"
       - run: python scripts/bench_smoke.py
       - run: keylab benchmark-ec --count 2 --repetitions 1
+
+  fuzz-smoke:
+    name: fuzz-smoke (atheris, ubuntu)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          # atheris 3.1.0 ships a cp312 manylinux wheel; the matrix is unchanged.
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - run: python -m pip install -e ".[dev,fuzz]"
+      # Each target runs a short, reproducible, bounded campaign; a crash or a
+      # per-input timeout is a non-zero exit and fails the job (release blocker).
+      - name: Fuzz smoke (all targets, 30s each, fixed seed)
+        run: python scripts/run_fuzz.py all --time 30 --reproducible
+      # The seeded-defect canary MUST be caught: the harness has to report a
+      # crash, so a zero exit here means the fuzzer is not wired correctly.
+      - name: Canary (must be caught)
+        run: |
+          if python fuzz/fuzz_canary.py -max_total_time=30 -timeout=5 -rss_limit_mb=2048; then
+            echo "FAIL: canary campaign did not find the planted defect"; exit 1
+          else
+            echo "OK: canary defect was caught by the fuzzer"
+          fi

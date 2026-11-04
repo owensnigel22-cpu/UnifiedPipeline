@@ -1,0 +1,44 @@
+name: fuzz-nightly
+
+on:
+  schedule:
+    - cron: "0 3 * * *"   # 03:00 UTC daily
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  fuzz-extended:
+    name: fuzz-extended (atheris, ubuntu)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - run: python -m pip install -e ".[dev,fuzz]"
+      # Restore the previous night's evolved corpus so coverage compounds.
+      # Corpus artifacts are DERIVED data (not source vectors): they are
+      # intentionally outside the tests/vectors/SOURCES.json provenance gate.
+      - name: Restore evolved corpus
+        uses: actions/cache@v4
+        with:
+          path: fuzz/corpus
+          key: fuzz-corpus-${{ github.run_id }}
+          restore-keys: |
+            fuzz-corpus-
+      # Longer budget per target, no fixed seed (broad exploration). A crash or
+      # timeout fails the run.
+      - name: Fuzz extended (all targets, 300s each)
+        run: python scripts/run_fuzz.py all --time 300
+      - name: Upload evolved corpus
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-corpus
+          path: fuzz/corpus
+          retention-days: 14
