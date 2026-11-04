@@ -7,6 +7,7 @@ is exact, each step has two valid branches, and recovery costs 2**bit_length(k).
 
 from __future__ import annotations
 
+import os
 import random
 
 import pytest
@@ -21,6 +22,9 @@ from keylab.research.ecdlp.backward_double_add import (
     point_halve,
     recover_via_backward,
 )
+from keylab.research.ecdlp.halving_shortcut import halve_m
+
+_RUN_SLOW_HALVING = os.environ.get("RUN_SLOW_HALVING") == "1"
 
 
 def _double(point):
@@ -114,3 +118,50 @@ def test_recovered_scalar_is_forward_verified() -> None:
         assert report["found"] and scalar_mult(report["k"], G) == scalar_mult(k, G)
     # x-only sanity: P is the field prime, unused here but imported to assert module wiring.
     assert P > N
+
+
+# --- halve_m chained-halving shortcut -----------------------------------------------------------
+
+def test_halve_m_matches_chained_halve() -> None:
+    # The O(1) shortcut must equal m sequential point halvings (m = 17, always runs).
+    q = scalar_mult(0xC0FFEE, G)
+    chained = q
+    for _ in range(17):
+        chained = point_halve(chained)
+    assert halve_m(q, 17) == chained
+
+
+def test_halve_m_m_equals_zero_returns_point() -> None:
+    q = scalar_mult(42, G)
+    assert halve_m(q, 0) == q
+
+
+def test_halve_m_identity_stays_identity() -> None:
+    assert halve_m(None, 5) is None
+
+
+@pytest.mark.parametrize("bad", [-1, -2**20])
+def test_halve_m_rejects_negative_m(bad) -> None:
+    with pytest.raises(ValueError):
+        halve_m(scalar_mult(7, G), bad)
+
+
+@pytest.mark.skipif(not _RUN_SLOW_HALVING, reason="set RUN_SLOW_HALVING=1 to run the 2**20 shortcut timing")
+def test_halve_m_2_to_20_completes_fast() -> None:
+    from time import perf_counter
+    q = scalar_mult(0xBEEF, G)
+    start = perf_counter()
+    result = halve_m(q, 2**20)
+    elapsed = perf_counter() - start
+    assert isinstance(result, tuple) and len(result) == 2  # a valid affine point
+    assert elapsed < 0.1  # O(1) scalar mul, not the ~17-minute literal chain
+
+
+@pytest.mark.skipif(not _RUN_SLOW_HALVING, reason="set RUN_SLOW_HALVING=1 to run the literal 2**20 chain (~17 min)")
+def test_halve_m_2_to_20_equals_literal_chain() -> None:
+    # Certifies the collapse at scale: the literal 2**20-long chain equals the shortcut.
+    q = scalar_mult(0xBEEF, G)
+    chained = q
+    for _ in range(2**20):
+        chained = point_halve(chained)
+    assert chained == halve_m(q, 2**20)
