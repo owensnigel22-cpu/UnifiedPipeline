@@ -1108,6 +1108,56 @@ def benchmark_psbt_extract(count: int = 200) -> dict[str, object]:
     }
 
 
+def benchmark_psbt_combine(count: int = 200) -> dict[str, object]:
+    """Time BIP-174 Combiner-role merging of the official two-signer worked example.
+
+    Correctness-gated: the combined PSBT must match the official expected PSBT as
+    a key/value set per map before any timing is recorded. Public vector data
+    only; no secrets are printed.
+    """
+    import json
+
+    from keylab import psbt as _psbt
+
+    if type(count) is not int or count < 1:
+        raise ValueError("count must be a positive integer")
+
+    cases = json.loads(
+        (Path(__file__).resolve().parent.parent.parent / "tests" / "vectors" / "bip174_combiner_vectors.json")
+        .read_text(encoding="utf-8")
+    )["combine"]
+
+    def _kv(psbt_obj) -> tuple:
+        def s(m):
+            return frozenset((kp.key, kp.value) for kp in m.pairs)
+        return (s(psbt_obj.global_map),
+                tuple(s(m) for m in psbt_obj.inputs),
+                tuple(s(m) for m in psbt_obj.outputs))
+
+    work = [(_psbt.parse(bytes.fromhex(c["input1"])), _psbt.parse(bytes.fromhex(c["input2"])),
+             _kv(_psbt.parse(bytes.fromhex(c["expected"])))) for c in cases]
+    for a, b, expected_kv in work:  # correctness gate
+        if _kv(_psbt.combine([a, b])) != expected_kv:
+            raise ArithmeticError("PSBT combine did not match the official BIP-174 vector")
+
+    start = perf_counter_ns()
+    for _ in range(count):
+        for a, b, _expected_kv in work:
+            _psbt.combine([a, b])
+    elapsed_us = (perf_counter_ns() - start) / 1000.0
+    ops = count * len(work)
+    return {
+        "benchmark": "bip174-psbt-combine",
+        "count": count,
+        "cases": len(work),
+        "outputs_match_vectors": True,
+        "us_per_combine": round(elapsed_us / ops, 3),
+        "machine": platform.platform(),
+        "python_version": sys.version.split()[0],
+        "note": "Metrics only; public BIP-174 vector data, no secrets printed.",
+    }
+
+
 __all__ = [
     "MUSIG2_GROUP_SIZE",
     "SIGNATURE_OPERATIONS",
@@ -1118,6 +1168,7 @@ __all__ = [
     "benchmark_mnemonic",
     "benchmark_multiple_wifs",
     "benchmark_psbt",
+    "benchmark_psbt_combine",
     "benchmark_psbt_extract",
     "benchmark_psbt_finalize",
     "benchmark_psbt_sign",

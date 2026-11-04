@@ -6,6 +6,16 @@ All notable changes to Keylab are recorded here. The format follows
 ## [Unreleased]
 
 ### Added
+- `keylab.psbt`: BIP-174 **Combiner** role -- `combine` and `PsbtCombineError`.
+  Merges two or more PSBTs that share a byte-identical unsigned transaction into
+  their per-map union: deduplicates identical records, applies the BIP-174
+  first-value rule on benign conflicts, rejects conflicting finalized fields in
+  strict mode (default; `strict=False` downgrades to first-value), and preserves
+  unknown/proprietary keys. Matches the official BIP-174 Combiner worked-example
+  vector as a key/value set per map (v0 does not mandate record order). Performs
+  no cryptography and never mutates inputs; BIP-174 v0 Combiner only -- not a
+  BIP-370 merge of differing transactions, and no broadcast (see SECURITY.md).
+  Adds `keylab.benchmarks.benchmark_psbt_combine` (correctness-gated).
 - `keylab.psbt`: BIP-174 **Extractor** role for P2WPKH and P2SH-P2WPKH inputs --
   `extract`, `extract_transaction`, and `PsbtExtractError`. Assembles the final
   network transaction from a finalized PSBT by injecting each input's final

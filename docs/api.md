@@ -21,7 +21,7 @@ CLI commands are listed by `keylab --help` and `keylab-advanced --help`;
 - [`keylab.mnemonic`](#keylabmnemonic) — BIP-39 mnemonic generation, validation, seed derivation
 - [`keylab.encoding.taproot`](#keylabencodingtaproot) — BIP-341 Taproot outputs, script trees, key-path signing
 - [`keylab.encoding.transaction`](#keylabencodingtransaction) — Transaction parsing/serialization and BIP-341 / BIP-143 signature hashing
-- [`keylab.psbt`](#keylabpsbt) — BIP-174 PSBT parse/validate/serialize and P2WPKH/P2SH-P2WPKH sign + finalize + extract
+- [`keylab.psbt`](#keylabpsbt) — BIP-174 PSBT parse/validate/serialize and P2WPKH/P2SH-P2WPKH sign + finalize + extract + combine
 - [`keylab.encoding.address`](#keylabencodingaddress) — Address encoding and verification
 - [`keylab.encoding.bech32`](#keylabencodingbech32) — BIP-173 Bech32 / BIP-350 Bech32m
 - [`keylab.encoding.base58`](#keylabencodingbase58) — Base58 and Base58Check
@@ -287,12 +287,13 @@ Minimal Bitcoin transaction parsing and BIP-341 Taproot signature hashing.
 
 ## `keylab.psbt`
 
-BIP-174 PSBT parse/validate/serialize and P2WPKH/P2SH-P2WPKH sign + finalize + extract.
+BIP-174 PSBT parse/validate/serialize and P2WPKH/P2SH-P2WPKH sign + finalize + extract + combine.
 
 BIP-174 Partially Signed Bitcoin Transaction (PSBT) parsing, validation, serialization.
 
 | Name | Signature / value | Summary |
 |---|---|---|
+| `combine` | `combine(psbts: 'Iterable[Psbt]', *, strict: 'bool' = True) -> 'Psbt'` | Combine PSBTs that share one unsigned transaction into their union. |
 | `deserialize` | `deserialize(raw: 'bytes') -> 'Psbt'` | Parse ``raw`` PSBT bytes into a :class:`Psbt`, preserving every record verbatim. |
 | `extract` | `extract(psbt: 'Psbt') -> 'bytes'` | Return the final network-serialized (BIP-144) transaction from a finalized PSBT. |
 | `extract_transaction` | `extract_transaction(psbt: 'Psbt') -> 'Transaction'` | Assemble the final :class:`Transaction` from a fully finalized PSBT. |
@@ -303,6 +304,7 @@ BIP-174 Partially Signed Bitcoin Transaction (PSBT) parsing, validation, seriali
 | `parse` | `parse(raw: 'bytes') -> 'Psbt'` | Deserialize ``raw`` and apply the BIP-174 validation rules; raise :class:`PsbtError` on failure. |
 | `Psbt` | `class Psbt(global_map: 'PsbtMap', inputs: 'list[PsbtMap]', outputs: 'list[PsbtMap]') -> None` | A parsed PSBT: a global map plus one map per transaction input and output. |
 | `PSBT_MAGIC` | `PSBT_MAGIC = b'psbt\xff'` |  |
+| `PsbtCombineError` | `class PsbtCombineError` | Raised when PSBTs cannot be combined (a subclass of :class:`PsbtError`). |
 | `PsbtError` | `class PsbtError` | Raised on a malformed PSBT or a BIP-174 validation failure. |
 | `PsbtExtractError` | `class PsbtExtractError` | Raised when a transaction cannot be extracted from a PSBT (a subclass of :class:`PsbtError`). |
 | `PsbtFinalizeError` | `class PsbtFinalizeError` | Raised when a PSBT input cannot be finalized (a subclass of :class:`PsbtError`). |
@@ -500,6 +502,7 @@ Small reproducible performance probes for public-key conversion paths.
 | `benchmark_mnemonic` | `benchmark_mnemonic(count: 'int' = 100, *, bits: 'int' = 128, seed: 'int' = 20261101) -> 'dict[str, object]'` | Time BIP-39 entropy->mnemonic, mnemonic->entropy, and mnemonic->seed. |
 | `benchmark_multiple_wifs` | `benchmark_multiple_wifs(wifs: 'Iterable[str]', *, backend: 'str' = 'auto', derive_addresses: 'bool' = True, address_types: 'Iterable[str] \| None' = None, warmup: 'int' = 3, corpus_source: 'str' = 'provided') -> 'dict[str, object]'` | Profile independent WIFs without printing or returning keys or addresses. |
 | `benchmark_psbt` | `benchmark_psbt(count: 'int' = 200) -> 'dict[str, object]'` | Time BIP-174 PSBT parse, serialize, and validate over the official valid vectors. |
+| `benchmark_psbt_combine` | `benchmark_psbt_combine(count: 'int' = 200) -> 'dict[str, object]'` | Time BIP-174 Combiner-role merging of the official two-signer worked example. |
 | `benchmark_psbt_extract` | `benchmark_psbt_extract(count: 'int' = 200) -> 'dict[str, object]'` | Time BIP-174 Extractor-role extraction of a single-input and multi-input PSBT. |
 | `benchmark_psbt_finalize` | `benchmark_psbt_finalize(count: 'int' = 200) -> 'dict[str, object]'` | Time BIP-174 Finalizer-role finalization of a single-input and multi-input PSBT. |
 | `benchmark_psbt_sign` | `benchmark_psbt_sign(count: 'int' = 200) -> 'dict[str, object]'` | Time BIP-174 Signer-role signing of a single-input and a multi-input PSBT. |

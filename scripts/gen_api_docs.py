@@ -34,7 +34,7 @@ MODULES = (
     ("keylab.mnemonic", "BIP-39 mnemonic generation, validation, seed derivation"),
     ("keylab.encoding.taproot", "BIP-341 Taproot outputs, script trees, key-path signing"),
     ("keylab.encoding.transaction", "Transaction parsing/serialization and BIP-341 / BIP-143 signature hashing"),
-    ("keylab.psbt", "BIP-174 PSBT parse/validate/serialize and P2WPKH/P2SH-P2WPKH sign + finalize + extract"),
+    ("keylab.psbt", "BIP-174 PSBT parse/validate/serialize and P2WPKH/P2SH-P2WPKH sign + finalize + extract + combine"),
     ("keylab.encoding.address", "Address encoding and verification"),
     ("keylab.encoding.bech32", "BIP-173 Bech32 / BIP-350 Bech32m"),
     ("keylab.encoding.base58", "Base58 and Base58Check"),
