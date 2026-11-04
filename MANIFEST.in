@@ -1,0 +1,8 @@
+# Keep test/CI tooling out of the sdist. The wheel is already limited to
+# src/keylab by [tool.setuptools.packages.find]; these prunes enforce the same
+# for the source distribution so the fuzzing harness (and its seeded-defect
+# canary) can never ship as part of the distributed package.
+prune fuzz
+prune tests
+prune docs
+exclude *_PLAN.md *_REPORT.md *_DESIGN_REVIEW.md
