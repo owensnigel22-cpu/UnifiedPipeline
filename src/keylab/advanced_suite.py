@@ -43,12 +43,12 @@ from __future__ import annotations
 
 import argparse
 import hashlib
-import hmac
 import math
 import secrets
 import time
 
 from keylab import __version__
+from keylab._ct import constant_time_equal
 from keylab.ec import secp256k1 as _curve
 from keylab.ec.musig2 import key_agg as _bip327_key_agg
 from keylab.ec.musig2 import key_agg_coeff as _bip327_key_agg_coeff
@@ -1349,7 +1349,7 @@ def rsa_oaep_decrypt(ciphertext: bytes, n: int, d: int, label: bytes = b"") -> b
     db_mask = _mgf1(seed, k - h_len - 1)
     db = bytes(a ^ b for a, b in zip(masked_db, db_mask))
     l_hash = hashlib.sha256(label).digest()
-    if not hmac.compare_digest(db[:h_len], l_hash):
+    if not constant_time_equal(db[:h_len], l_hash):
         raise ValueError("OAEP decoding failed")
     delimiter = db.find(b'\x01', h_len)
     if delimiter < 0 or any(db[h_len:delimiter]):
@@ -1406,7 +1406,7 @@ def rsa_pss_verify(message: bytes, signature: bytes, n: int, e: int, salt_length
         return False
     salt = bytes(db[-salt_length:]) if salt_length else b''
     expected = hashlib.sha256(b'\x00' * 8 + hashlib.sha256(message).digest() + salt).digest()
-    return hmac.compare_digest(h_value, expected)
+    return constant_time_equal(h_value, expected)
 
 def rsa_demo(bits: int = 2048) -> dict[str, object]:
     """Run ephemeral OAEP encryption/decryption and PSS signing/verification."""
