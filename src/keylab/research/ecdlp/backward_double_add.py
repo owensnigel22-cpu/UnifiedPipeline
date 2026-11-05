@@ -27,8 +27,9 @@ from time import perf_counter
 from keylab.ec.halving import HALF_SCALAR, halve_point
 from keylab.ec.secp256k1 import G, Point, point_add_affine, point_negate_affine, scalar_mult
 
-# Above this the tree has >= 2**64 nodes: already hopelessly infeasible, so reject early.
-MAX_DEPTH = 64
+# Past this the tree (2**depth nodes) explodes in time and memory on a CI runner
+# with no added pedagogical value; reject early. See SEC_STATE_JOURNAL.md depth-cap.
+MAX_DEPTH = 18
 
 
 def point_halve(point: Point) -> Point:
@@ -68,7 +69,10 @@ def backward_traverse_to_identity(point: Point, max_depth: int) -> dict[str, obj
     bit ``depth``.
     """
     if type(max_depth) is not int or not 0 <= max_depth <= MAX_DEPTH:
-        raise ValueError(f"max_depth must be an int in [0, {MAX_DEPTH}]")
+        raise ValueError(
+            f"max_depth must be an int in [0, {MAX_DEPTH}]; above {MAX_DEPTH} the "
+            "2**depth tree explodes in time/memory (see SEC_STATE_JOURNAL.md depth-cap)"
+        )
     start = perf_counter()
     minus_g = point_negate_affine(G)
     queue: deque[tuple[Point, int, int]] = deque([(point, 0, 0)])

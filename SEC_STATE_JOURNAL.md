@@ -106,3 +106,13 @@ Entry format:
 - Reason: the repo's only full-group-usable ECDLP primitive is `pollard_kangaroo`. No ECDLP `pollard_rho` exists (the `pollard_rho` in `keylab/numtheory/rsa.py` is RSA integer factorization — a different algorithm for a different problem). Calling kangaroo over `[0, N-1]` IS the full-group attempt; implementing a new rho or a toy curve was declined (new attack code / out of scope).
 - State change: benchmark built on `pollard_kangaroo` only.
 - Reference: docs/research/ecdlp_benchmark.md (tooling section); keylab/research/ecdlp/kangaroo.py.
+
+## 2026-11-05 — M3: 20-random-k backward recovery per depth — measured, deep depths gated
+- Kind: attempted
+- Action: `recover_via_backward` for 20 random k at each depth in {4,6,8,10,12}.
+- Outcome: complete (correctness); deep depths moved opt-in for cost.
+- Cost observed: with coincurve (~1ms/scalar-mult, 2 halvings per BFS node), 20 recoveries take depth4 ~2s, depth6 ~9s, depth8 ~33s, depth10 ~130s, depth12 ~520s; all of {4..12}×20 ≈ 11.5 min.
+- Cost extrapolated: cost per depth ≈ 20 · 2**depth · (2 scalar-mults) — exponential in depth, as expected for the brute-force traversal.
+- Reason: 11.5 min always-on would blow the CI test budget; recovery correctness is already proven and the exponential shape is the lesson.
+- State change: always-on keeps depths {4,6} (~11s); depths {8,10,12} gated behind `RUN_SLOW_ECDLP=1`. `backward_traverse_to_identity` MAX_DEPTH tightened 64 → 18 (guard cites this journal).
+- Reference: tests/test_backward_double_add.py; SEC_M3_BACKWARD_ADD_PLAN.md §5.

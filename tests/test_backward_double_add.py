@@ -165,3 +165,43 @@ def test_halve_m_2_to_20_equals_literal_chain() -> None:
     for _ in range(2**20):
         chained = point_halve(chained)
     assert chained == halve_m(q, 2**20)
+
+
+# --- additional recovery invariants (M3) --------------------------------------------------------
+
+def test_k5_lsb_bit_walk_accumulates_to_5() -> None:
+    # k = 5 = 0b101; LSB-first the branch sequence is [1, 0, 1]. Recovery must
+    # accumulate exactly these bits back to 5 (verifies LSB-first bit tracking).
+    report = recover_via_backward(scalar_mult(5, G), max_depth=3)
+    assert report["found"] and report["k"] == 5
+
+
+def _recover_20_random(depth: int) -> None:
+    rng = random.Random(0xA11CE ^ depth)  # deterministic per depth
+    for _ in range(20):
+        k = rng.randrange(1, 1 << depth)
+        report = recover_via_backward(scalar_mult(k, G), max_depth=depth)
+        assert report["found"] and report["k"] == k
+
+
+@pytest.mark.parametrize("depth", [4, 6])
+def test_recovery_20_random_k_per_depth(depth) -> None:
+    # Always-on shallow depths (~11s combined). Each BFS node is a 256-bit
+    # scalar-mult, so cost is ~2**depth per recovery; deeper depths are opt-in
+    # below (measured: depth 8 ~33s, 10 ~130s, 12 ~520s for 20 each -- see
+    # SEC_STATE_JOURNAL.md). Keeps the always-on suite under the CI budget.
+    _recover_20_random(depth)
+
+
+@pytest.mark.skipif(
+    os.environ.get("RUN_SLOW_ECDLP") != "1",
+    reason="set RUN_SLOW_ECDLP=1 to run 20-random-k recovery at depths 8/10/12 (~11 min)",
+)
+@pytest.mark.parametrize("depth", [8, 10, 12])
+def test_recovery_20_random_k_per_depth_deep(depth) -> None:
+    _recover_20_random(depth)
+
+
+def test_depth_guard_above_cap_raises_citing_journal() -> None:
+    with pytest.raises(ValueError, match="SEC_STATE_JOURNAL.md"):
+        backward_traverse_to_identity(scalar_mult(5, G), 19)
