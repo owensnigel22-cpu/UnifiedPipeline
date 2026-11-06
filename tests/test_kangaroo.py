@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
+import os
 import random
+import time
 
 import pytest
 
 from keylab.ec.secp256k1 import G, N, scalar_mult
-from keylab.research.ecdlp.kangaroo import pollard_kangaroo, recover_via_kangaroo
+from keylab.research.ecdlp.kangaroo import KangarooResult, pollard_kangaroo, recover_via_kangaroo
+
+_RUN_SLOW_ECDLP = os.environ.get("RUN_SLOW_ECDLP") == "1"
 
 
 def test_kangaroo_recovers_k_in_small_intervals() -> None:
@@ -62,3 +66,52 @@ def test_recover_via_kangaroo_report() -> None:
     assert report["found"] and report["k"] == k
     assert report["method"] == "pollard-kangaroo"
     assert report["width"] == 6000
+
+
+# --- max_steps budget enforcement (regression for the inner-walk bound) --------------------------
+
+def test_kangaroo_max_steps_bounds_inner_walk() -> None:
+    # [0, 2**30) -> base_hops ~2**16; max_steps=100 must stop almost immediately.
+    # WITHOUT the fix this hangs (the first tame walk runs ~2**16 hops unbounded).
+    start = time.perf_counter()
+    result = pollard_kangaroo(scalar_mult(5, G), 0, 2**30, max_steps=100)
+    assert result is None
+    assert time.perf_counter() - start < 1.0
+
+
+def test_kangaroo_max_steps_preserves_success() -> None:
+    # Budget comfortably above 2*sqrt(width): the happy path is unchanged.
+    k = 0xABCDE  # < 2**20
+    assert pollard_kangaroo(scalar_mult(k, G), 0, 2**20, max_steps=10**6) == k
+
+
+def test_kangaroo_return_state_optional() -> None:
+    # return_state=True -> KangarooResult; default -> bare int | None (unchanged).
+    state = pollard_kangaroo(scalar_mult(5, G), 0, 2**30, max_steps=100, return_state=True)
+    assert isinstance(state, KangarooResult)
+    assert state.spent_steps > 0 and state.dps_found >= 0 and state.attempts_used >= 1
+    assert state.solution is None
+    bare = pollard_kangaroo(scalar_mult(5, G), 0, 2**30, max_steps=100)
+    assert bare is None and not isinstance(bare, KangarooResult)
+
+
+def test_kangaroo_progress_callback() -> None:
+    seen: list[int] = []
+    pollard_kangaroo(
+        scalar_mult(0xBEEF, G), 0, 2**20, max_steps=10**6,
+        progress_callback=lambda spent, dps: seen.append(spent), progress_every=1000,
+    )
+    assert seen and all(s > 0 for s in seen)
+
+
+@pytest.mark.skipif(not _RUN_SLOW_ECDLP, reason="set RUN_SLOW_ECDLP=1 to run the full-group budget check")
+def test_kangaroo_full_group_budget() -> None:
+    # The full-group ECDLP attempt, budget-bounded: spends exactly max_steps and
+    # returns None within a bounded wall time (no hang). ~15k hops/s locally, so
+    # 100k hops is well under 20s.
+    start = time.perf_counter()
+    state = pollard_kangaroo(scalar_mult(123456, G), 0, N - 1, max_steps=100_000, return_state=True)
+    assert isinstance(state, KangarooResult)
+    assert state.solution is None
+    assert state.spent_steps == 100_000
+    assert time.perf_counter() - start < 20.0
