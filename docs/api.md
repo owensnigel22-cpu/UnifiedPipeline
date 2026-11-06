@@ -453,8 +453,9 @@ Backward double-and-add traversal for secp256k1 (educational).
 | `backward_step` | `backward_step(point: 'Point') -> 'tuple[Point, Point]'` | Return the two double-and-add predecessors of ``point``: ``(halve(Q), halve(Q - G))``. |
 | `backward_traverse_to_identity` | `backward_traverse_to_identity(point: 'Point', max_depth: 'int') -> 'dict[str, object]'` | Breadth-first reverse the ladder from ``point``, seeking the path to infinity. |
 | `cost_table` | `cost_table() -> 'list[tuple[int, int, str]]'` | Return ``(scalar_bits, 2**bits leaves, feasibility)`` rows for the honest wall. |
+| `DeepTraversalWarning` | `class DeepTraversalWarning` | Emitted when ``max_depth`` is deep enough that the 2**depth tree may exhaust |
 | `HALF_SCALAR` | `HALF_SCALAR = int` |  |
-| `MAX_DEPTH` | `MAX_DEPTH = 64` |  |
+| `MAX_DEPTH` | `MAX_DEPTH = 18` |  |
 | `point_halve` | `point_halve(point: 'Point') -> 'Point'` | Return the unique P with ``2P == point`` (``((N+1)/2)*point``); ``None`` stays ``None``. |
 | `recover_via_backward` | `recover_via_backward(point: 'Point', max_depth: 'int') -> 'dict[str, object]'` | Recover the scalar behind ``point`` by backward traversal, verifying ``k*G == point``. |
 
@@ -466,8 +467,11 @@ Pollard's kangaroo (lambda) method for the bounded-interval ECDLP on secp256k1.
 
 | Name | Signature / value | Summary |
 |---|---|---|
-| `pollard_kangaroo` | `pollard_kangaroo(point: 'Point', lo: 'int', hi: 'int', *, max_steps: 'int \| None' = None) -> 'int \| None'` | Recover ``k`` in ``[lo, hi]`` with ``k*G == point`` via Pollard's kangaroo. |
-| `recover_via_kangaroo` | `recover_via_kangaroo(point: 'Point', lo: 'int', hi: 'int', *, max_steps: 'int \| None' = None) -> 'dict[str, object]'` | Recover ``k`` in ``[lo, hi]`` and report timing, as a dict mirroring the backward API. |
+| `KangarooResult` | `class KangarooResult(solution: 'int \| None', spent_steps: 'int', dps_found: 'int', memory_peak_bytes: 'int \| None', attempts_used: 'int', dp_table_size: 'int' = 0, last_tame: 'int \| None' = None, last_wild: 'int \| None' = None, last_hop: 'int' = 0, elapsed_sec: 'float' = 0.0, walkers_used: 'int' = 1, checkpoint_path: 'str \| None' = None) -> None` | State of a kangaroo run, returned when ``return_state=True``. |
+| `load_checkpoint` | `load_checkpoint(path: 'str \| os.PathLike[str]') -> 'dict[str, Any]'` | Load a checkpoint written by :func:`save_checkpoint`. |
+| `pollard_kangaroo` | `pollard_kangaroo(point: 'Point', lo: 'int', hi: 'int', *, dp_bits: 'int \| None' = None, max_steps: 'int \| None' = None, return_state: 'bool' = False, progress_callback: 'Callable[[int, int], None] \| None' = None, progress_every: 'int' = 100000, checkpoint_path: 'str \| os.PathLike[str] \| None' = None, resume_from: 'str \| os.PathLike[str] \| None' = None) -> 'int \| None \| KangarooResult'` | Recover ``k`` in ``[lo, hi]`` with ``k*G == point`` via the DP kangaroo. |
+| `recover_via_kangaroo` | `recover_via_kangaroo(point: 'Point', lo: 'int', hi: 'int', *, dp_bits: 'int \| None' = None, max_steps: 'int \| None' = None) -> 'dict[str, object]'` | Recover ``k`` in ``[lo, hi]`` and report timing, as a dict mirroring the backward API. |
+| `save_checkpoint` | `save_checkpoint(path: 'str \| os.PathLike[str]', state: 'dict[str, Any]') -> 'None'` | Atomically write a resumable kangaroo state to ``path`` as JSON. |
 
 ## `keylab.research.hnp_lattice`
 

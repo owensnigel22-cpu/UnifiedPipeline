@@ -6,3 +6,4 @@ prune fuzz
 prune tests
 prune docs
 exclude *_PLAN.md *_REPORT.md *_DESIGN_REVIEW.md
+exclude SEC_STATE_JOURNAL.md

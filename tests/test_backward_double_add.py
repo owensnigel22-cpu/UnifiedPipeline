@@ -15,12 +15,14 @@ from keylab.ec.secp256k1 import G, N, P, point_add_affine, point_negate_affine, 
 from keylab.research.ecdlp.backward_double_add import (
     HALF_SCALAR,
     MAX_DEPTH,
+    DeepTraversalWarning,
     backward_step,
     backward_traverse_to_identity,
     cost_table,
     point_halve,
     recover_via_backward,
 )
+from keylab.research.ecdlp.halving_shortcut import halve_m
 
 
 def _double(point):
@@ -91,8 +93,10 @@ def test_leaves_explored_bounded_by_tree_size() -> None:
 
 # --- input validation ---------------------------------------------------------------------------
 
-@pytest.mark.parametrize("bad", [-1, MAX_DEPTH + 1, 2.0, "8", None])
+@pytest.mark.parametrize("bad", [-1, 0, 2.0, "8", None])
 def test_max_depth_is_validated(bad) -> None:
+    # Only max_depth < 1 raises ValueError; non-int raises TypeError. Deep (>=18)
+    # no longer raises -- it warns (see test_depth_above_cap_warns_not_raises).
     with pytest.raises((ValueError, TypeError)):
         backward_traverse_to_identity(scalar_mult(5, G), bad)
 
@@ -114,3 +118,75 @@ def test_recovered_scalar_is_forward_verified() -> None:
         assert report["found"] and scalar_mult(report["k"], G) == scalar_mult(k, G)
     # x-only sanity: P is the field prime, unused here but imported to assert module wiring.
     assert P > N
+
+
+# --- halve_m chained-halving shortcut -----------------------------------------------------------
+
+def test_halve_m_matches_chained_halve() -> None:
+    # The O(1) shortcut must equal m sequential point halvings (m = 17, always runs).
+    q = scalar_mult(0xC0FFEE, G)
+    chained = q
+    for _ in range(17):
+        chained = point_halve(chained)
+    assert halve_m(q, 17) == chained
+
+
+def test_halve_m_m_equals_zero_returns_point() -> None:
+    q = scalar_mult(42, G)
+    assert halve_m(q, 0) == q
+
+
+def test_halve_m_identity_stays_identity() -> None:
+    assert halve_m(None, 5) is None
+
+
+@pytest.mark.parametrize("bad", [-1, -2**20])
+def test_halve_m_rejects_negative_m(bad) -> None:
+    with pytest.raises(ValueError):
+        halve_m(scalar_mult(7, G), bad)
+
+
+def test_halve_m_2_to_20_is_o1() -> None:
+    # The whole point of the shortcut: m = 2**20 returns a valid point via one
+    # scalar mul (O(1)), not the ~17-minute literal chain. Always-on (it is
+    # milliseconds); no wall-clock assertion (flaky). The literal 2**20-chain
+    # equivalence is extrapolated in SEC_STATE_JOURNAL.md, not run in CI.
+    result = halve_m(scalar_mult(0xBEEF, G), 2**20)
+    assert isinstance(result, tuple) and len(result) == 2
+
+
+# --- additional recovery invariants (M3) --------------------------------------------------------
+
+def test_k5_lsb_bit_walk_accumulates_to_5() -> None:
+    # k = 5 = 0b101; LSB-first the branch sequence is [1, 0, 1]. Recovery must
+    # accumulate exactly these bits back to 5 (verifies LSB-first bit tracking).
+    report = recover_via_backward(scalar_mult(5, G), max_depth=3)
+    assert report["found"] and report["k"] == 5
+
+
+def _recover_20_random(depth: int) -> None:
+    rng = random.Random(0xA11CE ^ depth)  # deterministic per depth
+    for _ in range(20):
+        k = rng.randrange(1, 1 << depth)
+        report = recover_via_backward(scalar_mult(k, G), max_depth=depth)
+        assert report["found"] and report["k"] == k
+
+
+@pytest.mark.parametrize("depth", [4, 6])
+def test_recovery_20_random_k_per_depth(depth) -> None:
+    # Always-on shallow depths (~11s combined). Each BFS node is a 256-bit
+    # scalar-mult, so cost is ~2**depth per recovery. Deeper depths are not run
+    # in CI (the zero-skip gate forbids opt-in skips, and 20x{8,10,12} is ~11 min);
+    # their measured/extrapolated cost is recorded in SEC_STATE_JOURNAL.md.
+    _recover_20_random(depth)
+
+
+def test_depth_above_cap_warns_not_raises() -> None:
+    # The hard cap is gone: depth >= MAX_DEPTH now WARNS (DeepTraversalWarning,
+    # a UserWarning subclass, so filterwarnings does not escalate it) instead of
+    # raising. The warning fires before the BFS, and a tiny k (=5, found at depth
+    # 3) still recovers at once -- so the test never pays the 2**19 cost.
+    with pytest.warns(DeepTraversalWarning, match="SEC_STATE_JOURNAL.md"):
+        report = backward_traverse_to_identity(scalar_mult(5, G), 19)
+    assert report["found"] and report["k"] == 5
+    assert MAX_DEPTH == 18
