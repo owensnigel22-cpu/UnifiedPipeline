@@ -126,3 +126,13 @@ Entry format:
 - Reason: `max_steps` only bounded the outer retry loop; `_run_once` ran its full ~2·√width tame walk before any budget check, so for widths where base_hops > max_steps (full secp256k1: base_hops ≈ 2^129) a budget-bounded call ran unbounded / hung. Docstring claimed max_steps capped total hops; code did not.
 - State change: budget now enforced inside the walk; `return_state=True` exposes spent_steps / dps_found (0, single-trap kangaroo) / memory_peak_bytes / attempts_used; `progress_callback` added for SIGTERM flush. Existing callers unchanged (default return path identical); all 10 existing kangaroo tests pass unmodified.
 - Reference: commit 32d1faf; tests/test_kangaroo.py::test_kangaroo_max_steps_bounds_inner_walk.
+
+## 2026-11-06 — M3: ECDLP bounded-full attempt — failed as expected (the wall)
+- Kind: attempted
+- Action: `pollard_kangaroo(Q, 0, N-1, max_steps=2**60, return_state=True)` on a real secp256k1 pubkey, time-bounded to 60s via a progress-callback budget.
+- Outcome: failed (expected) — no solution.
+- Cost observed: spent_steps = 1,240,000 hops at ~20,554 hops/s; elapsed 60.3s; dps_found 0 (single-trap kangaroo); memory n/a (Windows). fraction_of_work = 2^-109 of the ~2^129 expected. solution_found: false.
+- Cost extrapolated: full-group expected ≈ 2·√n ≈ 2^129 hops ≈ ~10^25 years at 1e7 ops/s. Collision probability for 1.24M hops ≈ 10^-33 (birthday on n).
+- Reason: this is the ECDLP wall, not a slowdown; no budget changes the exponent.
+- State change: measurement recorded; attain anchors 2^20=8,749 / 2^24=39,699 hops give fitted constant ~9.1·√width. walkback (brute force) depth 8 = 229 leaves / 5.6s, depth 12 = 4,005 leaves / 59.9s.
+- Reference: state/bounded_full_20261106T035846Z.json; docs/research/ecdlp_benchmark.md (wall section).

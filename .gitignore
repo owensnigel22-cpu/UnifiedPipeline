@@ -33,3 +33,6 @@ Thumbs.db
 Desktop.ini
 # Derived fuzz corpora (generated from pinned vectors; not source)
 fuzz/corpus/
+
+# Derived ECDLP benchmark state (not source)
+state/

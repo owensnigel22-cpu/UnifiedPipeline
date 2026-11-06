@@ -21,6 +21,7 @@
 | ECDSA research implementation roadmap | [docs/IMPLEMENTATION_ROADMAP.md](docs/IMPLEMENTATION_ROADMAP.md) |
 | ECDSA research test strategy | [docs/TEST_STRATEGY.md](docs/TEST_STRATEGY.md) |
 | Coverage-guided fuzzing of the parsers (Atheris, CI) | [docs/fuzzing.md](docs/fuzzing.md) |
+| ECDLP measurement harness (kangaroo over the full group; the wall) | [docs/research/ecdlp_benchmark.md](docs/research/ecdlp_benchmark.md) |
 | ECDSA research security and ethics positioning | [docs/SECURITY_POSITIONING.md](docs/SECURITY_POSITIONING.md) |
 | Official test-vector fixtures and provenance | [tests/vectors/README.md](tests/vectors/README.md) |
 
