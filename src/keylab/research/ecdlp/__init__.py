@@ -21,15 +21,23 @@ from keylab.research.ecdlp.backward_double_add import (
     point_halve,
     recover_via_backward,
 )
+from keylab.research.ecdlp.bsgs import baby_step_giant_step, recover_via_bsgs
 from keylab.research.ecdlp.kangaroo import pollard_kangaroo, recover_via_kangaroo
+from keylab.research.ecdlp.negation_map import pollard_kangaroo_symmetric
+from keylab.research.ecdlp.rho import pollard_rho, pollard_rho_dlog
 
 __all__ = [
     "HALF_SCALAR",
+    "baby_step_giant_step",
     "backward_step",
     "backward_traverse_to_identity",
     "cost_table",
     "point_halve",
     "pollard_kangaroo",
+    "pollard_kangaroo_symmetric",
+    "pollard_rho",
+    "pollard_rho_dlog",
     "recover_via_backward",
+    "recover_via_bsgs",
     "recover_via_kangaroo",
 ]
