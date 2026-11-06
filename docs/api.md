@@ -454,7 +454,7 @@ Backward double-and-add traversal for secp256k1 (educational).
 | `backward_traverse_to_identity` | `backward_traverse_to_identity(point: 'Point', max_depth: 'int') -> 'dict[str, object]'` | Breadth-first reverse the ladder from ``point``, seeking the path to infinity. |
 | `cost_table` | `cost_table() -> 'list[tuple[int, int, str]]'` | Return ``(scalar_bits, 2**bits leaves, feasibility)`` rows for the honest wall. |
 | `HALF_SCALAR` | `HALF_SCALAR = int` |  |
-| `MAX_DEPTH` | `MAX_DEPTH = 64` |  |
+| `MAX_DEPTH` | `MAX_DEPTH = 18` |  |
 | `point_halve` | `point_halve(point: 'Point') -> 'Point'` | Return the unique P with ``2P == point`` (``((N+1)/2)*point``); ``None`` stays ``None``. |
 | `recover_via_backward` | `recover_via_backward(point: 'Point', max_depth: 'int') -> 'dict[str, object]'` | Recover the scalar behind ``point`` by backward traversal, verifying ``k*G == point``. |
 
@@ -466,7 +466,8 @@ Pollard's kangaroo (lambda) method for the bounded-interval ECDLP on secp256k1.
 
 | Name | Signature / value | Summary |
 |---|---|---|
-| `pollard_kangaroo` | `pollard_kangaroo(point: 'Point', lo: 'int', hi: 'int', *, max_steps: 'int \| None' = None) -> 'int \| None'` | Recover ``k`` in ``[lo, hi]`` with ``k*G == point`` via Pollard's kangaroo. |
+| `KangarooResult` | `class KangarooResult(solution: 'int \| None', spent_steps: 'int', dps_found: 'int', memory_peak_bytes: 'int \| None', attempts_used: 'int') -> None` | State of a kangaroo run, returned when ``return_state=True``. |
+| `pollard_kangaroo` | `pollard_kangaroo(point: 'Point', lo: 'int', hi: 'int', *, max_steps: 'int \| None' = None, return_state: 'bool' = False, progress_callback: 'Callable[[int, int], None] \| None' = None, progress_every: 'int' = 100000) -> 'int \| None \| KangarooResult'` | Recover ``k`` in ``[lo, hi]`` with ``k*G == point`` via Pollard's kangaroo. |
 | `recover_via_kangaroo` | `recover_via_kangaroo(point: 'Point', lo: 'int', hi: 'int', *, max_steps: 'int \| None' = None) -> 'dict[str, object]'` | Recover ``k`` in ``[lo, hi]`` and report timing, as a dict mirroring the backward API. |
 
 ## `keylab.research.hnp_lattice`
