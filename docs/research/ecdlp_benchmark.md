@@ -68,6 +68,33 @@ require on the order of `10^12` physical qubits at error rates not achievable
 today. **This is a wall, not a slowdown.** No budget, no number of walkers, and
 no amount of patience changes the exponent.
 
+## Distinguished-point (DP) variant
+
+`pollard_kangaroo` is the two-role distinguished-point kangaroo, not a single
+moving trap. A point is **distinguished** when the low `dp_bits` of its
+x-coordinate are zero, so a fraction `1/2**dp_bits` of points qualify. The
+*tame* role records every distinguished point it visits into a table (keyed by
+the point, storing the tame scalar); the *wild* role walks the same jump
+function and, once it merges onto the tame trajectory, lands on a recorded
+distinguished point. The collision gives `k = tame_scalar - wild_distance`,
+forward-verified before it is returned.
+
+**Why DP, if it is not faster?** It is not faster — the asymptotics are
+identical, `O(2·√width)`. What the DP table buys is:
+
+- **Bounded memory.** The table holds about `spent_steps / 2**dp_bits` points,
+  not one per hop. Measured at `dp_bits=8` over the full group: `dp_table_size /
+  spent_steps ≈ 0.0041`, matching the expected `1/2**8 = 0.0039`.
+- **Resumability.** `checkpoint_path` flushes the full walk state (positions,
+  table, counters) atomically to JSON; `resume_from` continues the identical
+  deterministic walk. A resumed run reaches the same `k` as one uninterrupted
+  run. This is single-process and signal-free — no SIGTERM handler, no
+  multiprocessing — so it behaves identically on every platform.
+
+Tune `dp_bits` for the memory/overhead trade-off: larger `dp_bits` means a
+smaller table but a longer expected gap before the wild role hits a recorded
+point. It does **not** change the number of hops to a solution.
+
 ## Misuse
 
 Pointing this harness at a public key whose private key you do not own is

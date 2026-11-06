@@ -15,6 +15,7 @@ from keylab.ec.secp256k1 import G, N, P, point_add_affine, point_negate_affine, 
 from keylab.research.ecdlp.backward_double_add import (
     HALF_SCALAR,
     MAX_DEPTH,
+    DeepTraversalWarning,
     backward_step,
     backward_traverse_to_identity,
     cost_table,
@@ -92,8 +93,10 @@ def test_leaves_explored_bounded_by_tree_size() -> None:
 
 # --- input validation ---------------------------------------------------------------------------
 
-@pytest.mark.parametrize("bad", [-1, MAX_DEPTH + 1, 2.0, "8", None])
+@pytest.mark.parametrize("bad", [-1, 0, 2.0, "8", None])
 def test_max_depth_is_validated(bad) -> None:
+    # Only max_depth < 1 raises ValueError; non-int raises TypeError. Deep (>=18)
+    # no longer raises -- it warns (see test_depth_above_cap_warns_not_raises).
     with pytest.raises((ValueError, TypeError)):
         backward_traverse_to_identity(scalar_mult(5, G), bad)
 
@@ -178,6 +181,12 @@ def test_recovery_20_random_k_per_depth(depth) -> None:
     _recover_20_random(depth)
 
 
-def test_depth_guard_above_cap_raises_citing_journal() -> None:
-    with pytest.raises(ValueError, match="SEC_STATE_JOURNAL.md"):
-        backward_traverse_to_identity(scalar_mult(5, G), 19)
+def test_depth_above_cap_warns_not_raises() -> None:
+    # The hard cap is gone: depth >= MAX_DEPTH now WARNS (DeepTraversalWarning,
+    # a UserWarning subclass, so filterwarnings does not escalate it) instead of
+    # raising. The warning fires before the BFS, and a tiny k (=5, found at depth
+    # 3) still recovers at once -- so the test never pays the 2**19 cost.
+    with pytest.warns(DeepTraversalWarning, match="SEC_STATE_JOURNAL.md"):
+        report = backward_traverse_to_identity(scalar_mult(5, G), 19)
+    assert report["found"] and report["k"] == 5
+    assert MAX_DEPTH == 18

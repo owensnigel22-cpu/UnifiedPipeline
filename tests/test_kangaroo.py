@@ -8,7 +8,13 @@ import time
 import pytest
 
 from keylab.ec.secp256k1 import G, N, scalar_mult
-from keylab.research.ecdlp.kangaroo import KangarooResult, pollard_kangaroo, recover_via_kangaroo
+from keylab.research.ecdlp.kangaroo import (
+    KangarooResult,
+    load_checkpoint,
+    pollard_kangaroo,
+    recover_via_kangaroo,
+    save_checkpoint,
+)
 
 
 def test_kangaroo_recovers_k_in_small_intervals() -> None:
@@ -109,3 +115,84 @@ def test_kangaroo_full_group_budget() -> None:
     assert isinstance(state, KangarooResult)
     assert state.solution is None
     assert state.spent_steps == 50_000
+
+
+# --- distinguished-point (DP) table variant --------------------------------------------------
+
+def test_kangaroo_dp_density_matches_dp_bits() -> None:
+    # The density check: dp_table_size / spent_steps must track 1/2**dp_bits.
+    # At dp_bits=8 that is ~0.0039; assert it lands in [1e-3, 1e-2]. Budget-bounded
+    # full-group walk (tame lays DPs, wild never reached), always-on (~2-4s).
+    state = pollard_kangaroo(
+        scalar_mult(123456, G), 0, N - 1, dp_bits=8, max_steps=100_000, return_state=True
+    )
+    assert isinstance(state, KangarooResult)
+    density = state.dp_table_size / state.spent_steps
+    assert 1e-3 <= density <= 1e-2, f"density {density} outside [1e-3, 1e-2]"
+    assert state.dps_found == state.dp_table_size  # dps_found mirrors the table
+    assert state.walkers_used == 1  # single process
+
+
+def test_kangaroo_dp_recovers_with_explicit_dp_bits() -> None:
+    # The DP table is the actual collision mechanism: recover a known k at an
+    # explicit DP density.
+    k = 0xABCDE  # < 2**20
+    assert pollard_kangaroo(scalar_mult(k, G), 0, 2**20, dp_bits=8) == k
+
+
+def test_kangaroo_rejects_bad_dp_bits() -> None:
+    for bad in (0, 257, 2.0, "8"):
+        with pytest.raises((ValueError, TypeError)):
+            pollard_kangaroo(scalar_mult(7, G), 1, 10, dp_bits=bad)  # type: ignore[arg-type]
+
+
+def test_kangaroo_result_exposes_dp_and_state_fields() -> None:
+    state = pollard_kangaroo(
+        scalar_mult(0xBEEF, G), 0, 2**20, dp_bits=8, max_steps=10**6, return_state=True
+    )
+    assert isinstance(state, KangarooResult)
+    assert state.solution == 0xBEEF
+    assert state.dp_table_size >= 1
+    assert state.last_hop == state.spent_steps
+    assert state.elapsed_sec >= 0.0
+    assert state.walkers_used == 1
+    assert state.checkpoint_path is None  # none requested
+
+
+# --- checkpointing (cross-platform; direct serialize/resume, no OS signal) -------------------
+
+def test_kangaroo_checkpoint_resume_roundtrip(tmp_path) -> None:
+    # A tiny budget flushes a resumable checkpoint without solving; resuming from
+    # it continues the identical deterministic walk and recovers the same k a
+    # single uninterrupted run finds. Cross-platform: no SIGTERM, no subprocess.
+    k = 7777
+    q = scalar_mult(k, G)
+    lo, hi = 0, 2**16
+    cp = tmp_path / "state.json"
+
+    partial = pollard_kangaroo(q, lo, hi, dp_bits=6, max_steps=50, return_state=True, checkpoint_path=cp)
+    assert isinstance(partial, KangarooResult)
+    assert partial.solution is None  # budget too small to collide
+    assert cp.is_file()
+    assert partial.checkpoint_path == str(cp)
+
+    resumed = pollard_kangaroo(q, lo, hi, dp_bits=6, max_steps=10**6, return_state=True, resume_from=cp)
+    assert isinstance(resumed, KangarooResult)
+    assert resumed.solution == k
+
+    direct = pollard_kangaroo(q, lo, hi, dp_bits=6, max_steps=10**6)
+    assert direct == k  # resume reaches the same answer as one uninterrupted run
+
+
+def test_save_load_checkpoint_roundtrip(tmp_path) -> None:
+    cp = tmp_path / "cp.json"
+    state = {"version": 1, "phase": "wild", "spent": 42, "dp_table": [[1, 2, "3"]]}
+    save_checkpoint(cp, state)
+    assert load_checkpoint(cp) == state
+
+
+def test_load_checkpoint_rejects_unknown_version(tmp_path) -> None:
+    cp = tmp_path / "bad.json"
+    save_checkpoint(cp, {"version": 999})
+    with pytest.raises(ValueError, match="checkpoint version"):
+        load_checkpoint(cp)

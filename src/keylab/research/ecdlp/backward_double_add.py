@@ -21,14 +21,24 @@ would not. It does not threaten any 256-bit key. See SECURITY.md.
 
 from __future__ import annotations
 
+import warnings
 from collections import deque
 from time import perf_counter
 
 from keylab.ec.halving import HALF_SCALAR, halve_point
 from keylab.ec.secp256k1 import G, Point, point_add_affine, point_negate_affine, scalar_mult
 
-# Past this the tree (2**depth nodes) explodes in time and memory on a CI runner
-# with no added pedagogical value; reject early. See SEC_STATE_JOURNAL.md depth-cap.
+
+class DeepTraversalWarning(UserWarning):
+    """Emitted when ``max_depth`` is deep enough that the 2**depth tree may exhaust
+    time/memory. A ``UserWarning`` subclass (not ``ResourceWarning``) so it is not
+    escalated to an error by the test suite's ``filterwarnings``; deep traversal is
+    *permitted with a warning*, not forbidden."""
+
+
+# At or beyond this depth the tree (2**depth nodes) can exhaust time/memory on a
+# CI runner with no added pedagogical value; we WARN (DeepTraversalWarning) but do
+# not cap -- deep runs are permitted, not refused. See SEC_STATE_JOURNAL.md depth-cap.
 MAX_DEPTH = 18
 
 
@@ -68,10 +78,16 @@ def backward_traverse_to_identity(point: Point, max_depth: int) -> dict[str, obj
     Bits are accumulated LSB-first: branch 0 leaves the bit clear, branch 1 sets
     bit ``depth``.
     """
-    if type(max_depth) is not int or not 0 <= max_depth <= MAX_DEPTH:
-        raise ValueError(
-            f"max_depth must be an int in [0, {MAX_DEPTH}]; above {MAX_DEPTH} the "
-            "2**depth tree explodes in time/memory (see SEC_STATE_JOURNAL.md depth-cap)"
+    if type(max_depth) is not int:
+        raise TypeError("max_depth must be an int")
+    if max_depth < 1:
+        raise ValueError("max_depth must be an int >= 1")
+    if max_depth >= MAX_DEPTH:
+        warnings.warn(
+            f"max_depth={max_depth} explores up to 2**{max_depth} nodes and may exhaust "
+            f"time/memory (see SEC_STATE_JOURNAL.md depth-cap); proceeding without a hard cap",
+            DeepTraversalWarning,
+            stacklevel=2,
         )
     start = perf_counter()
     minus_g = point_negate_affine(G)
@@ -124,6 +140,7 @@ def cost_table() -> list[tuple[int, int, str]]:
 __all__ = [
     "HALF_SCALAR",
     "MAX_DEPTH",
+    "DeepTraversalWarning",
     "backward_step",
     "backward_traverse_to_identity",
     "cost_table",

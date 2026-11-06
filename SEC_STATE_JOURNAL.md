@@ -136,3 +136,43 @@ Entry format:
 - Reason: this is the ECDLP wall, not a slowdown; no budget changes the exponent.
 - State change: measurement recorded; attain anchors 2^20=8,749 / 2^24=39,699 hops give fitted constant ~9.1·√width. walkback (brute force) depth 8 = 229 leaves / 5.6s, depth 12 = 4,005 leaves / 59.9s.
 - Reference: state/bounded_full_20261106T035846Z.json; docs/research/ecdlp_benchmark.md (wall section).
+
+## 2026-11-06 — M3: distinguished-point (DP) kangaroo — implemented, density verified
+- Kind: attempted
+- Action: replace the single moving-trap `pollard_kangaroo` with the two-role distinguished-point variant (`dp_bits` parameter; a point is distinguished when the low `dp_bits` of its x-coordinate are zero, density `1/2**dp_bits`). The tame role records every DP it visits into a table keyed by the point; the wild role walks the same jump function and collides on a recorded DP, yielding `k = tame_scalar - wild_distance` (forward-verified).
+- Outcome: complete (correctness + density).
+- Cost observed: density check at `dp_bits=8` over `[0, N-1]`, 100k–200k hop budget: `dp_table_size/spent_steps` = 0.004065 (200k) / ~0.0039 (100k), vs the theoretical `1/2**8 = 0.003906`. Within the [1e-3, 1e-2] acceptance band. Recovery of a known `k < 2**20` at `dp_bits=8` succeeds; all 15 prior kangaroo tests pass unmodified; 7 new DP/checkpoint tests added (22 total, ~11s always-on).
+- Cost extrapolated: full-group expected still ≈ 2·√n ≈ 2^129 hops. **The DP variant is not faster** — identical asymptotics; what changes is that table memory is bounded by `spent_steps/2**dp_bits` instead of by hop count, and a run is resumable.
+- Reason: bounded memory + resumability for long measurement runs; single-process (no multiprocessing) keeps it deterministic and cross-platform.
+- State change: `KangarooResult` extended with `dp_table_size`, `last_tame`, `last_wild`, `last_hop`, `elapsed_sec`, `walkers_used` (always 1), `checkpoint_path`; `dps_found` now mirrors `dp_table_size`. Supersedes the "dps_found 0 (single-trap kangaroo)" note in the 2026-11-06 bounded-full entry.
+- Reference: src/keylab/research/ecdlp/kangaroo.py; tests/test_kangaroo.py::test_kangaroo_dp_density_matches_dp_bits.
+
+## 2026-11-06 — M3: kangaroo checkpoint serialize/resume — cross-platform, no OS signal
+- Kind: attempted
+- Action: add `save_checkpoint` (atomic temp-file + `os.replace` + `fsync`) / `load_checkpoint` and `checkpoint_path` / `resume_from` parameters. The full resumable state (phase, tame/wild positions and distances, DP table, spent/offset/attempts) is serialized to JSON with big integers as strings.
+- Outcome: complete.
+- Cost observed: a 50-hop budget flushes a checkpoint without solving; resuming from it continues the identical deterministic walk and recovers the same `k=7777` that one uninterrupted run finds (spent 1729). Tested via direct serialize/resume calls, not via SIGTERM — so no POSIX-only signal test and no platform skip under the zero-skip CI gate.
+- Cost extrapolated: n/a — measured.
+- Reason: earlier plan used a SIGTERM handler (POSIX-only → win32 skip → fails the zero-skip gate) and `multiprocessing` (`Manager().dict()` under Windows spawn is nondeterministic/pickling-risky). Both dropped: single-process, signal-free, cross-platform.
+- State change: checkpoint round-trip is a first-class, always-on test on every CI cell.
+- Reference: src/keylab/research/ecdlp/kangaroo.py (save_checkpoint/load_checkpoint); tests/test_kangaroo.py::test_kangaroo_checkpoint_resume_roundtrip.
+
+## 2026-11-06 — M3: backward-traversal depth cap removed — warns, does not refuse
+- Kind: attempted
+- Action: replace the hard `MAX_DEPTH` cap (ValueError above 18) in `backward_traverse_to_identity` with a warning. Only `max_depth < 1` raises `ValueError`; non-int raises `TypeError`; `max_depth >= 18` emits `DeepTraversalWarning` and proceeds.
+- Outcome: complete.
+- Cost observed: the warning fires before the BFS, so a deep `max_depth` with a tiny `k` (e.g. 5, found at depth 3) still returns at once — the test never pays the 2^19 cost. `DeepTraversalWarning` is a `UserWarning` subclass, so the suite's `filterwarnings = error::ResourceWarning` does not escalate it.
+- Cost extrapolated: an actual depth-19 traversal of a 19-bit k is ~2^19 = 524k BFS nodes × 2 halvings ≈ minutes; depth-18 of the backward wall is unchanged.
+- Reason: earlier plan used `ResourceWarning`, which the test suite escalates to an error (conflict). Switched to a dedicated non-escalated `UserWarning` subclass; deep traversal is *permitted with a warning*, not forbidden. The `scripts/benchmark_ecdlp.py` harness keeps its own `--depth <= 18` budget guard (separate policy from the library).
+- State change: `MAX_DEPTH = 18` is now the warn threshold, not a cap. Supersedes the "MAX_DEPTH tightened 64 → 18 (guard cites this journal)" note in the 2026-11-05 20-random-k entry.
+- Reference: src/keylab/research/ecdlp/backward_double_add.py (DeepTraversalWarning); tests/test_backward_double_add.py::test_depth_above_cap_warns_not_raises.
+
+## 2026-11-06 — M3: honest framing of the DP variant — recorded
+- Kind: extrapolated
+- Action: state plainly what the DP work does and does not change.
+- Outcome: complete (framing).
+- Cost observed: n/a — framing of the measurements above.
+- Cost extrapolated: a 60s full-group run reaches ~2^-109 of the ~2^129 work whether single-trap or DP — identical.
+- Reason: the DP-table kangaroo is NOT faster than the single trap. Asymptotics are identical, O(2·√width). Removing the depth cap and (future) budget caps does not make deep runs feasible — it makes them *permitted*, with a warning. What the DP variant buys is bounded memory (table size ≈ spent/2**dp_bits) and resumability (checkpoint/resume), nothing more.
+- State change: none — documentation of intent, repeated in the kangaroo module docstring and docs/research/ecdlp_benchmark.md.
+- Reference: this journal; src/keylab/research/ecdlp/kangaroo.py module docstring.
