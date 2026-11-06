@@ -90,13 +90,27 @@ logarithm is just as unknown, and the recovery demonstrations require the
 specific leaked secrets their docstrings name (a reused nonce, or a
 non-hardened child private key plus the parent chain code).
 
-The `keylab.research.ecdlp` package is also educational. `backward_double_add` reverses
-the double-and-add ladder from a public key; this is **exactly the ECDLP**, costs
+The `keylab.research.ecdlp` package is also educational, and like the rest of
+`keylab.research.*` it exists for study only — none of it is selected by
+`scalar_mult`, signing, or verification. `backward_double_add` reverses the
+double-and-add ladder from a public key; this is **exactly the ECDLP**, costs
 `2**bit_length(k)`, and only resolves small, explicitly supplied scalars — it has
-no advantage over brute force and no bearing on real keys. `kangaroo` (Pollard's
-kangaroo) solves the *bounded-interval* ECDLP in ~`O(sqrt(width))`; a full 256-bit
-key would need ~`2**128` hops. Neither is selected by `scalar_mult`, signing, or
-verification, and every candidate they return is forward-verified (`k*G == Q`).
+no advantage over brute force and no bearing on real keys. Past depth 18 it emits
+a `DeepTraversalWarning` and proceeds (deep traversal is permitted with a warning,
+not capped). `halve_m` collapses *m* repeated halvings of a single point into one
+scalar multiplication; this is a convenience that does **not** apply to the
+branching traversal and gives no ECDLP shortcut.
+
+`kangaroo` is Pollard's kangaroo in its two-role **distinguished-point** form: it
+solves the *bounded-interval* ECDLP in ~`O(2*sqrt(width))` hops, with table memory
+bounded by the distinguished-point density, and a run can be checkpointed and
+resumed. The distinguished-point variant is **not faster** than a single moving
+trap — the asymptotics are identical; it only bounds memory and allows resuming.
+Passing the full group `[0, N-1]` makes it a full-group ECDLP attempt needing
+~`2**129` hops: a measured 60-second run reaches about `2**-109` of that work and
+stops. **This is a wall, not a slowdown** — no budget, number of walkers, or
+amount of patience changes the exponent. Every candidate these tools return is
+forward-verified (`k*G == Q`) before it is reported.
 
 ## Reporting a vulnerability
 
