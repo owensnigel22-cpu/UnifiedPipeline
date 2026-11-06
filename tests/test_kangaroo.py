@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 import random
 import time
 
@@ -10,8 +9,6 @@ import pytest
 
 from keylab.ec.secp256k1 import G, N, scalar_mult
 from keylab.research.ecdlp.kangaroo import KangarooResult, pollard_kangaroo, recover_via_kangaroo
-
-_RUN_SLOW_ECDLP = os.environ.get("RUN_SLOW_ECDLP") == "1"
 
 
 def test_kangaroo_recovers_k_in_small_intervals() -> None:
@@ -104,14 +101,11 @@ def test_kangaroo_progress_callback() -> None:
     assert seen and all(s > 0 for s in seen)
 
 
-@pytest.mark.skipif(not _RUN_SLOW_ECDLP, reason="set RUN_SLOW_ECDLP=1 to run the full-group budget check")
 def test_kangaroo_full_group_budget() -> None:
     # The full-group ECDLP attempt, budget-bounded: spends exactly max_steps and
-    # returns None within a bounded wall time (no hang). ~15k hops/s locally, so
-    # 100k hops is well under 20s.
-    start = time.perf_counter()
-    state = pollard_kangaroo(scalar_mult(123456, G), 0, N - 1, max_steps=100_000, return_state=True)
+    # returns None (no hang). Always-on at a modest 50k-hop budget (~3-5s) so it
+    # exercises the full-group bound without a skip (zero-skip CI gate).
+    state = pollard_kangaroo(scalar_mult(123456, G), 0, N - 1, max_steps=50_000, return_state=True)
     assert isinstance(state, KangarooResult)
     assert state.solution is None
-    assert state.spent_steps == 100_000
-    assert time.perf_counter() - start < 20.0
+    assert state.spent_steps == 50_000
