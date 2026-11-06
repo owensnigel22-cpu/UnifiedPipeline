@@ -116,3 +116,13 @@ Entry format:
 - Reason: 11.5 min always-on would blow the CI test budget; recovery correctness is already proven and the exponential shape is the lesson.
 - State change: always-on keeps depths {4,6} (~11s); depths {8,10,12} gated behind `RUN_SLOW_ECDLP=1`. `backward_traverse_to_identity` MAX_DEPTH tightened 64 → 18 (guard cites this journal).
 - Reference: tests/test_backward_double_add.py; SEC_M3_BACKWARD_ADD_PLAN.md §5.
+
+## 2026-11-05 — M3: pollard_kangaroo budget bug — fixed
+- Kind: attempted
+- Action: audit + fix of `max_steps` enforcement in `pollard_kangaroo`.
+- Outcome: complete
+- Cost observed: regression test `[0,2^30) max_steps=100` returns None in ~0.4s (would hang pre-fix); full-group `[0,N-1] max_steps=200k` returns None in ~13s (~15k hops/s).
+- Cost extrapolated: n/a — measured
+- Reason: `max_steps` only bounded the outer retry loop; `_run_once` ran its full ~2·√width tame walk before any budget check, so for widths where base_hops > max_steps (full secp256k1: base_hops ≈ 2^129) a budget-bounded call ran unbounded / hung. Docstring claimed max_steps capped total hops; code did not.
+- State change: budget now enforced inside the walk; `return_state=True` exposes spent_steps / dps_found (0, single-trap kangaroo) / memory_peak_bytes / attempts_used; `progress_callback` added for SIGTERM flush. Existing callers unchanged (default return path identical); all 10 existing kangaroo tests pass unmodified.
+- Reference: commit 32d1faf; tests/test_kangaroo.py::test_kangaroo_max_steps_bounds_inner_walk.
