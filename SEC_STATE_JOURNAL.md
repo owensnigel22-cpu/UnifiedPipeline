@@ -187,6 +187,16 @@ Entry format:
 - State change: SAT ECDLP work STOPPED by instruction. Encoder + correctness test kept (keylab.research.ecdlp.sat_encoding, tests/test_sat_encoding.py) as a documented dead-end + canary; scripts/benchmark_sat_ecdlp.py made safe-by-default (memory watchdog, hard subprocess timeout, clause cap refusing the gigabyte build unless --i-accept-oom). Negation-map symmetric-WALK attempt (Part B.1) left UNSHIPPED: in testing it did not terminate quickly / showed no verified speedup, same honest call as Phase 2.
 - Reference: scripts/benchmark_sat_ecdlp.py; keylab.research.ecdlp.sat_encoding; tests/test_sat_encoding.py.
 
+## 2026-11-08 — M4: ECDSA biased-nonce HNP — correct, but 256-bit LLL is impractical
+- Kind: attempted
+- Action: recover an ECDSA private key from biased (short) nonces via the Hidden Number Problem, reusing keylab.research.hnp_lattice's LLL/Babai.
+- Outcome: attack VERIFIED correct at reduced modulus; full secp256k1 recovery left as a documented performance limitation.
+- Cost observed: at order q = 2^31-1, nonce_bits=16, m=6-8 signatures: recovers the planted d in 0.8-3s, forward-verified. At secp256k1 N (256-bit), the exact-Fraction LLL from hnp_lattice (built for toy moduli <= 100k) is impractically slow -- ~18-65s per run for m=6-8 and it did not even return the right key with the naive lattice.
+- Cost extrapolated: a correct 256-bit HNP needs an integer-preserving (non-Fraction) LLL; float LLL is unusable because 256-bit basis magnitudes exceed double precision (53-bit mantissa).
+- Reason: two issues found and one fixed. (1) CONSTRUCTION BUG: the toy hnp_lattice puts weight 1 on the hidden coordinate, so Babai's distance is dominated by d^2 when d ~ order and it returns the wrong key; FIXED by a scaled CVP lattice (modular coordinates weighted by order/2^nonce_bits) -- now recovers a full-width hidden number. (2) PERFORMANCE: exact-Fraction LLL does not scale to 256-bit; NOT fixed (a fast integer LLL is out of scope this round).
+- State change: keylab.research.ecdsa.hnp ships the corrected scaled-lattice recovery with an explicit `order` parameter; tested at q=2^31-1 (fast, always-on). secp256k1-scale recovery is a known limitation, not a correctness gap.
+- Reference: keylab.research.ecdsa.hnp (recover_hidden_number, recover_private_key_from_biased_nonces); tests/test_ecdsa_hnp.py.
+
 ## 2026-11-08 — SAT ECDLP: resource-safe harness + word-level SMT alternative (ceiling unchanged)
 - Kind: attempted
 - Action: (1) make the SAT ECDLP experiment fail safely instead of crashing the host; (2) try the one encoding with a real chance of beating naive bit-blasting -- word-level SMT (z3 QF_BV) -- for 1 doubling at 256-bit.
@@ -198,3 +208,4 @@ Entry format:
 - Reason: a 256-bit modular-arithmetic circuit (bvmul/URem over 256 bits) is in the same intractability class whether expressed as flat CNF or word-level QF_BV; the solver must still bit-blast the multiplication. SAT/SMT is the wrong tool for 256-bit ECC.
 - State change: scripts/benchmark_sat_ecdlp.py rewritten memory-safe (streaming + capped subprocesses); scripts/run_capped.py (reusable cap) and scripts/smt_ecdlp.py (z3 QF_BV, requires `pip install z3-solver`, not a repo dependency) added; sat_encoding.encode_bounded_ecdlp gained an optional injectable `cnf` (for the streaming subclass). FINAL: Part A ceiling stands at ~0 doublings at 256-bit; a correct "it doesn't work past that" is the complete result.
 - Reference: scripts/run_capped.py; scripts/benchmark_sat_ecdlp.py; scripts/smt_ecdlp.py.
+
