@@ -39,6 +39,8 @@ CLI commands are listed by `keylab --help` and `keylab-advanced --help`;
 - [`keylab.research.ecdlp.sat_encoding`](#keylabresearchecdlpsat_encoding) — Research: SAT encoding of the bounded-range ECDLP (measured dead-end)
 - [`keylab.research.wif_recovery`](#keylabresearchwif_recovery) — Research: partial-WIF stride search (own-key recovery)
 - [`keylab.research.hnp_lattice`](#keylabresearchhnp_lattice) — Research: toy Hidden Number Problem lattice demonstration
+- [`keylab.research.hash_attacks.truncated_preimage`](#keylabresearchhash_attackstruncated_preimage) — Research: truncated SHA-256 pre-image (brute force)
+- [`keylab.research.hash_attacks.length_extension_demo`](#keylabresearchhash_attackslength_extension_demo) — Research: SHA-256 length-extension demonstration
 - [`keylab.research.ecdsa.nonce_reuse`](#keylabresearchecdsanonce_reuse) — Research: ECDSA nonce-reuse key recovery
 - [`keylab.research.ecdsa.nonce_recovery`](#keylabresearchecdsanonce_recovery) — Research: ECDSA nonce recovery from a known key
 - [`keylab.research.ecdsa.hnp`](#keylabresearchecdsahnp) — Research: ECDSA biased-nonce (HNP) key recovery
@@ -567,6 +569,30 @@ Synthetic, tiny-parameter Hidden Number Problem (HNP) lattice demonstration.
 | `SEED` | `SEED = 20261021` |  |
 | `TOY_Q` | `TOY_Q = 1009` |  |
 | `TOY_X` | `TOY_X = 37` |  |
+
+## `keylab.research.hash_attacks.truncated_preimage`
+
+Research: truncated SHA-256 pre-image (brute force).
+
+Brute-force pre-image of a *truncated* SHA-256 digest (educational).
+
+| Name | Signature / value | Summary |
+|---|---|---|
+| `find_truncated_preimage` | `find_truncated_preimage(target: 'bytes', *, bits: 'int', rounds: 'int' = 64, start: 'int' = 0, max_tries: 'int \| None' = None, workers: 'int' = 1) -> 'PreimageResult \| None'` | Search for a message whose digest matches ``target`` in its first ``bits`` bits. |
+| `MAX_BITS` | `MAX_BITS = 40` |  |
+| `PreimageResult` | `class PreimageResult(message: 'bytes', tries: 'int', bits: 'int', rounds: 'int') -> None` | A found truncated pre-image: ``message`` whose digest matches ``bits`` of the target. |
+| `truncated_prefix` | `truncated_prefix(digest: 'bytes', bits: 'int') -> 'int'` | Return the first ``bits`` bits of a 32-byte digest as an int (MSB-first). |
+
+## `keylab.research.hash_attacks.length_extension_demo`
+
+Research: SHA-256 length-extension demonstration.
+
+Merkle-Damgard length-extension demonstration (educational), reusing the core.
+
+| Name | Signature / value | Summary |
+|---|---|---|
+| `demonstrate_length_extension` | `demonstrate_length_extension(original_digest: 'bytes', known_message: 'bytes', secret_length: 'int', extension: 'bytes') -> 'LengthExtensionReport'` | Forge ``H(secret // known_message // glue // extension)`` from ``original_digest`` alone. |
+| `LengthExtensionReport` | `class LengthExtensionReport(forged_message: 'bytes', forged_digest: 'bytes', glue_padding: 'bytes', secret_used: 'bool', note: 'str') -> None` | Result of a forge: the extended message, its forged digest, and what was used. |
 
 ## `keylab.research.ecdsa.nonce_reuse`
 

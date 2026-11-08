@@ -209,3 +209,13 @@ Entry format:
 - State change: scripts/benchmark_sat_ecdlp.py rewritten memory-safe (streaming + capped subprocesses); scripts/run_capped.py (reusable cap) and scripts/smt_ecdlp.py (z3 QF_BV, requires `pip install z3-solver`, not a repo dependency) added; sat_encoding.encode_bounded_ecdlp gained an optional injectable `cnf` (for the streaming subclass). FINAL: Part A ceiling stands at ~0 doublings at 256-bit; a correct "it doesn't work past that" is the complete result.
 - Reference: scripts/run_capped.py; scripts/benchmark_sat_ecdlp.py; scripts/smt_ecdlp.py.
 
+
+## 2026-11-08 — M5: truncated SHA-256 pre-image + length extension (reduced/truncated scale)
+- Kind: attempted
+- Action: implement keylab.research.hash_attacks (truncated-digest pre-image brute force + Merkle-Damgard length-extension demo) with a resource-safe benchmark, under the lifted constraints (deps/skips/network allowed).
+- Outcome: complete; the pre-image wall measured and extrapolated, length extension reused and verified.
+- Cost observed: truncated pre-image cost tracks 2**bits (hashlib loop, in a capped subprocess): 16-bit 58,096 tries/0.14s, 20-bit 2,491,605/7.43s, 24-bit 16,175,767/48.15s, ~335k hashes/sec. Extrapolation: full 2**256 pre-image at 1e12 guesses/sec ~ 3.7e57 years (~10^60) -- the wall, labelled and never run. Length-extension forge verified by independent recompute hashlib.sha256(secret||forged_message) == forged_digest.
+- Cost extrapolated: see the wall above; bits hard-capped at 40 so no infeasible search is ever started.
+- Reason: accelerated hash backend evaluated and NOT shipped -- pycryptodome measured ~0.26x (3.8x SLOWER) than hashlib (OpenSSL C) in a tight loop (per-call object overhead), and the Python search loop is ~84% the bottleneck; the only real speedup is a native search kernel (Rust), out of scope for this educational tool. So no new accelerated dependency and no differential test (nothing faster to compare).
+- State change: keylab.research.hash_attacks shipped (find_truncated_preimage, demonstrate_length_extension reusing keylab.hashes.length_extension); scripts/benchmark_hash_preimage.py reuses scripts/run_capped.py (hard memory cap + timeout) + a psutil watchdog; heavy 24-bit test marked @pytest.mark.slow (deselected by default); pyproject registers the slow marker and adds `addopts = -m 'not slow'`. docs/hash_attacks.md states the 2**256 wall.
+- Reference: keylab.research.hash_attacks; scripts/benchmark_hash_preimage.py; docs/hash_attacks.md; tests/test_hash_attacks.py.

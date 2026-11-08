@@ -52,6 +52,8 @@ MODULES = (
     ("keylab.research.ecdlp.sat_encoding", "Research: SAT encoding of the bounded-range ECDLP (measured dead-end)"),
     ("keylab.research.wif_recovery", "Research: partial-WIF stride search (own-key recovery)"),
     ("keylab.research.hnp_lattice", "Research: toy Hidden Number Problem lattice demonstration"),
+    ("keylab.research.hash_attacks.truncated_preimage", "Research: truncated SHA-256 pre-image (brute force)"),
+    ("keylab.research.hash_attacks.length_extension_demo", "Research: SHA-256 length-extension demonstration"),
     ("keylab.research.ecdsa.nonce_reuse", "Research: ECDSA nonce-reuse key recovery"),
     ("keylab.research.ecdsa.nonce_recovery", "Research: ECDSA nonce recovery from a known key"),
     ("keylab.research.ecdsa.hnp", "Research: ECDSA biased-nonce (HNP) key recovery"),
