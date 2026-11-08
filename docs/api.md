@@ -38,6 +38,10 @@ CLI commands are listed by `keylab --help` and `keylab-advanced --help`;
 - [`keylab.research.ecdlp.sat_encoding`](#keylabresearchecdlpsat_encoding) — Research: SAT encoding of the bounded-range ECDLP (measured dead-end)
 - [`keylab.research.wif_recovery`](#keylabresearchwif_recovery) — Research: partial-WIF stride search (own-key recovery)
 - [`keylab.research.hnp_lattice`](#keylabresearchhnp_lattice) — Research: toy Hidden Number Problem lattice demonstration
+- [`keylab.research.ecdsa.nonce_reuse`](#keylabresearchecdsanonce_reuse) — Research: ECDSA nonce-reuse key recovery
+- [`keylab.research.ecdsa.hnp`](#keylabresearchecdsahnp) — Research: ECDSA biased-nonce (HNP) key recovery
+- [`keylab.research.ecdsa.nonce_preimage`](#keylabresearchecdsanonce_preimage) — Research: bounded ECDSA nonce pre-image recovery
+- [`keylab.research.schnorr_nonce_reuse`](#keylabresearchschnorr_nonce_reuse) — Research: BIP-340 Schnorr nonce-reuse key recovery
 - [`keylab.benchmarks`](#keylabbenchmarks) — Benchmarks
 - [API stability](#api-stability)
 
@@ -551,6 +555,48 @@ Synthetic, tiny-parameter Hidden Number Problem (HNP) lattice demonstration.
 | `SEED` | `SEED = 20261021` |  |
 | `TOY_Q` | `TOY_Q = 1009` |  |
 | `TOY_X` | `TOY_X = 37` |  |
+
+## `keylab.research.ecdsa.nonce_reuse`
+
+Research: ECDSA nonce-reuse key recovery.
+
+Recover an ECDSA private key from two signatures that reused one nonce.
+
+| Name | Signature / value | Summary |
+|---|---|---|
+| `recover_private_key_from_nonce_reuse` | `recover_private_key_from_nonce_reuse(r: 'int', s1: 'int', z1: 'int', s2: 'int', z2: 'int', *, public_key: 'Point \| None' = None) -> 'int \| None'` | Return the ECDSA private scalar ``d`` from a nonce-reuse pair, or ``None``. |
+
+## `keylab.research.ecdsa.hnp`
+
+Research: ECDSA biased-nonce (HNP) key recovery.
+
+Recover an ECDSA private key from biased (short) nonces via the Hidden Number Problem.
+
+| Name | Signature / value | Summary |
+|---|---|---|
+| `HNPResult` | `class HNPResult(recovered: 'int \| None', sufficient: 'bool', signatures_used: 'int', nonce_bits: 'int') -> None` | Outcome of an HNP recovery attempt. |
+| `recover_hidden_number` | `recover_hidden_number(multipliers: 'Sequence[int]', observations: 'Sequence[int]', *, modulus: 'int', nonce_bits: 'int') -> 'int \| None'` | Core HNP: recover ``x`` from ``obs_i = mult_i*x + e_i (mod modulus)``, ``\|e_i\| < 2**(nonce_bits-1)``. |
+| `recover_private_key_from_biased_nonces` | `recover_private_key_from_biased_nonces(signatures: 'Sequence[tuple[int, int, int]]', *, nonce_bits: 'int', order: 'int' = 115792089237316195423570985008687907852837564279074904382605163141518161494337, public_key: 'Point \| None' = None) -> 'HNPResult'` | Recover ``d`` from biased-nonce ECDSA signatures ``(r, s, z)`` modulo ``order``. |
+
+## `keylab.research.ecdsa.nonce_preimage`
+
+Research: bounded ECDSA nonce pre-image recovery.
+
+Recover a signature nonce confined to a bounded range (a nonce pre-image).
+
+| Name | Signature / value | Summary |
+|---|---|---|
+| `recover_nonce_in_range` | `recover_nonce_in_range(r: 'int', lo: 'int', hi: 'int', *, method: 'str' = 'bsgs', max_steps: 'int \| None' = None) -> 'int \| None'` | Return the nonce ``k`` in ``[lo, hi]`` whose point has ``x == r (mod N)``, or ``None``. |
+
+## `keylab.research.schnorr_nonce_reuse`
+
+Research: BIP-340 Schnorr nonce-reuse key recovery.
+
+Recover a BIP-340 (Schnorr) private key from two signatures that reused a nonce.
+
+| Name | Signature / value | Summary |
+|---|---|---|
+| `recover_private_key_from_schnorr_nonce_reuse` | `recover_private_key_from_schnorr_nonce_reuse(signature1: 'bytes', message1: 'bytes', signature2: 'bytes', message2: 'bytes', public_key_x: 'bytes') -> 'int \| None'` | Return the BIP-340 private scalar from a nonce-reuse pair, or ``None``. |
 
 ## `keylab.benchmarks`
 
