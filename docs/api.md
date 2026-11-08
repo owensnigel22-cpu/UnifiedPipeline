@@ -524,7 +524,7 @@ SAT encoding of the bounded-range ECDLP: find k in [L, U] with k*G == Q.
 | Name | Signature / value | Summary |
 |---|---|---|
 | `BoundedECDLPInstance` | `class BoundedECDLPInstance(formula: 'CNF', difference_bits: 'Bits', lower: 'int', steps: 'int') -> None` | A built CNF for k in [L, U] with k*G == Q, plus the bits to recover k. |
-| `encode_bounded_ecdlp` | `encode_bounded_ecdlp(*, p: 'int', width: 'int', base_point: 'CurvePoint', doubling_points: 'list[CurvePoint]', target: 'CurvePoint', lower: 'int', upper: 'int') -> 'BoundedECDLPInstance'` | Encode ``k*G == target`` for ``k in [lower, upper]`` as CNF. |
+| `encode_bounded_ecdlp` | `encode_bounded_ecdlp(*, p: 'int', width: 'int', base_point: 'CurvePoint', doubling_points: 'list[CurvePoint]', target: 'CurvePoint', lower: 'int', upper: 'int', cnf: 'CNF \| None' = None) -> 'BoundedECDLPInstance'` | Encode ``k*G == target`` for ``k in [lower, upper]`` as CNF. |
 | `SATEncodingStats` | `class SATEncodingStats(steps: 'int', variable_count: 'int', clause_count: 'int') -> None` | SATEncodingStats(steps: 'int', variable_count: 'int', clause_count: 'int') |
 
 ## `keylab.research.wif_recovery`
