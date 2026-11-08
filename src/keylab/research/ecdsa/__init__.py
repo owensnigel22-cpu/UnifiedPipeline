@@ -13,10 +13,12 @@ from __future__ import annotations
 
 from keylab.research.ecdsa.hnp import HNPResult, recover_private_key_from_biased_nonces
 from keylab.research.ecdsa.nonce_preimage import recover_nonce_in_range
+from keylab.research.ecdsa.nonce_recovery import recover_nonce_from_signature
 from keylab.research.ecdsa.nonce_reuse import recover_private_key_from_nonce_reuse
 
 __all__ = [
     "HNPResult",
+    "recover_nonce_from_signature",
     "recover_nonce_in_range",
     "recover_private_key_from_biased_nonces",
     "recover_private_key_from_nonce_reuse",

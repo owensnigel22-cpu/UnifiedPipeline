@@ -11,7 +11,9 @@ readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
 dependencies = [
-    "pycryptosat>=5.11"
+    "pycryptosat>=5.11",
+    "ecdsa>=0.19",
+    "psutil>=5.9"
 ]
 
 [project.optional-dependencies]
