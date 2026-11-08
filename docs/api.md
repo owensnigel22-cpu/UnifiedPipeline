@@ -32,6 +32,11 @@ CLI commands are listed by `keylab --help` and `keylab-advanced --help`;
 - [`keylab.ec.halving`](#keylabechalving) — Research: point halving
 - [`keylab.research.ecdlp.backward_double_add`](#keylabresearchecdlpbackward_double_add) — Research: backward double-and-add scalar recovery (ECDLP)
 - [`keylab.research.ecdlp.kangaroo`](#keylabresearchecdlpkangaroo) — Research: Pollard's kangaroo bounded-interval ECDLP
+- [`keylab.research.ecdlp.bsgs`](#keylabresearchecdlpbsgs) — Research: baby-step giant-step bounded-interval ECDLP
+- [`keylab.research.ecdlp.rho`](#keylabresearchecdlprho) — Research: Pollard's rho DLP (full-group; does not exploit the interval)
+- [`keylab.research.ecdlp.negation_map`](#keylabresearchecdlpnegation_map) — Research: negation-map symmetric kangaroo variant
+- [`keylab.research.ecdlp.sat_encoding`](#keylabresearchecdlpsat_encoding) — Research: SAT encoding of the bounded-range ECDLP (measured dead-end)
+- [`keylab.research.wif_recovery`](#keylabresearchwif_recovery) — Research: partial-WIF stride search (own-key recovery)
 - [`keylab.research.hnp_lattice`](#keylabresearchhnp_lattice) — Research: toy Hidden Number Problem lattice demonstration
 - [`keylab.benchmarks`](#keylabbenchmarks) — Benchmarks
 - [API stability](#api-stability)
@@ -472,6 +477,62 @@ Pollard's kangaroo (lambda) method for the bounded-interval ECDLP on secp256k1.
 | `pollard_kangaroo` | `pollard_kangaroo(point: 'Point', lo: 'int', hi: 'int', *, dp_bits: 'int \| None' = None, max_steps: 'int \| None' = None, return_state: 'bool' = False, progress_callback: 'Callable[[int, int], None] \| None' = None, progress_every: 'int' = 100000, checkpoint_path: 'str \| os.PathLike[str] \| None' = None, resume_from: 'str \| os.PathLike[str] \| None' = None) -> 'int \| None \| KangarooResult'` | Recover ``k`` in ``[lo, hi]`` with ``k*G == point`` via the DP kangaroo. |
 | `recover_via_kangaroo` | `recover_via_kangaroo(point: 'Point', lo: 'int', hi: 'int', *, dp_bits: 'int \| None' = None, max_steps: 'int \| None' = None) -> 'dict[str, object]'` | Recover ``k`` in ``[lo, hi]`` and report timing, as a dict mirroring the backward API. |
 | `save_checkpoint` | `save_checkpoint(path: 'str \| os.PathLike[str]', state: 'dict[str, Any]') -> 'None'` | Atomically write a resumable kangaroo state to ``path`` as JSON. |
+
+## `keylab.research.ecdlp.bsgs`
+
+Research: baby-step giant-step bounded-interval ECDLP.
+
+Baby-step giant-step (BSGS) for the bounded-interval ECDLP on secp256k1.
+
+| Name | Signature / value | Summary |
+|---|---|---|
+| `baby_step_giant_step` | `baby_step_giant_step(point: 'Point', lo: 'int', hi: 'int') -> 'int \| None'` | Return the unique ``k`` in ``[lo, hi]`` with ``k*G == point``, or ``None``. |
+| `recover_via_bsgs` | `recover_via_bsgs(point: 'Point', lo: 'int', hi: 'int') -> 'dict[str, object]'` | Recover ``k`` in ``[lo, hi]`` via BSGS and report timing, mirroring the kangaroo API. |
+
+## `keylab.research.ecdlp.rho`
+
+Research: Pollard's rho DLP (full-group; does not exploit the interval).
+
+Pollard's rho for the discrete-logarithm problem (educational).
+
+| Name | Signature / value | Summary |
+|---|---|---|
+| `pollard_rho` | `pollard_rho(point: 'Point', lo: 'int', hi: 'int', *, max_steps: 'int \| None' = None, return_state: 'bool' = False) -> 'int \| None \| RhoResult'` | Recover ``k`` in ``[lo, hi]`` with ``k*G == point`` via full-group Pollard rho. |
+| `pollard_rho_dlog` | `pollard_rho_dlog(add: 'Callable[[object, object], object]', base: 'object', target: 'object', order: 'int', *, hasher: 'Callable[[object], int]', max_steps: 'int \| None' = None, seed: 'int' = 1) -> 'int \| None'` | Return ``k`` with ``target == k*base`` in a cyclic group of prime ``order``. |
+| `RhoResult` | `class RhoResult(solution: 'int \| None', spent_steps: 'int', collisions: 'int', elapsed_sec: 'float') -> None` | State of a rho run (returned when ``return_state=True``). |
+
+## `keylab.research.ecdlp.negation_map`
+
+Research: negation-map symmetric kangaroo variant.
+
+Negation-map symmetry variant of the bounded-interval kangaroo (educational).
+
+| Name | Signature / value | Summary |
+|---|---|---|
+| `pollard_kangaroo_symmetric` | `pollard_kangaroo_symmetric(point: 'Point', lo: 'int', hi: 'int', *, dp_bits: 'int \| None' = None, max_steps: 'int \| None' = None) -> 'int \| None'` | Recover ``k`` in ``[lo, hi]`` with ``k*G == point`` using negation-map symmetry. |
+
+## `keylab.research.ecdlp.sat_encoding`
+
+Research: SAT encoding of the bounded-range ECDLP (measured dead-end).
+
+SAT encoding of the bounded-range ECDLP: find k in [L, U] with k*G == Q.
+
+| Name | Signature / value | Summary |
+|---|---|---|
+| `BoundedECDLPInstance` | `class BoundedECDLPInstance(formula: 'CNF', difference_bits: 'Bits', lower: 'int', steps: 'int') -> None` | A built CNF for k in [L, U] with k*G == Q, plus the bits to recover k. |
+| `encode_bounded_ecdlp` | `encode_bounded_ecdlp(*, p: 'int', width: 'int', base_point: 'CurvePoint', doubling_points: 'list[CurvePoint]', target: 'CurvePoint', lower: 'int', upper: 'int') -> 'BoundedECDLPInstance'` | Encode ``k*G == target`` for ``k in [lower, upper]`` as CNF. |
+| `SATEncodingStats` | `class SATEncodingStats(steps: 'int', variable_count: 'int', clause_count: 'int') -> None` | SATEncodingStats(steps: 'int', variable_count: 'int', clause_count: 'int') |
+
+## `keylab.research.wif_recovery`
+
+Research: partial-WIF stride search (own-key recovery).
+
+Partial-WIF stride search: recover an own key from a WIF with wildcard characters.
+
+| Name | Signature / value | Summary |
+|---|---|---|
+| `DEFAULT_MAX_CANDIDATES` | `DEFAULT_MAX_CANDIDATES = 500000` |  |
+| `recover_wif_from_template` | `recover_wif_from_template(template: 'str', *, wildcard: 'str' = '?', max_candidates: 'int' = 500000, expected_public_key: 'bytes \| None' = None) -> 'list[dict[str, object]]'` | Return every checksum-valid key matching a WIF ``template`` with ``wildcard`` chars. |
 
 ## `keylab.research.hnp_lattice`
 

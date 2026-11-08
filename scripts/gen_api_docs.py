@@ -45,6 +45,11 @@ MODULES = (
     ("keylab.ec.halving", "Research: point halving"),
     ("keylab.research.ecdlp.backward_double_add", "Research: backward double-and-add scalar recovery (ECDLP)"),
     ("keylab.research.ecdlp.kangaroo", "Research: Pollard's kangaroo bounded-interval ECDLP"),
+    ("keylab.research.ecdlp.bsgs", "Research: baby-step giant-step bounded-interval ECDLP"),
+    ("keylab.research.ecdlp.rho", "Research: Pollard's rho DLP (full-group; does not exploit the interval)"),
+    ("keylab.research.ecdlp.negation_map", "Research: negation-map symmetric kangaroo variant"),
+    ("keylab.research.ecdlp.sat_encoding", "Research: SAT encoding of the bounded-range ECDLP (measured dead-end)"),
+    ("keylab.research.wif_recovery", "Research: partial-WIF stride search (own-key recovery)"),
     ("keylab.research.hnp_lattice", "Research: toy Hidden Number Problem lattice demonstration"),
     ("keylab.benchmarks", "Benchmarks"),
 )
