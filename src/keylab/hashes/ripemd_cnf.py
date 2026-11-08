@@ -150,6 +150,159 @@ class RIPEMD160PreimageModel:
         return self.formula.to_dimacs()
 
 
+def _free_message_words(
+    cnf: CNF, message_length: int, false_literal: int
+) -> tuple[tuple[tuple[int, ...], ...], list[int]]:
+    """Build the 16 little-endian message words for a one-block padded message.
+
+    The first ``message_length`` bytes are fresh input variables; the rest are the
+    RIPEMD/MD-style padding constants. Returns ``(message_words, input_bits)``.
+    """
+    input_bits: list[int] = []
+    padded_bytes: list[tuple[int, ...]] = []
+    for byte_index in range(64):
+        if byte_index < message_length:
+            byte_bits = tuple(cnf.fresh_var() for _ in range(8))
+            input_bits.extend(byte_bits)
+            padded_bytes.append(byte_bits)
+        else:
+            if byte_index == message_length:
+                value = 0x80
+            elif byte_index >= 56:
+                value = (message_length * 8 >> (8 * (byte_index - 56))) & 0xFF
+            else:
+                value = 0
+            padded_bytes.append(
+                tuple(-false_literal if value & (1 << (7 - bit)) else false_literal for bit in range(8))
+            )
+    message_words = tuple(
+        tuple(
+            literal
+            for byte in padded_bytes[word_index * 4 : word_index * 4 + 4]
+            for literal in reversed(byte)
+        )
+        for word_index in range(16)
+    )
+    return message_words, input_bits
+
+
+@dataclass
+class RIPEMD160CollisionModel:
+    """CNF for a reduced-step collision: two distinct <=55-byte messages, equal digest."""
+
+    formula: CNF
+    input_bits_a: tuple[int, ...]
+    input_bits_b: tuple[int, ...]
+    message_length: int
+    steps: int
+
+    @property
+    def variable_count(self) -> int:
+        return self.formula.variable_count
+
+    @property
+    def clause_count(self) -> int:
+        return len(self.formula.clauses)
+
+    def _recover(self, bits: tuple[int, ...], assignments: dict[int, bool]) -> bytes:
+        values: list[int] = []
+        for offset in range(0, len(bits), 8):
+            byte = 0
+            for literal in bits[offset : offset + 8]:
+                if abs(literal) not in assignments:
+                    raise ValueError(f"solver assignment is missing variable {abs(literal)}")
+                byte = (byte << 1) | int(assignments[abs(literal)] == (literal > 0))
+            values.append(byte)
+        return bytes(values)
+
+    def recover_messages(self, assignments: dict[int, bool]) -> tuple[bytes, bytes]:
+        """Recover the two colliding messages (a, b) from a complete SAT assignment."""
+        return self._recover(self.input_bits_a, assignments), self._recover(self.input_bits_b, assignments)
+
+    def write_dimacs(self, stream: TextIO) -> None:
+        self.formula.write_dimacs(stream)
+
+    def to_dimacs(self) -> str:
+        return self.formula.to_dimacs()
+
+
+def ripemd160_collision_cnf(
+    *,
+    message_length: int,
+    steps: int,
+    difference: bytes | None = None,
+) -> RIPEMD160CollisionModel:
+    """Build a reduced-step RIPEMD-160 collision model: two distinct messages, equal digest.
+
+    ``steps`` is REQUIRED and names the round count under attack -- there is no
+    default to the full 80 rounds; this is reduced-round differential collision
+    search only, not a full-hash break. With ``difference`` given, message ``b`` is
+    ``a XOR difference`` (a signed message-level differential characteristic, the
+    encoding idea from eprint 2024/350 / 2026/1744); with ``difference=None`` the
+    two messages are independent and merely constrained to differ in >=1 bit.
+    """
+    if not 1 <= message_length <= 55:
+        raise ValueError("message_length must be between 1 and 55 bytes")
+    if type(steps) is not int or not 1 <= steps <= 80:
+        raise ValueError("steps is required and must be an int between 1 and 80 (never defaulted)")
+    if difference is not None and (len(difference) != message_length or not any(difference)):
+        raise ValueError("difference must be exactly message_length bytes and non-zero")
+
+    cnf = CNF()
+    false_literal = cnf.fresh_var()
+    cnf.add_clause(-false_literal)
+
+    words_a, input_bits_a = _free_message_words(cnf, message_length, false_literal)
+
+    if difference is None:
+        words_b, input_bits_b = _free_message_words(cnf, message_length, false_literal)
+        # require the two messages to differ in at least one input bit
+        differ = [cnf.xor(a, b) for a, b in zip(input_bits_a, input_bits_b)]
+        cnf.add_clause(*differ)
+    else:
+        # b = a XOR difference (fixed message-level differential); b has no free vars
+        diff_bits = [
+            (difference[i // 8] >> (7 - (i % 8))) & 1 for i in range(len(input_bits_a))
+        ]
+        input_bits_b = [a if d == 0 else -a for a, d in zip(input_bits_a, diff_bits)]  # type: ignore[assignment]
+        # rebuild b's message words from the (possibly negated) a-literals
+        b_bytes: list[tuple[int, ...]] = []
+        for off in range(0, len(input_bits_b), 8):
+            b_bytes.append(tuple(input_bits_b[off : off + 8]))
+        padded_b: list[tuple[int, ...]] = list(b_bytes)
+        for byte_index in range(message_length, 64):
+            if byte_index == message_length:
+                value = 0x80
+            elif byte_index >= 56:
+                value = (message_length * 8 >> (8 * (byte_index - 56))) & 0xFF
+            else:
+                value = 0
+            padded_b.append(
+                tuple(-false_literal if value & (1 << (7 - bit)) else false_literal for bit in range(8))
+            )
+        words_b = tuple(
+            tuple(lit for byte in padded_b[w * 4 : w * 4 + 4] for lit in reversed(byte))
+            for w in range(16)
+        )
+
+    initial_state = tuple(_constant_word(value, false_literal) for value in _IV)
+    out_a = _compress(cnf, initial_state, words_a, steps, false_literal)
+    out_b = _compress(cnf, initial_state, words_b, steps, false_literal)
+    # equal digests: a_bit <-> b_bit for every output bit
+    for word_a, word_b in zip(out_a, out_b):
+        for lit_a, lit_b in zip(word_a, word_b):
+            cnf.add_clause(lit_a, -lit_b)
+            cnf.add_clause(-lit_a, lit_b)
+
+    return RIPEMD160CollisionModel(
+        formula=cnf,
+        input_bits_a=tuple(input_bits_a),
+        input_bits_b=tuple(input_bits_b),  # signed literals; _recover handles the sign
+        message_length=message_length,
+        steps=steps,
+    )
+
+
 def ripemd160_preimage_cnf(
     target: bytes,
     *,
