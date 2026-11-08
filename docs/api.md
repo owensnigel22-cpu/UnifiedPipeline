@@ -13,6 +13,7 @@ CLI commands are listed by `keylab --help` and `keylab-advanced --help`;
 - [`keylab.ec.secp256k1`](#keylabecsecp256k1) — secp256k1 arithmetic, backends, ECDSA, shared curve helpers
 - [`keylab.ec.sec1`](#keylabecsec1) — SEC1 and x-only public-key encodings
 - [`keylab.ec.schnorr`](#keylabecschnorr) — BIP-340 Schnorr signatures
+- [`keylab.ec.rfc6979`](#keylabecrfc6979) — RFC 6979 deterministic nonce via the ecdsa library
 - [`keylab.ec.musig2`](#keylabecmusig2) — BIP-327 MuSig2 key aggregation
 - [`keylab.ec.ecdsa_recovery`](#keylabececdsa_recovery) — ECDSA public-key recovery
 - [`keylab.ec.reference`](#keylabecreference) — Frozen textbook oracle for validating optimizations
@@ -39,6 +40,7 @@ CLI commands are listed by `keylab --help` and `keylab-advanced --help`;
 - [`keylab.research.wif_recovery`](#keylabresearchwif_recovery) — Research: partial-WIF stride search (own-key recovery)
 - [`keylab.research.hnp_lattice`](#keylabresearchhnp_lattice) — Research: toy Hidden Number Problem lattice demonstration
 - [`keylab.research.ecdsa.nonce_reuse`](#keylabresearchecdsanonce_reuse) — Research: ECDSA nonce-reuse key recovery
+- [`keylab.research.ecdsa.nonce_recovery`](#keylabresearchecdsanonce_recovery) — Research: ECDSA nonce recovery from a known key
 - [`keylab.research.ecdsa.hnp`](#keylabresearchecdsahnp) — Research: ECDSA biased-nonce (HNP) key recovery
 - [`keylab.research.ecdsa.nonce_preimage`](#keylabresearchecdsanonce_preimage) — Research: bounded ECDSA nonce pre-image recovery
 - [`keylab.research.schnorr_nonce_reuse`](#keylabresearchschnorr_nonce_reuse) — Research: BIP-340 Schnorr nonce-reuse key recovery
@@ -113,6 +115,16 @@ BIP-340 Schnorr signing and verification primitives for secp256k1.
 | `schnorr_verify` | `schnorr_verify(message: 'bytes', signature: 'bytes', public_key_x: 'bytes') -> 'bool'` | Verify a BIP-340 signature over a message of any length against an x-only key. |
 | `schnorr_verify_batch` | `schnorr_verify_batch(items: 'Sequence[tuple[bytes, bytes, bytes]]', *, coefficients: 'Sequence[int] \| None' = None) -> 'bool'` | Verify many BIP-340 signatures at once; equals the AND of individual verifies. |
 | `tagged_hash` | `tagged_hash(tag: 'str', message: 'bytes') -> 'bytes'` | Return ``SHA256(SHA256(tag) // SHA256(tag) // message)``. |
+
+## `keylab.ec.rfc6979`
+
+RFC 6979 deterministic nonce via the ecdsa library.
+
+RFC 6979 deterministic nonce generation via the reviewed ``ecdsa`` library.
+
+| Name | Signature / value | Summary |
+|---|---|---|
+| `generate_nonce` | `generate_nonce(order: 'int', d: 'int', hash_func: 'Callable[[bytes], object]', h: 'bytes') -> 'int'` | Return the RFC 6979 nonce ``k`` for private scalar ``d`` and message hash ``h``. |
 
 ## `keylab.ec.musig2`
 
@@ -565,6 +577,16 @@ Recover an ECDSA private key from two signatures that reused one nonce.
 | Name | Signature / value | Summary |
 |---|---|---|
 | `recover_private_key_from_nonce_reuse` | `recover_private_key_from_nonce_reuse(r: 'int', s1: 'int', z1: 'int', s2: 'int', z2: 'int', *, public_key: 'Point \| None' = None) -> 'int \| None'` | Return the ECDSA private scalar ``d`` from a nonce-reuse pair, or ``None``. |
+
+## `keylab.research.ecdsa.nonce_recovery`
+
+Research: ECDSA nonce recovery from a known key.
+
+Recover an ECDSA nonce from a signature when the private key is known.
+
+| Name | Signature / value | Summary |
+|---|---|---|
+| `recover_nonce_from_signature` | `recover_nonce_from_signature(r: 'int', s: 'int', h: 'int', d: 'int', *, order: 'int' = 115792089237316195423570985008687907852837564279074904382605163141518161494337) -> 'int'` | Return the nonce ``k = (h + r*d) * s^-1 mod order`` for a known key ``d``. |
 
 ## `keylab.research.ecdsa.hnp`
 
