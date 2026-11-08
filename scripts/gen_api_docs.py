@@ -54,6 +54,8 @@ MODULES = (
     ("keylab.research.hnp_lattice", "Research: toy Hidden Number Problem lattice demonstration"),
     ("keylab.research.hash_attacks.truncated_preimage", "Research: truncated SHA-256 pre-image (brute force)"),
     ("keylab.research.hash_attacks.length_extension_demo", "Research: SHA-256 length-extension demonstration"),
+    ("keylab.research.fault_attacks.rsa_crt", "Research: simulated Bellcore CRT-RSA fault attack"),
+    ("keylab.research.fault_attacks.ecdsa_fault", "Research: simulated Bellcore ECDSA fault attack"),
     ("keylab.research.ecdsa.nonce_reuse", "Research: ECDSA nonce-reuse key recovery"),
     ("keylab.research.ecdsa.nonce_recovery", "Research: ECDSA nonce recovery from a known key"),
     ("keylab.research.ecdsa.hnp", "Research: ECDSA biased-nonce (HNP) key recovery"),

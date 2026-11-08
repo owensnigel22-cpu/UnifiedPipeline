@@ -41,6 +41,8 @@ CLI commands are listed by `keylab --help` and `keylab-advanced --help`;
 - [`keylab.research.hnp_lattice`](#keylabresearchhnp_lattice) — Research: toy Hidden Number Problem lattice demonstration
 - [`keylab.research.hash_attacks.truncated_preimage`](#keylabresearchhash_attackstruncated_preimage) — Research: truncated SHA-256 pre-image (brute force)
 - [`keylab.research.hash_attacks.length_extension_demo`](#keylabresearchhash_attackslength_extension_demo) — Research: SHA-256 length-extension demonstration
+- [`keylab.research.fault_attacks.rsa_crt`](#keylabresearchfault_attacksrsa_crt) — Research: simulated Bellcore CRT-RSA fault attack
+- [`keylab.research.fault_attacks.ecdsa_fault`](#keylabresearchfault_attacksecdsa_fault) — Research: simulated Bellcore ECDSA fault attack
 - [`keylab.research.ecdsa.nonce_reuse`](#keylabresearchecdsanonce_reuse) — Research: ECDSA nonce-reuse key recovery
 - [`keylab.research.ecdsa.nonce_recovery`](#keylabresearchecdsanonce_recovery) — Research: ECDSA nonce recovery from a known key
 - [`keylab.research.ecdsa.hnp`](#keylabresearchecdsahnp) — Research: ECDSA biased-nonce (HNP) key recovery
@@ -593,6 +595,29 @@ Merkle-Damgard length-extension demonstration (educational), reusing the core.
 |---|---|---|
 | `demonstrate_length_extension` | `demonstrate_length_extension(original_digest: 'bytes', known_message: 'bytes', secret_length: 'int', extension: 'bytes') -> 'LengthExtensionReport'` | Forge ``H(secret // known_message // glue // extension)`` from ``original_digest`` alone. |
 | `LengthExtensionReport` | `class LengthExtensionReport(forged_message: 'bytes', forged_digest: 'bytes', glue_padding: 'bytes', secret_used: 'bool', note: 'str') -> None` | Result of a forge: the extended message, its forged digest, and what was used. |
+
+## `keylab.research.fault_attacks.rsa_crt`
+
+Research: simulated Bellcore CRT-RSA fault attack.
+
+Bellcore CRT-RSA fault attack (simulated).
+
+| Name | Signature / value | Summary |
+|---|---|---|
+| `CRTFaultResult` | `class CRTFaultResult(p: 'int', q: 'int', private_exponent: 'int') -> None` | Primes and private exponent recovered from a single faulty CRT-RSA signature. |
+| `recover_primes_from_crt_fault` | `recover_primes_from_crt_fault(correct_sig: 'int', faulty_sig: 'int', n: 'int', e: 'int' = 65537) -> 'CRTFaultResult \| None'` | Recover ``(p, q, d)`` from a correct and a single-branch-faulty CRT signature. |
+| `rsa_crt_sign` | `rsa_crt_sign(message: 'int', p: 'int', q: 'int', d_p: 'int', d_q: 'int', q_inv: 'int', *, fault_branch: 'str \| None' = None, fault_delta: 'int' = 1) -> 'int'` | CRT-RSA sign ``message`` under primes ``p, q`` (Garner recombination). |
+
+## `keylab.research.fault_attacks.ecdsa_fault`
+
+Research: simulated Bellcore ECDSA fault attack.
+
+Bellcore ECDSA fault attack (simulated).
+
+| Name | Signature / value | Summary |
+|---|---|---|
+| `ecdsa_sign_with_fault` | `ecdsa_sign_with_fault(digest: 'bytes', d: 'int', *, fault_delta: 'int \| None' = None) -> 'tuple[int, int]'` | Sign ``digest`` under key ``d`` (raw, no low-S), optionally glitching the point. |
+| `recover_private_key_from_ecdsa_fault` | `recover_private_key_from_ecdsa_fault(digest: 'bytes', r: 'int', s: 'int', r_faulty: 'int', s_faulty: 'int', *, public_key: 'Point \| None' = None) -> 'int \| None'` | Recover ``d`` from a correct ``(r, s)`` and a same-nonce faulty ``(r_f, s_f)``. |
 
 ## `keylab.research.ecdsa.nonce_reuse`
 
