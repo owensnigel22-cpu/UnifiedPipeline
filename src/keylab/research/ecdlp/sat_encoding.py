@@ -185,12 +185,15 @@ def encode_bounded_ecdlp(
     target: CurvePoint,
     lower: int,
     upper: int,
+    cnf: CNF | None = None,
 ) -> BoundedECDLPInstance:
     """Encode ``k*G == target`` for ``k in [lower, upper]`` as CNF.
 
     ``base_point`` is ``lower*G``; ``doubling_points[i]`` is ``2**i * G``; ``target``
     is ``Q``. ``steps = len(doubling_points)`` is the number of point-doubling
-    positions (the scale knob). The range is required and validated.
+    positions (the scale knob). The range is required and validated. A ``cnf`` may
+    be injected (e.g. a streaming subclass that writes clauses to disk) to bound
+    the encoder's memory; a fresh :class:`~keylab.sat.cnf.CNF` is used otherwise.
     """
     if type(lower) is not int or type(upper) is not int:
         raise TypeError("lower and upper must be integers")
@@ -201,7 +204,8 @@ def encode_bounded_ecdlp(
     if steps < 1 or span >= (1 << steps):
         raise ValueError("doubling_points must cover the range: need span < 2**len(doubling_points)")
 
-    cnf = CNF()
+    if cnf is None:
+        cnf = CNF()
     difference_bits = tuple(cnf.fresh_var() for _ in range(steps))
     _assert_leq_constant(cnf, difference_bits, span)  # d <= upper - lower
 
