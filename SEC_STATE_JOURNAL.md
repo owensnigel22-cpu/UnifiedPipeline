@@ -176,3 +176,25 @@ Entry format:
 - Reason: the DP-table kangaroo is NOT faster than the single trap. Asymptotics are identical, O(2·√width). Removing the depth cap and (future) budget caps does not make deep runs feasible — it makes them *permitted*, with a warning. What the DP variant buys is bounded memory (table size ≈ spent/2**dp_bits) and resumability (checkpoint/resume), nothing more.
 - State change: none — documentation of intent, repeated in the kangaroo module docstring and docs/research/ecdlp_benchmark.md.
 - Reference: this journal; src/keylab/research/ecdlp/kangaroo.py module docstring.
+
+## 2026-11-08 — SAT encoding of bounded-range secp256k1 ECDLP — the ceiling (dead end)
+- Kind: attempted
+- Action: encode `k*G == Q` for `k in [L,U]` as CNF over full 256-bit secp256k1 field arithmetic (double-and-add with per-step modular add/mul/inverse, built on keylab.sat.cnf), increasing the number of point-doubling steps, and attempt to solve with kissat.
+- Outcome: failed (expected) — intractable at full width; **ceiling ~0 doublings at 256-bit**.
+- Cost observed: encoder VERIFIED correct on a toy curve (F_1009, ~65k clauses): solver recovers known k, forward-verified, in seconds. On secp256k1 (width=256): steps=1 → 1,803,251 vars / 8,003,631 clauses / build 32s / solve UNKNOWN (no termination; kissat ran ~145s, killed). steps=2 → 3,607,867 vars / 16,015,924 clauses / build 475s / solve UNKNOWN. (An accidentally-exceptional steps=1 instance returned UNSATISFIABLE fast via a local inv*0==1 contradiction — not a genuine solve.)
+- Cost extrapolated: clauses grow ~8M per doubling step; a full-range scalar (hundreds of doublings) would be billions of clauses / terabytes — never buildable, let alone solvable.
+- Reason: each doubling touches the full 256-bit modulus, so the field-arithmetic CNF dominates regardless of how narrow [L,U] is. SAT is the wrong tool for 256-bit ECC; this is a memory/clause blow-up, not a slow solve.
+- State change: SAT ECDLP work STOPPED by instruction. Encoder + correctness test kept (keylab.research.ecdlp.sat_encoding, tests/test_sat_encoding.py) as a documented dead-end + canary; scripts/benchmark_sat_ecdlp.py made safe-by-default (memory watchdog, hard subprocess timeout, clause cap refusing the gigabyte build unless --i-accept-oom). Negation-map symmetric-WALK attempt (Part B.1) left UNSHIPPED: in testing it did not terminate quickly / showed no verified speedup, same honest call as Phase 2.
+- Reference: scripts/benchmark_sat_ecdlp.py; keylab.research.ecdlp.sat_encoding; tests/test_sat_encoding.py.
+
+## 2026-11-08 — SAT ECDLP: resource-safe harness + word-level SMT alternative (ceiling unchanged)
+- Kind: attempted
+- Action: (1) make the SAT ECDLP experiment fail safely instead of crashing the host; (2) try the one encoding with a real chance of beating naive bit-blasting -- word-level SMT (z3 QF_BV) -- for 1 doubling at 256-bit.
+- Outcome: safety achieved; SMT does NOT change the ceiling. Ceiling remains ~0 doublings at 256-bit for both CNF and SMT.
+- Cost observed:
+  - SAFETY: clauses now STREAM to a DIMACS file (never an 8M-tuple list in RAM); every build/solve runs in a SUBPROCESS under a hard memory cap (Windows Job Object ProcessMemoryLimit / POSIX RLIMIT_AS, scripts/run_capped.py -- self-tested: a 2 GiB alloc under a 400 MiB cap dies with a clean MemoryError) plus a wall-clock timeout. Re-run under a 700 MiB cap (host had ~0.9 GiB free): steps=1 build OK and reproduced the exact counts (1,803,251 vars / 8,003,631 clauses -- caps change only how failure is handled); solve MEM-KILLED cleanly; steps=2 build MEM-KILLED cleanly. No host crash.
+  - SMT: z3 QF_BV encoding VERIFIED on the toy curve (status=sat, recovered k=3, 1.8s). secp256k1 1-doubling: status=UNKNOWN in ~8-9s at both 550 and 650 MiB z3 memory caps -- z3 bit-blasts the 256-bit modular multiply, hits the resource limit, and returns no answer. It did not beat the CNF route.
+- Cost extrapolated: n/a -- measured both ways.
+- Reason: a 256-bit modular-arithmetic circuit (bvmul/URem over 256 bits) is in the same intractability class whether expressed as flat CNF or word-level QF_BV; the solver must still bit-blast the multiplication. SAT/SMT is the wrong tool for 256-bit ECC.
+- State change: scripts/benchmark_sat_ecdlp.py rewritten memory-safe (streaming + capped subprocesses); scripts/run_capped.py (reusable cap) and scripts/smt_ecdlp.py (z3 QF_BV, requires `pip install z3-solver`, not a repo dependency) added; sat_encoding.encode_bounded_ecdlp gained an optional injectable `cnf` (for the streaming subclass). FINAL: Part A ceiling stands at ~0 doublings at 256-bit; a correct "it doesn't work past that" is the complete result.
+- Reference: scripts/run_capped.py; scripts/benchmark_sat_ecdlp.py; scripts/smt_ecdlp.py.
