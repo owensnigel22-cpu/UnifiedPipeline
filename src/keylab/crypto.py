@@ -80,13 +80,15 @@ def generate_rsa_keypair(bits: int = 2048, *, backend: str = "auto") -> RSAKeyMa
         from cryptography.hazmat.primitives import serialization
         from cryptography.hazmat.primitives.asymmetric import rsa
 
-        private_key = rsa.generate_private_key(public_exponent=65537, key_size=bits)
-        private_pem = private_key.private_bytes(
+        cryptography_private_key = rsa.generate_private_key(
+            public_exponent=65537, key_size=bits
+        )
+        private_pem = cryptography_private_key.private_bytes(
             serialization.Encoding.PEM,
             serialization.PrivateFormat.PKCS8,
             serialization.NoEncryption(),
         )
-        public_pem = private_key.public_key().public_bytes(
+        public_pem = cryptography_private_key.public_key().public_bytes(
             serialization.Encoding.PEM,
             serialization.PublicFormat.SubjectPublicKeyInfo,
         )
