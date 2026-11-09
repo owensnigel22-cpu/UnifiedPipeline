@@ -13,6 +13,7 @@ from keylab.verify.mainnet import (
 	ReadOnlyExplorerClient,
 	verify_p2wpkh_input,
 	verify_transaction_signatures,
+	verify_transactions_signatures_batch,
 )
 
 __all__ = [
@@ -20,4 +21,5 @@ __all__ = [
 	"ReadOnlyExplorerClient",
 	"verify_p2wpkh_input",
 	"verify_transaction_signatures",
+	"verify_transactions_signatures_batch",
 ]

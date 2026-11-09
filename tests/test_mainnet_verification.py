@@ -10,7 +10,11 @@ from typing import Any
 import httpx
 
 from keylab.encoding.transaction import TxOut, parse_transaction, serialize_transaction
-from keylab.verify import ReadOnlyExplorerClient, verify_transaction_signatures
+from keylab.verify import (
+    ReadOnlyExplorerClient,
+    verify_transaction_signatures,
+    verify_transactions_signatures_batch,
+)
 
 _VECTOR_PATH = Path(__file__).parent / "vectors" / "bip143_signing_vectors.json"
 _CASES = json.loads(_VECTOR_PATH.read_text(encoding="utf-8"))["cases"]
@@ -47,6 +51,9 @@ def test_mocked_fetch_parse_and_verify_known_bip143_transaction() -> None:
     assert len(parsed.inputs) == 1
     assert merkle_proof == {"block_height": 1, "pos": 0, "merkle": []}
     assert verify_transaction_signatures(raw_transaction, (_spent_output(),)) is True
+    assert verify_transactions_signatures_batch(
+        ((raw_transaction, (_spent_output(),)),), backend="python"
+    ) is True
     assert requests == [
         ("GET", f"/api/tx/{_TXID}/hex"),
         ("GET", f"/api/tx/{_TXID}/merkle-proof"),
@@ -68,4 +75,8 @@ def test_tampered_bip143_witness_signature_fails_verification() -> None:
     assert not verify_transaction_signatures(
         serialize_transaction(tampered_transaction),
         (_spent_output(),),
+    )
+    assert not verify_transactions_signatures_batch(
+        ((serialize_transaction(tampered_transaction), (_spent_output(),)),),
+        backend="python",
     )
