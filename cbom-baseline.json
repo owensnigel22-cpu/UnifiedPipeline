@@ -1,0 +1,5977 @@
+{
+  "$schema": "http://cyclonedx.org/schema/bom-1.6.schema.json",
+  "bomFormat": "CycloneDX",
+  "specVersion": "1.6",
+  "serialNumber": "urn:uuid:978c9dd3-76f6-4b82-8d2d-aec1bd9074ea",
+  "version": 1,
+  "metadata": {
+    "timestamp": "2026-11-09T18:43:13+00:00",
+    "tools": {
+      "components": [
+        {
+          "type": "application",
+          "name": "pqcheck",
+          "version": "0.1.0"
+        }
+      ]
+    }
+  },
+  "components": [
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-0",
+      "name": "SHA-256",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "dashboard/storage.py",
+            "line": 33
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "hash"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-safe"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-1",
+      "name": "SHA-256",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "fuzz/corpus_seed.py",
+            "line": 124
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "hash"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-safe"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-2",
+      "name": "SHA-256",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "scripts/benchmark_ecc.py",
+            "line": 82
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "hash"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-safe"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-3",
+      "name": "SHA-256",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "scripts/benchmark_ecc.py",
+            "line": 84
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "hash"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-safe"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-4",
+      "name": "SHA-256",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "scripts/benchmark_ecc.py",
+            "line": 86
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "hash"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-safe"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-5",
+      "name": "SHA-256",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "scripts/benchmark_hash_preimage.py",
+            "line": 26
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "hash"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-safe"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-6",
+      "name": "SHA-256",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "scripts/benchmark_hash_preimage.py",
+            "line": 46
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "hash"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-safe"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-7",
+      "name": "SHA-256",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "scripts/vectors.py",
+            "line": 32
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "hash"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-safe"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-8",
+      "name": "SHA-256",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "src/keylab/advanced_suite.py",
+            "line": 140
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "hash"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-safe"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-9",
+      "name": "SHA-256",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "src/keylab/advanced_suite.py",
+            "line": 603
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "hash"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-safe"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-10",
+      "name": "SHA-256",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "src/keylab/advanced_suite.py",
+            "line": 694
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "hash"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-safe"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-11",
+      "name": "SHA-256",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "src/keylab/advanced_suite.py",
+            "line": 724
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "hash"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-safe"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-12",
+      "name": "SHA-256",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "src/keylab/advanced_suite.py",
+            "line": 725
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "hash"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-safe"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-13",
+      "name": "SHA-256",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "src/keylab/advanced_suite.py",
+            "line": 745
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "hash"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-safe"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-14",
+      "name": "SHA-256",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "src/keylab/advanced_suite.py",
+            "line": 767
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "hash"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-safe"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-15",
+      "name": "SHA-256",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "src/keylab/advanced_suite.py",
+            "line": 881
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "hash"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-safe"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-16",
+      "name": "SHA-256",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "src/keylab/advanced_suite.py",
+            "line": 954
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "hash"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-safe"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-17",
+      "name": "SHA-256",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "src/keylab/advanced_suite.py",
+            "line": 954
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "hash"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-safe"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-18",
+      "name": "RIPEMD-160",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "src/keylab/advanced_suite.py",
+            "line": 968
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "hash"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "0.70"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-vulnerable"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-19",
+      "name": "SHA-256",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "src/keylab/advanced_suite.py",
+            "line": 968
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "hash"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-safe"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-20",
+      "name": "SHA-256",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "src/keylab/advanced_suite.py",
+            "line": 971
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "hash"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-safe"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-21",
+      "name": "SHA-256",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "src/keylab/advanced_suite.py",
+            "line": 971
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "hash"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-safe"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-22",
+      "name": "SHA-256",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "src/keylab/advanced_suite.py",
+            "line": 1081
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "hash"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-safe"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-23",
+      "name": "SHA-256",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "src/keylab/advanced_suite.py",
+            "line": 1081
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "hash"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-safe"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-24",
+      "name": "SHA-256",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "src/keylab/advanced_suite.py",
+            "line": 1198
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "hash"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-safe"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-25",
+      "name": "SHA-256",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "src/keylab/advanced_suite.py",
+            "line": 1209
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "hash"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-safe"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-26",
+      "name": "CSPRNG",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "src/keylab/advanced_suite.py",
+            "line": 1255
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "drbg"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-safe"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-27",
+      "name": "SHA-256",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "src/keylab/advanced_suite.py",
+            "line": 1308
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "hash"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-safe"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-28",
+      "name": "SHA-256",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "src/keylab/advanced_suite.py",
+            "line": 1318
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "hash"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-safe"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-29",
+      "name": "SHA-256",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "src/keylab/advanced_suite.py",
+            "line": 1324
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "hash"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-safe"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-30",
+      "name": "CSPRNG",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "src/keylab/advanced_suite.py",
+            "line": 1326
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "drbg"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-safe"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-31",
+      "name": "SHA-256",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "src/keylab/advanced_suite.py",
+            "line": 1341
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "hash"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-safe"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-32",
+      "name": "SHA-256",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "src/keylab/advanced_suite.py",
+            "line": 1357
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "hash"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-safe"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-33",
+      "name": "SHA-256",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "src/keylab/advanced_suite.py",
+            "line": 1371
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "hash"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-safe"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-34",
+      "name": "SHA-256",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "src/keylab/advanced_suite.py",
+            "line": 1374
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "hash"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-safe"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-35",
+      "name": "CSPRNG",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "src/keylab/advanced_suite.py",
+            "line": 1375
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "drbg"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-safe"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-36",
+      "name": "SHA-256",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "src/keylab/advanced_suite.py",
+            "line": 1376
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "hash"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-safe"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-37",
+      "name": "SHA-256",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "src/keylab/advanced_suite.py",
+            "line": 1396
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "hash"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-safe"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-38",
+      "name": "SHA-256",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "src/keylab/advanced_suite.py",
+            "line": 1414
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "hash"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-safe"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-39",
+      "name": "SHA-256",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "src/keylab/advanced_suite.py",
+            "line": 1414
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "hash"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-safe"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-40",
+      "name": "SHA-256",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "src/keylab/benchmarks.py",
+            "line": 199
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "hash"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-safe"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-41",
+      "name": "CSPRNG",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "src/keylab/benchmarks.py",
+            "line": 407
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "drbg"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-safe"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-42",
+      "name": "SHA-256",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "src/keylab/benchmarks.py",
+            "line": 512
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "hash"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-safe"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-43",
+      "name": "SHA-256",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "src/keylab/benchmarks.py",
+            "line": 630
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "hash"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-safe"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-44",
+      "name": "SHA-256",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "src/keylab/benchmarks.py",
+            "line": 632
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "hash"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-safe"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-45",
+      "name": "SHA-256",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "src/keylab/benchmarks.py",
+            "line": 640
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "hash"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-safe"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-46",
+      "name": "SHA-256",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "src/keylab/cli.py",
+            "line": 280
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "hash"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-safe"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-47",
+      "name": "SHA-256",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "src/keylab/cli.py",
+            "line": 291
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "hash"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-safe"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-48",
+      "name": "SHA-256",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "src/keylab/cli.py",
+            "line": 302
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "hash"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-safe"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-49",
+      "name": "HMAC",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "src/keylab/crypto.py",
+            "line": 45
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "mac"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-safe"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-50",
+      "name": "HMAC",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "src/keylab/crypto.py",
+            "line": 49
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "mac"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-safe"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-51",
+      "name": "RSA",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "src/keylab/crypto.py",
+            "line": 83
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "pke"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-vulnerable"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-52",
+      "name": "RSA",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "src/keylab/crypto.py",
+            "line": 99
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "pke"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-vulnerable"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-53",
+      "name": "RSA",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "src/keylab/crypto.py",
+            "line": 124
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "pke",
+          "padding": "other"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-vulnerable"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-54",
+      "name": "SHA-256",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "src/keylab/crypto.py",
+            "line": 125
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "hash"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-safe"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-55",
+      "name": "SHA-256",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "src/keylab/crypto.py",
+            "line": 126
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "hash"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-safe"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-56",
+      "name": "RSA",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "src/keylab/crypto.py",
+            "line": 157
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "pke",
+          "padding": "other"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-vulnerable"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-57",
+      "name": "SHA-256",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "src/keylab/crypto.py",
+            "line": 158
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "hash"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-safe"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-58",
+      "name": "SHA-256",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "src/keylab/crypto.py",
+            "line": 159
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "hash"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-safe"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-59",
+      "name": "RSA",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "src/keylab/crypto.py",
+            "line": 185
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "pke",
+          "padding": "other"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-vulnerable"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-60",
+      "name": "SHA-256",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "src/keylab/crypto.py",
+            "line": 186
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "hash"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-safe"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-61",
+      "name": "SHA-256",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "src/keylab/crypto.py",
+            "line": 189
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "hash"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-safe"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-62",
+      "name": "SHA-256",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "src/keylab/crypto.py",
+            "line": 196
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "hash"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-safe"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-63",
+      "name": "RSA",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "src/keylab/crypto.py",
+            "line": 197
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "signature",
+          "padding": "other"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-vulnerable"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-64",
+      "name": "RSA",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "src/keylab/crypto.py",
+            "line": 222
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "pke",
+          "padding": "other"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-vulnerable"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-65",
+      "name": "SHA-256",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "src/keylab/crypto.py",
+            "line": 223
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "hash"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-safe"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-66",
+      "name": "SHA-256",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "src/keylab/crypto.py",
+            "line": 226
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "hash"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-safe"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-67",
+      "name": "RSA",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "src/keylab/crypto.py",
+            "line": 237
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "signature",
+          "padding": "other"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-vulnerable"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-68",
+      "name": "SHA-256",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "src/keylab/crypto.py",
+            "line": 238
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "hash"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-safe"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-69",
+      "name": "CSPRNG",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "src/keylab/ec/schnorr.py",
+            "line": 57
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "drbg"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-safe"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-70",
+      "name": "CSPRNG",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "src/keylab/ec/schnorr.py",
+            "line": 157
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "drbg"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-safe"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-71",
+      "name": "HMAC",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "src/keylab/ec/secp256k1.py",
+            "line": 843
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "mac"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-safe"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-72",
+      "name": "HMAC",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "src/keylab/ec/secp256k1.py",
+            "line": 844
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "mac"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-safe"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-73",
+      "name": "HMAC",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "src/keylab/ec/secp256k1.py",
+            "line": 845
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "mac"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-safe"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-74",
+      "name": "HMAC",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "src/keylab/ec/secp256k1.py",
+            "line": 846
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "mac"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-safe"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-75",
+      "name": "HMAC",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "src/keylab/ec/secp256k1.py",
+            "line": 848
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "mac"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-safe"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-76",
+      "name": "HMAC",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "src/keylab/ec/secp256k1.py",
+            "line": 852
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "mac"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-safe"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-77",
+      "name": "HMAC",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "src/keylab/ec/secp256k1.py",
+            "line": 853
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "mac"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-safe"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-78",
+      "name": "SHA-256",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "src/keylab/ec/validation.py",
+            "line": 78
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "hash"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-safe"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-79",
+      "name": "SHA-256",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "src/keylab/encoding/address.py",
+            "line": 18
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "hash"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-safe"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-80",
+      "name": "RIPEMD-160",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "src/keylab/encoding/address.py",
+            "line": 20
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "hash"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "0.70"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-vulnerable"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-81",
+      "name": "SHA-256",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "src/keylab/encoding/base58.py",
+            "line": 12
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "hash"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-safe"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-82",
+      "name": "SHA-256",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "src/keylab/encoding/base58.py",
+            "line": 12
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "hash"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-safe"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-83",
+      "name": "SHA-256",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "src/keylab/encoding/transaction.py",
+            "line": 163
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "hash"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-safe"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-84",
+      "name": "SHA-256",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "src/keylab/encoding/transaction.py",
+            "line": 167
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "hash"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-safe"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-85",
+      "name": "SHA-256",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "src/keylab/encoding/transaction.py",
+            "line": 167
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "hash"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-safe"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-86",
+      "name": "HMAC",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "src/keylab/hashes/mac.py",
+            "line": 13
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "mac"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-safe"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-87",
+      "name": "SHA-256",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "src/keylab/hashes/reduced.py",
+            "line": 274
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "hash"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-safe"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-88",
+      "name": "SHA-256",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "src/keylab/hashes/reduced.py",
+            "line": 487
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "hash"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-safe"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-89",
+      "name": "SHA-256",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "src/keylab/hashes/reduced.py",
+            "line": 522
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "hash"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-safe"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-90",
+      "name": "RIPEMD-160",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "src/keylab/hashes/reduced.py",
+            "line": 623
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "hash"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "0.70"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-vulnerable"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-91",
+      "name": "SHA-256",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "src/keylab/hashes/tagged.py",
+            "line": 12
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "hash"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-safe"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-92",
+      "name": "SHA-256",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "src/keylab/hashes/tagged.py",
+            "line": 18
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "hash"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-safe"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-93",
+      "name": "PBKDF2",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "src/keylab/hd.py",
+            "line": 55
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "kdf"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-safe"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-94",
+      "name": "HMAC",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "src/keylab/hd.py",
+            "line": 92
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "mac"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-safe"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-95",
+      "name": "HMAC",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "src/keylab/hd.py",
+            "line": 111
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "mac"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-safe"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-96",
+      "name": "HMAC",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "src/keylab/hd.py",
+            "line": 145
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "mac"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-safe"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-97",
+      "name": "HMAC",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "src/keylab/hd.py",
+            "line": 342
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "mac"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-safe"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-98",
+      "name": "CSPRNG",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "src/keylab/mnemonic.py",
+            "line": 46
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "drbg"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-safe"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-99",
+      "name": "SHA-256",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "src/keylab/mnemonic.py",
+            "line": 54
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "hash"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-safe"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-100",
+      "name": "PBKDF2",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "src/keylab/mnemonic.py",
+            "line": 136
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "kdf"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-safe"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-101",
+      "name": "CSPRNG",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "src/keylab/numtheory/rsa.py",
+            "line": 146
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "drbg"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-safe"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-102",
+      "name": "RIPEMD-160",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "src/keylab/psbt/signer.py",
+            "line": 49
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "hash"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "0.70"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-vulnerable"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-103",
+      "name": "SHA-256",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "src/keylab/psbt/signer.py",
+            "line": 49
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "hash"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-safe"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-104",
+      "name": "SHA-256",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "src/keylab/research/hash_attacks/truncated_preimage.py",
+            "line": 37
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "hash"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-safe"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-105",
+      "name": "RIPEMD-160",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "src/keylab/verify/mainnet/verification.py",
+            "line": 70
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "hash"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "0.70"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-vulnerable"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-106",
+      "name": "SHA-256",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "src/keylab/verify/mainnet/verification.py",
+            "line": 70
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "hash"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-safe"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-107",
+      "name": "SHA-256",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "tests/test_address.py",
+            "line": 57
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "hash"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-safe"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-108",
+      "name": "CSPRNG",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "tests/test_address.py",
+            "line": 66
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "drbg"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-safe"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-109",
+      "name": "SHA-256",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "tests/test_address.py",
+            "line": 70
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "hash"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-safe"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-110",
+      "name": "SHA-256",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "tests/test_advanced_suite.py",
+            "line": 32
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "hash"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-safe"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-111",
+      "name": "SHA-256",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "tests/test_advanced_suite.py",
+            "line": 41
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "hash"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-safe"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-112",
+      "name": "SHA-256",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "tests/test_advanced_suite_consolidation.py",
+            "line": 124
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "hash"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-safe"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-113",
+      "name": "SHA-256",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "tests/test_coincurve_ecdsa.py",
+            "line": 21
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "hash"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-safe"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-114",
+      "name": "SHA-256",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "tests/test_ecc_differential.py",
+            "line": 101
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "hash"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-safe"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-115",
+      "name": "SHA-256",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "tests/test_ecc_differential.py",
+            "line": 102
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "hash"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-safe"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-116",
+      "name": "SHA-256",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "tests/test_ecc_differential.py",
+            "line": 120
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "hash"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-safe"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-117",
+      "name": "SHA-256",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "tests/test_ecc_differential.py",
+            "line": 145
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "hash"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-safe"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-118",
+      "name": "SHA-256",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "tests/test_ecdsa_nonce_reuse.py",
+            "line": 20
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "hash"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-safe"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-119",
+      "name": "SHA-256",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "tests/test_ecdsa_recovery.py",
+            "line": 15
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "hash"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-safe"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-120",
+      "name": "SHA-256",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "tests/test_fault_attacks_ecdsa.py",
+            "line": 20
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "hash"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-safe"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-121",
+      "name": "SHA-256",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "tests/test_fault_attacks_rsa.py",
+            "line": 35
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "hash"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-safe"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-122",
+      "name": "SHA-256",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "tests/test_fault_attacks_rsa.py",
+            "line": 52
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "hash"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-safe"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-123",
+      "name": "SHA-256",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "tests/test_fault_attacks_rsa.py",
+            "line": 61
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "hash"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-safe"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-124",
+      "name": "SHA-256",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "tests/test_hash_attacks.py",
+            "line": 24
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "hash"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-safe"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-125",
+      "name": "SHA-256",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "tests/test_hash_attacks.py",
+            "line": 34
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "hash"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-safe"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-126",
+      "name": "SHA-256",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "tests/test_hash_attacks.py",
+            "line": 67
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "hash"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-safe"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-127",
+      "name": "SHA-256",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "tests/test_hash_attacks.py",
+            "line": 75
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "hash"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-safe"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-128",
+      "name": "SHA-256",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "tests/test_hash_attacks.py",
+            "line": 83
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "hash"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-safe"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-129",
+      "name": "SHA-256",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "tests/test_hash_attacks.py",
+            "line": 89
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "hash"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-safe"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-130",
+      "name": "SHA-256",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "tests/test_hash_attacks.py",
+            "line": 96
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "hash"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-safe"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-131",
+      "name": "RIPEMD-160",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "tests/test_hash_properties.py",
+            "line": 12
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "hash"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "0.70"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-vulnerable"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-132",
+      "name": "RIPEMD-160",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "tests/test_hash_properties.py",
+            "line": 20
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "hash"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "0.70"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-vulnerable"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-133",
+      "name": "SHA-256",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "tests/test_hashes.py",
+            "line": 77
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "hash"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-safe"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-134",
+      "name": "SHA-256",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "tests/test_hashes.py",
+            "line": 84
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "hash"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-safe"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-135",
+      "name": "SHA-256",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "tests/test_hashes.py",
+            "line": 105
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "hash"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-safe"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-136",
+      "name": "SHA-256",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "tests/test_hashes.py",
+            "line": 335
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "hash"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-safe"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-137",
+      "name": "SHA-256",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "tests/test_hashes.py",
+            "line": 358
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "hash"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-safe"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-138",
+      "name": "SHA-256",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "tests/test_hashes.py",
+            "line": 393
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "hash"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-safe"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-139",
+      "name": "SHA-256",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "tests/test_hashes.py",
+            "line": 518
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "hash"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-safe"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-140",
+      "name": "SHA-256",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "tests/test_hashes.py",
+            "line": 543
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "hash"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-safe"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-141",
+      "name": "RIPEMD-160",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "tests/test_hd.py",
+            "line": 43
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "hash"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "0.70"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-vulnerable"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-142",
+      "name": "SHA-256",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "tests/test_hd.py",
+            "line": 43
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "hash"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-safe"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-143",
+      "name": "SHA-256",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "tests/test_length_extension.py",
+            "line": 19
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "hash"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-safe"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-144",
+      "name": "SHA-256",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "tests/test_length_extension.py",
+            "line": 24
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "hash"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-safe"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-145",
+      "name": "SHA-256",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "tests/test_length_extension.py",
+            "line": 51
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "hash"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-safe"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-146",
+      "name": "SHA-256",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "tests/test_length_extension.py",
+            "line": 68
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "hash"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-safe"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-147",
+      "name": "SHA-256",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "tests/test_length_extension.py",
+            "line": 70
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "hash"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-safe"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-148",
+      "name": "HMAC",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "tests/test_mac.py",
+            "line": 11
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "mac"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-safe"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-149",
+      "name": "HMAC",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "tests/test_mac.py",
+            "line": 26
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "mac"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-safe"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-150",
+      "name": "SHA-256",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "tests/test_mnemonic.py",
+            "line": 40
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "hash"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-safe"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-151",
+      "name": "CSPRNG",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "tests/test_mnemonic.py",
+            "line": 73
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "drbg"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-safe"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-152",
+      "name": "RIPEMD-160",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "tests/test_psbt_signer.py",
+            "line": 50
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "hash"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "0.70"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-vulnerable"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-153",
+      "name": "SHA-256",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "tests/test_psbt_signer.py",
+            "line": 50
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "hash"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-safe"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-154",
+      "name": "SHA-256",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "tests/test_rfc6979_nonce.py",
+            "line": 20
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "hash"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-safe"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-155",
+      "name": "SHA-256",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "tests/test_secp256k1.py",
+            "line": 89
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "hash"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-safe"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-156",
+      "name": "SHA-256",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "tests/test_secp256k1.py",
+            "line": 101
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "hash"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-safe"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-157",
+      "name": "SHA-256",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "tests/test_secp256k1.py",
+            "line": 117
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "hash"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-safe"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-158",
+      "name": "SHA-256",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "tests/test_secp256k1.py",
+            "line": 118
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "hash"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-safe"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-159",
+      "name": "SHA-256",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "tests/test_secp256k1.py",
+            "line": 132
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "hash"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-safe"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-160",
+      "name": "SHA-256",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "tests/test_secp256k1.py",
+            "line": 133
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "hash"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-safe"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-161",
+      "name": "SHA-256",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "tests/test_sha256_feedforward.py",
+            "line": 16
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "hash"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-safe"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-162",
+      "name": "SHA-256",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "tests/test_taproot_bip341.py",
+            "line": 128
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "hash"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-safe"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-163",
+      "name": "SHA-256",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "tests/test_verify_mainnet_live.py",
+            "line": 27
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "hash"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-safe"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-164",
+      "name": "SHA-256",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "tests/test_verify_mainnet_live.py",
+            "line": 28
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "hash"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-safe"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "finding-165",
+      "name": "SHA-256",
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "tests/test_verify_mainnet_live.py",
+            "line": 29
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "hash"
+        }
+      },
+      "properties": [
+        {
+          "name": "pqcheck:detector_id",
+          "value": "python-ast"
+        },
+        {
+          "name": "pqcheck:confidence",
+          "value": "1.00"
+        },
+        {
+          "name": "pqcheck:quantum_risk",
+          "value": "quantum-safe"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "dep-0",
+      "name": "atheris",
+      "purl": "pkg:pypi/atheris",
+      "properties": [
+        {
+          "name": "pqcheck:ecosystem",
+          "value": "pypi"
+        },
+        {
+          "name": "pqcheck:declared_in",
+          "value": "pyproject.toml"
+        },
+        {
+          "name": "pqcheck:integrity_verified",
+          "value": "true"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "dep-1",
+      "name": "cdclkit",
+      "purl": "pkg:pypi/cdclkit",
+      "properties": [
+        {
+          "name": "pqcheck:ecosystem",
+          "value": "pypi"
+        },
+        {
+          "name": "pqcheck:declared_in",
+          "value": "pyproject.toml"
+        },
+        {
+          "name": "pqcheck:integrity_verified",
+          "value": "true"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "dep-2",
+      "name": "coincurve",
+      "purl": "pkg:pypi/coincurve",
+      "properties": [
+        {
+          "name": "pqcheck:ecosystem",
+          "value": "pypi"
+        },
+        {
+          "name": "pqcheck:declared_in",
+          "value": "pyproject.toml"
+        },
+        {
+          "name": "pqcheck:integrity_verified",
+          "value": "true"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "dep-3",
+      "name": "cryptography",
+      "purl": "pkg:pypi/cryptography",
+      "properties": [
+        {
+          "name": "pqcheck:ecosystem",
+          "value": "pypi"
+        },
+        {
+          "name": "pqcheck:declared_in",
+          "value": "pyproject.toml"
+        },
+        {
+          "name": "pqcheck:integrity_verified",
+          "value": "true"
+        },
+        {
+          "name": "pqcheck:introduces",
+          "value": "RSA,DSA,ECDSA,DH,ED25519,ED448,X25519,X448,AES,CHACHA20,3DES,RC4,MD5,SHA-1,SHA-224,SHA-256,SHA-384,SHA-512,SHA3-256,SHA3-384,SHA3-512,BLAKE2B,BLAKE2S,ML-KEM,ML-DSA"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "dep-4",
+      "name": "ecdsa",
+      "purl": "pkg:pypi/ecdsa",
+      "properties": [
+        {
+          "name": "pqcheck:ecosystem",
+          "value": "pypi"
+        },
+        {
+          "name": "pqcheck:declared_in",
+          "value": "pyproject.toml"
+        },
+        {
+          "name": "pqcheck:integrity_verified",
+          "value": "true"
+        },
+        {
+          "name": "pqcheck:introduces",
+          "value": "ECDSA"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "dep-5",
+      "name": "fastecdsa",
+      "purl": "pkg:pypi/fastecdsa",
+      "properties": [
+        {
+          "name": "pqcheck:ecosystem",
+          "value": "pypi"
+        },
+        {
+          "name": "pqcheck:declared_in",
+          "value": "pyproject.toml"
+        },
+        {
+          "name": "pqcheck:integrity_verified",
+          "value": "true"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "dep-6",
+      "name": "gmpy2",
+      "purl": "pkg:pypi/gmpy2",
+      "properties": [
+        {
+          "name": "pqcheck:ecosystem",
+          "value": "pypi"
+        },
+        {
+          "name": "pqcheck:declared_in",
+          "value": "pyproject.toml"
+        },
+        {
+          "name": "pqcheck:integrity_verified",
+          "value": "true"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "dep-7",
+      "name": "httpx",
+      "purl": "pkg:pypi/httpx",
+      "properties": [
+        {
+          "name": "pqcheck:ecosystem",
+          "value": "pypi"
+        },
+        {
+          "name": "pqcheck:declared_in",
+          "value": "pyproject.toml"
+        },
+        {
+          "name": "pqcheck:integrity_verified",
+          "value": "true"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "dep-8",
+      "name": "hypothesis",
+      "purl": "pkg:pypi/hypothesis",
+      "properties": [
+        {
+          "name": "pqcheck:ecosystem",
+          "value": "pypi"
+        },
+        {
+          "name": "pqcheck:declared_in",
+          "value": "pyproject.toml"
+        },
+        {
+          "name": "pqcheck:integrity_verified",
+          "value": "true"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "dep-9",
+      "name": "mypy",
+      "purl": "pkg:pypi/mypy",
+      "properties": [
+        {
+          "name": "pqcheck:ecosystem",
+          "value": "pypi"
+        },
+        {
+          "name": "pqcheck:declared_in",
+          "value": "pyproject.toml"
+        },
+        {
+          "name": "pqcheck:integrity_verified",
+          "value": "true"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "dep-10",
+      "name": "openai",
+      "purl": "pkg:pypi/openai",
+      "properties": [
+        {
+          "name": "pqcheck:ecosystem",
+          "value": "pypi"
+        },
+        {
+          "name": "pqcheck:declared_in",
+          "value": "pyproject.toml"
+        },
+        {
+          "name": "pqcheck:integrity_verified",
+          "value": "true"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "dep-11",
+      "name": "pandas",
+      "purl": "pkg:pypi/pandas",
+      "properties": [
+        {
+          "name": "pqcheck:ecosystem",
+          "value": "pypi"
+        },
+        {
+          "name": "pqcheck:declared_in",
+          "value": "pyproject.toml"
+        },
+        {
+          "name": "pqcheck:integrity_verified",
+          "value": "true"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "dep-12",
+      "name": "pandas-stubs",
+      "purl": "pkg:pypi/pandas-stubs",
+      "properties": [
+        {
+          "name": "pqcheck:ecosystem",
+          "value": "pypi"
+        },
+        {
+          "name": "pqcheck:declared_in",
+          "value": "pyproject.toml"
+        },
+        {
+          "name": "pqcheck:integrity_verified",
+          "value": "true"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "dep-13",
+      "name": "psutil",
+      "purl": "pkg:pypi/psutil",
+      "properties": [
+        {
+          "name": "pqcheck:ecosystem",
+          "value": "pypi"
+        },
+        {
+          "name": "pqcheck:declared_in",
+          "value": "pyproject.toml"
+        },
+        {
+          "name": "pqcheck:integrity_verified",
+          "value": "true"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "dep-14",
+      "name": "pycosat",
+      "purl": "pkg:pypi/pycosat",
+      "properties": [
+        {
+          "name": "pqcheck:ecosystem",
+          "value": "pypi"
+        },
+        {
+          "name": "pqcheck:declared_in",
+          "value": "pyproject.toml"
+        },
+        {
+          "name": "pqcheck:integrity_verified",
+          "value": "true"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "dep-15",
+      "name": "pycryptodome",
+      "purl": "pkg:pypi/pycryptodome",
+      "properties": [
+        {
+          "name": "pqcheck:ecosystem",
+          "value": "pypi"
+        },
+        {
+          "name": "pqcheck:declared_in",
+          "value": "pyproject.toml"
+        },
+        {
+          "name": "pqcheck:integrity_verified",
+          "value": "true"
+        },
+        {
+          "name": "pqcheck:introduces",
+          "value": "RSA,DSA,ECDSA,AES,DES,3DES,RC4,CHACHA20,MD5,SHA-1,SHA-256,SHA-384,SHA-512,SHA3-256,SHA3-384,SHA3-512,BLAKE2B,BLAKE2S"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "dep-16",
+      "name": "pycryptosat",
+      "purl": "pkg:pypi/pycryptosat",
+      "properties": [
+        {
+          "name": "pqcheck:ecosystem",
+          "value": "pypi"
+        },
+        {
+          "name": "pqcheck:declared_in",
+          "value": "pyproject.toml"
+        },
+        {
+          "name": "pqcheck:integrity_verified",
+          "value": "true"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "dep-17",
+      "name": "pytest",
+      "purl": "pkg:pypi/pytest",
+      "properties": [
+        {
+          "name": "pqcheck:ecosystem",
+          "value": "pypi"
+        },
+        {
+          "name": "pqcheck:declared_in",
+          "value": "pyproject.toml"
+        },
+        {
+          "name": "pqcheck:integrity_verified",
+          "value": "true"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "dep-18",
+      "name": "pytest-cov",
+      "purl": "pkg:pypi/pytest-cov",
+      "properties": [
+        {
+          "name": "pqcheck:ecosystem",
+          "value": "pypi"
+        },
+        {
+          "name": "pqcheck:declared_in",
+          "value": "pyproject.toml"
+        },
+        {
+          "name": "pqcheck:integrity_verified",
+          "value": "true"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "dep-19",
+      "name": "python-sat",
+      "purl": "pkg:pypi/python-sat",
+      "properties": [
+        {
+          "name": "pqcheck:ecosystem",
+          "value": "pypi"
+        },
+        {
+          "name": "pqcheck:declared_in",
+          "value": "pyproject.toml"
+        },
+        {
+          "name": "pqcheck:integrity_verified",
+          "value": "true"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "dep-20",
+      "name": "ruff",
+      "purl": "pkg:pypi/ruff",
+      "properties": [
+        {
+          "name": "pqcheck:ecosystem",
+          "value": "pypi"
+        },
+        {
+          "name": "pqcheck:declared_in",
+          "value": "pyproject.toml"
+        },
+        {
+          "name": "pqcheck:integrity_verified",
+          "value": "true"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "dep-21",
+      "name": "setuptools",
+      "purl": "pkg:pypi/setuptools",
+      "properties": [
+        {
+          "name": "pqcheck:ecosystem",
+          "value": "pypi"
+        },
+        {
+          "name": "pqcheck:declared_in",
+          "value": "pyproject.toml"
+        },
+        {
+          "name": "pqcheck:integrity_verified",
+          "value": "true"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "dep-22",
+      "name": "streamlit",
+      "purl": "pkg:pypi/streamlit",
+      "properties": [
+        {
+          "name": "pqcheck:ecosystem",
+          "value": "pypi"
+        },
+        {
+          "name": "pqcheck:declared_in",
+          "value": "pyproject.toml"
+        },
+        {
+          "name": "pqcheck:integrity_verified",
+          "value": "true"
+        }
+      ]
+    }
+  ]
+}

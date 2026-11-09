@@ -18,6 +18,8 @@ CLI commands are listed by `keylab --help` and `keylab-advanced --help`;
 - [`keylab.ec.ecdsa_recovery`](#keylabececdsa_recovery) — ECDSA public-key recovery
 - [`keylab.ec.reference`](#keylabecreference) — Frozen textbook oracle for validating optimizations
 - [`keylab.ec.validation`](#keylabecvalidation) — Differential validation against the reference
+- [`keylab.ec.coincurve_backend`](#keylabeccoincurve_backend) — Explicit native libsecp256k1 ECDSA adapters
+- [`keylab.ec.ecdh`](#keylabececdh) — secp256k1 ECDH reference and optional native backend
 - [`keylab.hd`](#keylabhd) — BIP-32/39/44/49/84/86 hierarchical deterministic keys
 - [`keylab.mnemonic`](#keylabmnemonic) — BIP-39 mnemonic generation, validation, seed derivation
 - [`keylab.encoding.taproot`](#keylabencodingtaproot) — BIP-341 Taproot outputs, script trees, key-path signing
@@ -37,6 +39,10 @@ CLI commands are listed by `keylab --help` and `keylab-advanced --help`;
 - [`keylab.research.ecdlp.rho`](#keylabresearchecdlprho) — Research: Pollard's rho DLP (full-group; does not exploit the interval)
 - [`keylab.research.ecdlp.negation_map`](#keylabresearchecdlpnegation_map) — Research: negation-map symmetric kangaroo variant
 - [`keylab.research.ecdlp.sat_encoding`](#keylabresearchecdlpsat_encoding) — Research: SAT encoding of the bounded-range ECDLP (measured dead-end)
+- [`keylab.research.cryptanalysis`](#keylabresearchcryptanalysis) — Small, bounded cryptanalysis demonstrations
+- [`keylab.research.cryptanalysis.mitm_ecdlp`](#keylabresearchcryptanalysismitm_ecdlp) — Research: memory-bounded meet-in-the-middle ECDLP
+- [`keylab.research.cryptanalysis.musig2_rogue_key`](#keylabresearchcryptanalysismusig2_rogue_key) — Research: MuSig2 rogue-key resistance demonstration
+- [`keylab.research.cryptanalysis.sha256_feedforward`](#keylabresearchcryptanalysissha256_feedforward) — Research: SHA-256 feed-forward boundary analysis
 - [`keylab.research.wif_recovery`](#keylabresearchwif_recovery) — Research: partial-WIF stride search (own-key recovery)
 - [`keylab.research.hnp_lattice`](#keylabresearchhnp_lattice) — Research: toy Hidden Number Problem lattice demonstration
 - [`keylab.research.hash_attacks.truncated_preimage`](#keylabresearchhash_attackstruncated_preimage) — Research: truncated SHA-256 pre-image (brute force)
@@ -48,6 +54,9 @@ CLI commands are listed by `keylab --help` and `keylab-advanced --help`;
 - [`keylab.research.ecdsa.hnp`](#keylabresearchecdsahnp) — Research: ECDSA biased-nonce (HNP) key recovery
 - [`keylab.research.ecdsa.nonce_preimage`](#keylabresearchecdsanonce_preimage) — Research: bounded ECDSA nonce pre-image recovery
 - [`keylab.research.schnorr_nonce_reuse`](#keylabresearchschnorr_nonce_reuse) — Research: BIP-340 Schnorr nonce-reuse key recovery
+- [`keylab.verify.mainnet`](#keylabverifymainnet) — Read-only mainnet transaction signature verification
+- [`keylab.verify.mainnet.client`](#keylabverifymainnetclient) — Read-only public explorer client
+- [`keylab.verify.mainnet.verification`](#keylabverifymainnetverification) — Bitcoin transaction signature verification
 - [`keylab.benchmarks`](#keylabbenchmarks) — Benchmarks
 - [API stability](#api-stability)
 
@@ -205,6 +214,30 @@ Differential validation of secp256k1 implementations against the frozen referenc
 | `NATIVE_BACKENDS` | `NATIVE_BACKENDS = ('coincurve', 'fastecdsa')` |  |
 | `PYTHON_STRATEGIES` | `PYTHON_STRATEGIES = tuple` |  |
 | `validate_all` | `validate_all(scalars: 'Iterable[int] \| None' = None) -> 'list[Mismatch]'` | Run every differential check; the gate for any arithmetic change. |
+
+## `keylab.ec.coincurve_backend`
+
+Explicit native libsecp256k1 ECDSA adapters.
+
+Explicit optional Coincurve adapters for secp256k1 ECDSA operations.
+
+| Name | Signature / value | Summary |
+|---|---|---|
+| `ecdsa_sign_digest_coincurve` | `ecdsa_sign_digest_coincurve(digest: 'bytes', private_scalar: 'int') -> 'tuple[int, int]'` | Sign a 32-byte digest with libsecp256k1 and return raw low-S ``(r, s)``. |
+| `ecdsa_sign_digest_python` | `ecdsa_sign_digest_python(digest: 'bytes', private_scalar: 'int') -> 'tuple[int, int]'` | Named pure-Python reference helper for backend differential tests. |
+| `ecdsa_verify_digest_coincurve` | `ecdsa_verify_digest_coincurve(digest: 'bytes', signature: 'tuple[int, int]', public_key: 'Point') -> 'bool'` | Verify a raw ECDSA signature with libsecp256k1; malformed input is false. |
+
+## `keylab.ec.ecdh`
+
+secp256k1 ECDH reference and optional native backend.
+
+ECDH shared-x derivation for secp256k1.
+
+| Name | Signature / value | Summary |
+|---|---|---|
+| `ecdh` | `ecdh(privkey: 'int', pubkey: 'Point \| bytes', *, backend: 'str' = 'auto') -> 'bytes'` | Compute a raw secp256k1 shared x-coordinate. |
+| `ecdh_coincurve` | `ecdh_coincurve(privkey: 'int', pubkey: 'Point \| bytes') -> 'bytes'` | Compute the raw shared x-coordinate through libsecp256k1 via Coincurve. |
+| `ecdh_reference` | `ecdh_reference(privkey: 'int', pubkey: 'Point \| bytes') -> 'bytes'` | Compute the secp256k1 ECDH shared x-coordinate using frozen Python math. |
 
 ## `keylab.hd`
 
@@ -543,6 +576,48 @@ SAT encoding of the bounded-range ECDLP: find k in [L, U] with k*G == Q.
 | `encode_bounded_ecdlp` | `encode_bounded_ecdlp(*, p: 'int', width: 'int', base_point: 'CurvePoint', doubling_points: 'list[CurvePoint]', target: 'CurvePoint', lower: 'int', upper: 'int', cnf: 'CNF \| None' = None) -> 'BoundedECDLPInstance'` | Encode ``k*G == target`` for ``k in [lower, upper]`` as CNF. |
 | `SATEncodingStats` | `class SATEncodingStats(steps: 'int', variable_count: 'int', clause_count: 'int') -> None` | SATEncodingStats(steps: 'int', variable_count: 'int', clause_count: 'int') |
 
+## `keylab.research.cryptanalysis`
+
+Small, bounded cryptanalysis demonstrations.
+
+Small, bounded demonstrations of cryptographic construction mechanics.
+
+| Name | Signature / value | Summary |
+|---|---|---|
+
+## `keylab.research.cryptanalysis.mitm_ecdlp`
+
+Research: memory-bounded meet-in-the-middle ECDLP.
+
+Memory-bounded meet-in-the-middle search over a bounded secp256k1 interval.
+
+| Name | Signature / value | Summary |
+|---|---|---|
+| `meet_in_the_middle_bounded` | `meet_in_the_middle_bounded(point: 'Point', lo: 'int', hi: 'int', *, max_steps: 'int \| None' = None, max_memory_entries: 'int' = 65536, max_seconds: 'float \| None' = None, return_state: 'bool' = False) -> 'int \| None \| MITMResult'` | Find ``k`` in ``[lo, hi]`` such that ``k*G == point`` using MITM. |
+| `MITMResult` | `class MITMResult(solution: 'int \| None', spent_steps: 'int', baby_steps: 'int', giant_steps: 'int', table_entries: 'int', search_complete: 'bool', stop_reason: 'str', elapsed_seconds: 'float') -> None` | Bounded MITM outcome, including explicit work and memory accounting. |
+
+## `keylab.research.cryptanalysis.musig2_rogue_key`
+
+Research: MuSig2 rogue-key resistance demonstration.
+
+Educational rogue-key demonstration using the repository's BIP-327 KeyAgg.
+
+| Name | Signature / value | Summary |
+|---|---|---|
+| `demonstrate_rogue_key_resistance` | `demonstrate_rogue_key_resistance(honest_secret: 'int', attacker_target_secret: 'int') -> 'RogueKeyDemonstration'` | Show the classic two-key rogue-key attack and BIP-327's defense. |
+| `RogueKeyDemonstration` | `class RogueKeyDemonstration(naive_aggregate: 'tuple[int, int]', rogue_target: 'tuple[int, int]', musig2_context: 'KeyAggContext', naive_attack_succeeds: 'bool', musig2_aggregate_matches_target_xonly: 'bool', key_agg_coefficients: 'tuple[int, int]') -> None` | Public results showing naive aggregation versus BIP-327 KeyAgg. |
+
+## `keylab.research.cryptanalysis.sha256_feedforward`
+
+Research: SHA-256 feed-forward boundary analysis.
+
+Directly unwind SHA-256's final Davies-Meyer feed-forward addition.
+
+| Name | Signature / value | Summary |
+|---|---|---|
+| `SHA256_IV` | `SHA256_IV = tuple` |  |
+| `unwind_feed_forward` | `unwind_feed_forward(final_hash: 'bytes \| Sequence[int]', iv: 'Sequence[int]' = (1779033703, 3144134277, 1013904242, 2773480762, 1359893119, 2600822924, 528734635, 1541459225)) -> 'tuple[int, ...]'` | Recover the pre-feed-forward 8-word compression state. |
+
 ## `keylab.research.wif_recovery`
 
 Research: partial-WIF stride search (own-key recovery).
@@ -670,6 +745,43 @@ Recover a BIP-340 (Schnorr) private key from two signatures that reused a nonce.
 | Name | Signature / value | Summary |
 |---|---|---|
 | `recover_private_key_from_schnorr_nonce_reuse` | `recover_private_key_from_schnorr_nonce_reuse(signature1: 'bytes', message1: 'bytes', signature2: 'bytes', message2: 'bytes', public_key_x: 'bytes') -> 'int \| None'` | Return the BIP-340 private scalar from a nonce-reuse pair, or ``None``. |
+
+## `keylab.verify.mainnet`
+
+Read-only mainnet transaction signature verification.
+
+Read-only mainnet linkage: fetch public chain data over TLS as data only.
+
+| Name | Signature / value | Summary |
+|---|---|---|
+| `DEFAULT_ALLOWLIST` | `DEFAULT_ALLOWLIST = ('https://mempool.space',)` |  |
+| `ReadOnlyExplorerClient` | `class ReadOnlyExplorerClient(allowlist: 'tuple[str, ...]' = ('https://mempool.space',), *, transport: 'httpx.BaseTransport \| None' = None, timeout: 'float' = 15.0) -> 'None'` | GET-only, TLS-1.2+, allow-listed client. Fetches bytes; verifies nothing. |
+| `verify_p2wpkh_input` | `verify_p2wpkh_input(tx: 'Transaction', input_index: 'int', spent_output: 'TxOut') -> 'bool'` | Verify one P2WPKH or P2SH-P2WPKH input against its supplied spent output. |
+| `verify_transaction_signatures` | `verify_transaction_signatures(raw_transaction: 'bytes', spent_outputs: 'Sequence[TxOut]') -> 'bool'` | Verify every input in a transaction using caller-supplied spent outputs. |
+| `verify_transactions_signatures_batch` | `verify_transactions_signatures_batch(transactions: 'Sequence[tuple[bytes, Sequence[TxOut]]]', *, backend: 'str' = 'auto', max_workers: 'int \| None' = None) -> 'bool'` | Verify caller-supplied transaction/input corpora concurrently. |
+
+## `keylab.verify.mainnet.client`
+
+Read-only public explorer client.
+
+Read-only HTTPS client for public block explorers (mempool.space by default).
+
+| Name | Signature / value | Summary |
+|---|---|---|
+| `DEFAULT_ALLOWLIST` | `DEFAULT_ALLOWLIST = ('https://mempool.space',)` |  |
+| `ReadOnlyExplorerClient` | `class ReadOnlyExplorerClient(allowlist: 'tuple[str, ...]' = ('https://mempool.space',), *, transport: 'httpx.BaseTransport \| None' = None, timeout: 'float' = 15.0) -> 'None'` | GET-only, TLS-1.2+, allow-listed client. Fetches bytes; verifies nothing. |
+
+## `keylab.verify.mainnet.verification`
+
+Bitcoin transaction signature verification.
+
+Local BIP-143 signature verification for P2WPKH input witnesses.
+
+| Name | Signature / value | Summary |
+|---|---|---|
+| `verify_p2wpkh_input` | `verify_p2wpkh_input(tx: 'Transaction', input_index: 'int', spent_output: 'TxOut') -> 'bool'` | Verify one P2WPKH or P2SH-P2WPKH input against its supplied spent output. |
+| `verify_transaction_signatures` | `verify_transaction_signatures(raw_transaction: 'bytes', spent_outputs: 'Sequence[TxOut]') -> 'bool'` | Verify every input in a transaction using caller-supplied spent outputs. |
+| `verify_transactions_signatures_batch` | `verify_transactions_signatures_batch(transactions: 'Sequence[tuple[bytes, Sequence[TxOut]]]', *, backend: 'str' = 'auto', max_workers: 'int \| None' = None) -> 'bool'` | Verify caller-supplied transaction/input corpora concurrently. |
 
 ## `keylab.benchmarks`
 

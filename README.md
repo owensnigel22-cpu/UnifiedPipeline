@@ -4,6 +4,64 @@
 > [SECURITY.md](SECURITY.md) first. Changes are listed in
 > [CHANGELOG.md](CHANGELOG.md).
 
+## Final architecture and scope
+
+KeyLab is a cryptography education and research project, not a way to recover
+keys for live funds. Across M1–M10, it delivers parser fuzzing; cryptographic
+policy helpers; bounded ECDLP and signature-attack experiments; reduced or
+truncated SHA-256 preimage and length-extension demonstrations; simulated
+Bellcore fault attacks; read-only mainnet transaction-signature verification;
+bounded meet-in-the-middle and related cryptanalysis examples; and optimized
+secp256k1/ECDH paths with optional native acceleration. Full-strength problems
+are measured, bounded, or explicitly marked infeasible rather than represented
+as practical attacks. The mainnet verifier checks public data; it does not
+spend funds or modify transactions.
+
+### The math walls
+
+- **secp256k1 ECDLP:** generic full-group attacks require on the order of
+  `2^128` group operations. This is not a feasible private-key search.
+- **Full SHA-256 preimage:** a generic search costs about `2^256` hash
+  evaluations; finding any collision costs about `2^128`. KeyLab's preimage
+  experiments use truncated or reduced-round variants.
+- **Bounded toy instances:** smaller intervals or deliberately weakened
+  parameters can be explored, but results do not scale into full-key recovery.
+
+### Installation
+
+From the `keylab` project directory, install the base package:
+
+```powershell
+python -m pip install .
+```
+
+For the optional `fast` extra, which installs Coincurve for native
+libsecp256k1-backed operations:
+
+```powershell
+python -m pip install ".[fast]"
+```
+
+## Release artifacts
+
+### API reference
+
+Regenerate the public API reference with `python scripts/gen_api_docs.py`.
+The generated Markdown is [docs/api.md](docs/api.md); the generator imports
+each listed module and renders its public API from `__all__`, signatures, and
+docstrings.
+
+### Cryptographic Bill of Materials
+
+The CycloneDX CBOM generator uses the separately pinned `pqcheck` tool
+(Python 3.12 or newer; it is not a KeyLab runtime dependency). Install it and
+generate the root artifact with:
+
+```powershell
+python -m pip install -r requirements-cbom.txt
+python scripts/gen_cbom.py
+```
+
 ## Documentation
 
 | Topic | Page |

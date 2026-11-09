@@ -238,3 +238,13 @@ Entry format:
 - Security: Python ECDH and signing remain variable-time. Coincurve adapters are explicit and do not silently fall back; the ECDH `auto` API intentionally follows the milestone contract by using Coincurve when installed and a documented variable-time Python fallback otherwise. Callers handling secrets should explicitly require Coincurve. The M7 collection verifies every input exactly; threading overhead may outweigh benefits for small input sets.
 - State change: added `[fast]` as an optional extra; added Coincurve to the existing native CI installation set; M10 remains unreviewed/unmerged pending complete validation.
 - Reference: `src/keylab/ec/ecdh.py`, `src/keylab/ec/coincurve_backend.py`, `src/keylab/verify/mainnet/verification.py`, `scripts/benchmark_ecc.py`.
+
+## 2026-11-09 — M11: Project Complete
+- Kind: attempted
+- Action: finalize the M1–M10 documentation and release artifacts; add the M9/M10 modules to the generated API reference; generate the CycloneDX 1.6 CBOM.
+- Outcome: complete.
+- Cost observed: Ruff passed with 0 errors; Mypy ratchet passed with 0 errors (baseline 0); full pytest suite passed (1956 passed, 14 skipped, 2 deselected); API-doc generation/check passed (50 focused tests passed); CBOM schema validation passed with 189 components.
+- Cost extrapolated: n/a — validation and artifact generation completed.
+- Reason: n/a.
+- State change: M1–M10 delivered; final architecture, math limits, and installation instructions recorded in the README; `docs/api.md` and `cbom-baseline.json` generated. This entry supersedes the provisional M10 status above.
+- Reference: `README.md`, `docs/api.md`, `scripts/gen_api_docs.py`, `scripts/gen_cbom.py`, `requirements-cbom.txt`, `cbom-baseline.json`.
