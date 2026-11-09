@@ -112,9 +112,11 @@ def rsa_oaep_encrypt(
     selected = _select_backend(backend)
     if selected == "cryptography":
         from cryptography.hazmat.primitives import hashes, serialization
-        from cryptography.hazmat.primitives.asymmetric import padding
+        from cryptography.hazmat.primitives.asymmetric import padding, rsa
 
         key = serialization.load_pem_public_key(public_key_pem)
+        if not isinstance(key, rsa.RSAPublicKey):
+            raise TypeError("public key must be an RSA key")
         return key.encrypt(
             message,
             padding.OAEP(
@@ -143,9 +145,11 @@ def rsa_oaep_decrypt(
     selected = _select_backend(backend)
     if selected == "cryptography":
         from cryptography.hazmat.primitives import hashes, serialization
-        from cryptography.hazmat.primitives.asymmetric import padding
+        from cryptography.hazmat.primitives.asymmetric import padding, rsa
 
         key = serialization.load_pem_private_key(private_key_pem, password=None)
+        if not isinstance(key, rsa.RSAPrivateKey):
+            raise TypeError("private key must be an RSA key")
         return key.decrypt(
             ciphertext,
             padding.OAEP(
@@ -168,10 +172,12 @@ def rsa_pss_sign(message: bytes, private_key_pem: bytes, *, backend: str = "auto
     selected = _select_backend(backend)
     if selected == "cryptography":
         from cryptography.hazmat.primitives import hashes
-        from cryptography.hazmat.primitives.asymmetric import padding
+        from cryptography.hazmat.primitives.asymmetric import padding, rsa
         from cryptography.hazmat.primitives.serialization import load_pem_private_key
 
         key = load_pem_private_key(private_key_pem, password=None)
+        if not isinstance(key, rsa.RSAPrivateKey):
+            raise TypeError("private key must be an RSA key")
         return key.sign(
             message,
             padding.PSS(
@@ -201,11 +207,13 @@ def rsa_pss_verify(
     if selected == "cryptography":
         from cryptography.exceptions import InvalidSignature
         from cryptography.hazmat.primitives import hashes
-        from cryptography.hazmat.primitives.asymmetric import padding
+        from cryptography.hazmat.primitives.asymmetric import padding, rsa
         from cryptography.hazmat.primitives.serialization import load_pem_public_key
 
         try:
             key = load_pem_public_key(public_key_pem)
+            if not isinstance(key, rsa.RSAPublicKey):
+                return False
             key.verify(
                 signature,
                 message,
