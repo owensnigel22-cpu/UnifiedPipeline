@@ -30,7 +30,7 @@ jobs:
       # Corpus artifacts are DERIVED data (not source vectors): they are
       # intentionally outside the tests/vectors/SOURCES.json provenance gate.
       - name: Restore evolved corpus
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: fuzz/corpus
           key: fuzz-corpus-${{ github.run_id }}
