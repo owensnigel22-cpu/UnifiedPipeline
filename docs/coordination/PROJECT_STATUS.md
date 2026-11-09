@@ -4,6 +4,16 @@
 **Repository:** `UnifiedPipeline` (the Python distribution/import package is `keylab`)  
 **Observed local baseline:** branch `main`, commit `9fc9760`; `origin/main` matched at inspection. The worktree already contained 15 untracked planning/report documents before this coordination setup. This status is a dated snapshot, not a live GitHub feed.
 
+**M10 implementation update (2026-11-09):** An implementation branch,
+`docs/m10-optimization-ecdh-plan`, was created from verified `origin/main`
+`e9b9850a829422782573832b3fee7cf16aaf7874`. It currently contains first-class
+ECDH, explicit optional Coincurve ECDSA adapters, and an exact concurrent M7
+transaction-input collection API in three isolated local commits. The
+`[fast]` optional extra is available. M10 is in progress and is not merged.
+Native differential execution and full-suite validation remain pending in the
+current environment; see `SEC_STATE_JOURNAL.md` before treating benchmarks as
+evidence of a speedup.
+
 ## Purpose
 
 Keylab is a Python research and teaching library for Bitcoin key/signature standards and cryptographic analysis. Its goals include understandable reference implementations checked against published specifications and vectors, constrained reproducible research, separated protocol and experimental layers, and reproducible correctness-gated benchmarks. It is not production wallet software and must not be used to protect real funds.
