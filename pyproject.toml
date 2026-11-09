@@ -13,7 +13,8 @@ license = { text = "MIT" }
 dependencies = [
     "pycryptosat>=5.11",
     "ecdsa>=0.19",
-    "psutil>=5.9"
+    "psutil>=5.9",
+    "httpx>=0.27"
 ]
 
 [project.optional-dependencies]
@@ -62,9 +63,10 @@ keylab = ["data/bip39_english.txt"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
-addopts = "-m 'not slow'"
+addopts = "-m 'not slow and not live'"
 markers = [
     "slow: heavy brute-force / scale tests; deselected by default, run with `-m slow`",
+    "live: opt-in tests that contact public network services; run with `-m live`",
 ]
 # Leaked files, sockets, or database connections fail the suite instead of passing silently.
 filterwarnings = [

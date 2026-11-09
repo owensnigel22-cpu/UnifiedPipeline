@@ -35,6 +35,20 @@ protect real keys or funds.
   not broadcast). The combiner also performs **no cryptography** -- it unions
   key-value pairs across PSBTs that share one unsigned transaction, interprets
   no value, and never mutates its inputs.
+- **Not a network client beyond read-only verification.** `keylab.verify.mainnet`
+  may perform **HTTPS GET requests to an allow-listed set of public block
+  explorers** (default: `mempool.space`) to fetch **public** artifacts --
+  transactions, block headers, merkle proofs, and UTXO records -- **as data only**.
+  Every cryptographic judgement (signature validity, proof-of-work, txid and
+  merkle-root matching) is made **locally** by Keylab's own primitives; a fetched
+  explorer field is never trusted as a verdict. The client enforces **TLS 1.2 or
+  higher with certificate validation on** and has **no code path** to disable it.
+  It performs **read-only GETs only**: it does **not** broadcast transactions,
+  submit to a mempool, or transmit private keys, secrets, or signing payloads.
+  Standard network metadata, including the client IP address and requested
+  public identifiers, is exposed as expected for HTTPS requests. Signing and
+  broadcasting remain out of scope. This is the **only** network capability in
+  Keylab; the offline posture above otherwise stands.
 - **Not a consensus implementation.** `keylab.encoding.transaction` computes
   BIP-341 and BIP-143 (SegWit v0) signature hashes for study; it does not
   validate transactions, execute Script, or process `OP_CODESEPARATOR` (the
