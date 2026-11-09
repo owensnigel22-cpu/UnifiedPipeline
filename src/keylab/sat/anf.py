@@ -39,7 +39,7 @@ class MQCNFEncoder:
     def _product_variable(self, left: int, right: int) -> int:
         if left == right:
             return left
-        pair = tuple(sorted((left, right)))
+        pair = (min(left, right), max(left, right))
         if pair not in self._product_variables:
             product = self.formula.fresh_var()
             self.formula.add_clause(-pair[0], -pair[1], product)
@@ -65,7 +65,7 @@ class MQCNFEncoder:
             left, right = term
             self._validate_variable(left)
             self._validate_variable(right)
-            pair = tuple(sorted((left, right)))
+            pair = (min(left, right), max(left, right))
             if left == right:
                 pair = (left, left)
             if pair in quadratic_parity:

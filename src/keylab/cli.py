@@ -44,8 +44,9 @@ from keylab.hashes.reduced import (
     sha256_schedule_dependencies,
     sha256_schedule_words,
 )
-from keylab.hashes.ripemd_cnf import ripemd160_preimage_cnf
+from keylab.hashes.ripemd_cnf import RIPEMD160PreimageModel, ripemd160_preimage_cnf
 from keylab.hashes.sha256_cnf import (
+    SHA256CNFModel,
     sha256_compression_cnf,
     sha256_hash_preimage_cnf,
     sha256_secret_prefix_cnf,
@@ -481,7 +482,7 @@ def _sha256_cnf(args: argparse.Namespace, parser: argparse.ArgumentParser) -> in
                     "--cube-depth cannot exceed the number of unfixed input bits "
                     f"({len(free_input_variables)})"
                 )
-            result = solve_parallel_cubes(
+            parallel_result = solve_parallel_cubes(
                 args.solver,
                 model.to_dimacs(),
                 free_input_variables,
@@ -490,31 +491,33 @@ def _sha256_cnf(args: argparse.Namespace, parser: argparse.ArgumentParser) -> in
                 timeout=args.timeout,
             )
             metrics["cube_depth"] = args.cube_depth
-            metrics["cube_total"] = result.total_cubes
-            metrics["cube_completed"] = result.completed_cubes
+            metrics["cube_total"] = parallel_result.total_cubes
+            metrics["cube_completed"] = parallel_result.completed_cubes
             metrics["parallel_workers"] = args.parallel_workers
-            assignments = result.assignments
+            assignments = parallel_result.assignments
             solver_return_code = None
+            solver_status = parallel_result.status
         else:
-            result = run_solver(args.solver, model.to_dimacs(), timeout=args.timeout)
-            assignments = result.assignments
-            solver_return_code = result.returncode
+            solver_result = run_solver(args.solver, model.to_dimacs(), timeout=args.timeout)
+            assignments = solver_result.assignments
+            solver_return_code = solver_result.returncode
+            solver_status = solver_result.status
         solver_seconds = time.perf_counter() - solver_started
         metrics["solver"] = args.solver
         metrics["solver_version"] = solver_version
         metrics["solver_timeout_seconds"] = args.timeout
         metrics["solver_seconds"] = solver_seconds
-        metrics["solver_status"] = result.status
+        metrics["solver_status"] = solver_status
         if solver_return_code is not None:
             metrics["solver_return_code"] = solver_return_code
-        if result.status == "SATISFIABLE":
+        if solver_status == "SATISFIABLE":
             candidate = model.recover_input(assignments)
             candidate_valid = _candidate_matches_model(model, candidate)
             metrics["candidate_validated"] = candidate_valid
             if candidate_valid:
                 metrics["candidate_hex"] = candidate.hex()
     print(json.dumps(metrics, sort_keys=True), file=sys.stderr)
-    return 1 if args.solver and result.status == "UNKNOWN" else 0
+    return 1 if args.solver and solver_status == "UNKNOWN" else 0
 
 
 def _ripemd160_cnf(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
@@ -865,6 +868,7 @@ def _hash_cnf_selftest(args: argparse.Namespace, parser: argparse.ArgumentParser
         try:
             if args.hash_name == "sha256":
                 target = sha256_reduced(message, rounds=rounds)
+                model: SHA256CNFModel | RIPEMD160PreimageModel
                 model = sha256_hash_preimage_cnf(
                     target,
                     message_length=len(message),
@@ -1241,7 +1245,7 @@ def _sha256_symbolic_roundtrip(args: argparse.Namespace, parser: argparse.Argume
             xor3_encoding=args.xor3_encoding,
         )
         result = solve_cnf(
-            model.formula.clauses,
+            tuple(model.formula.clauses),
             backend=args.backend,
             solver_name=args.solver_name,
         )
@@ -1467,7 +1471,8 @@ def _benchmark_ec(args: argparse.Namespace, parser: argparse.ArgumentParser) -> 
     )
     print(f"{'Method':<24} {'keys/sec':>12} {'median ms/corpus':>19}")
     print("-" * 58)
-    for row in report["methods"]:
+    method_rows = cast(list[dict[str, Any]], report["methods"])
+    for row in method_rows:
         print(
             f"{row['method']:<24} {row['median_keys_per_second']:>12.1f} "
             f"{row['median_ms_per_corpus']:>19.3f}"

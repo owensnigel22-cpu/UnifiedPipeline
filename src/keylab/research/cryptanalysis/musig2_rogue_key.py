@@ -54,6 +54,8 @@ def demonstrate_rogue_key_resistance(
 
     honest_point = scalar_mult(honest_secret, G)
     rogue_target = scalar_mult(attacker_target_secret, G)
+    if honest_point is None or rogue_target is None:
+        raise ValueError("chosen secrets must produce finite public points")
     rogue_key = point_add_affine(rogue_target, point_negate_affine(honest_point))
     if rogue_key is None:
         raise ValueError("chosen secrets produce an invalid point-at-infinity rogue key")

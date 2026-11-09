@@ -134,7 +134,8 @@ class BitVec32:
             value = self._concrete
             result = ((value >> 7) | (value << 25)) ^ ((value >> 18) | (value << 14)) ^ (value >> 3)
             return BitVec32.from_int(self.cnf, result)
-        shifted = tuple(self._bits[index + 3] if index + 3 < _WIDTH else self.cnf.constant(False) for index in range(_WIDTH))
+        bits = self._as_bits()
+        shifted = tuple(bits[index + 3] if index + 3 < _WIDTH else self.cnf.constant(False) for index in range(_WIDTH))
         return self.rotr(7).xor(self.rotr(18)).xor(BitVec32(cnf=self.cnf, _bits=shifted))
 
     def extract_word(self, model: Mapping[int, bool] | Sequence[bool] | None = None) -> int:

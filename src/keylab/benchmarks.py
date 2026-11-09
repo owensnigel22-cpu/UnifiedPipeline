@@ -13,6 +13,7 @@ from importlib.util import find_spec
 from pathlib import Path
 from statistics import median
 from time import perf_counter_ns
+from typing import Any, cast
 
 from keylab.ec.secp256k1 import (
     _INFINITY,
@@ -104,10 +105,20 @@ def benchmark_ec(
     _v65_fixed_base_table()
     v65_table_setup_ms = (perf_counter_ns() - setup_started) / 1_000_000
 
-    functions = {
+    def backend_multiplier(backend_name: str) -> Callable[[int], tuple[int, int] | None]:
+        def multiply(scalar: int) -> tuple[int, int] | None:
+            return scalar_mult(scalar, backend=backend_name)
+
+        return multiply
+
+    functions: dict[str, Callable[[int], tuple[int, int] | None]] = {
         "v65-windowed": _v65_fixed_base_mult,
-        **{name: (lambda scalar, name=name: scalar_mult(scalar, backend=name)) for name in available if name != "v65-windowed"},
     }
+    functions.update(
+        (name, backend_multiplier(name))
+        for name in available
+        if name != "v65-windowed"
+    )
     warmup_ms: dict[str, float] = {}
     for name in methods:
         started = perf_counter_ns()
@@ -432,28 +443,31 @@ def benchmark_repeated_wifs(
         )
         for _ in range(repetitions)
     ]
+    typed_runs = cast(list[dict[str, Any]], runs)
     summary = dict(runs[0])
-    median_elapsed_ns = median(float(run["elapsed_ms"]) for run in runs) * 1_000_000
+    median_elapsed_ns = median(float(run["elapsed_ms"]) for run in typed_runs) * 1_000_000
+    stage_medians = {
+        name: median(float(run["stages_ms"][name]) for run in typed_runs)
+        for name in typed_runs[0]["stages_ms"]
+    }
+    address_type_medians = {
+        name: median(float(run["address_types_ms"][name]) for run in typed_runs)
+        for name in typed_runs[0]["address_types_ms"]
+    }
     summary.update(
         repetitions=repetitions,
         elapsed_ms=median_elapsed_ns / 1_000_000,
         average_ms_per_key=median_elapsed_ns / len(corpus) / 1_000_000,
-        throughput_per_second=median(float(run["throughput_per_second"]) for run in runs),
-        stages_ms={
-            name: median(float(run["stages_ms"][name]) for run in runs)
-            for name in runs[0]["stages_ms"]
-        },
-        address_types_ms={
-            name: median(float(run["address_types_ms"][name]) for run in runs)
-            for name in runs[0]["address_types_ms"]
-        },
+        throughput_per_second=median(float(run["throughput_per_second"]) for run in typed_runs),
+        stages_ms=stage_medians,
+        address_types_ms=address_type_medians,
         run_timings=[
             {
                 "elapsed_ms": run["elapsed_ms"],
                 "throughput_per_second": run["throughput_per_second"],
                 "address_types_us_per_address": run["address_types_us_per_address"],
             }
-            for run in runs
+            for run in typed_runs
         ],
         measurement_note=(
             "Same WIF corpus reused across runs; corpus loading and warmup excluded; "
@@ -463,20 +477,20 @@ def benchmark_repeated_wifs(
     median_elapsed_ms = median_elapsed_ns / 1_000_000
     summary["stages_percent_of_total"] = {
         name: 100 * duration / median_elapsed_ms
-        for name, duration in summary["stages_ms"].items()
+        for name, duration in stage_medians.items()
     }
     summary["address_types_percent_of_total"] = {
         name: 100 * duration / median_elapsed_ms
-        for name, duration in summary["address_types_ms"].items()
+        for name, duration in address_type_medians.items()
     }
-    counts = runs[0]["address_counts"]
+    counts = cast(dict[str, int] | None, typed_runs[0]["address_counts"])
     summary["address_types_us_per_address"] = (
         {
             name: (duration * 1_000 / counts[name] if counts[name] else None)
-            for name, duration in summary["address_types_ms"].items()
+            for name, duration in address_type_medians.items()
         }
         if counts is not None
-        else {name: None for name in summary["address_types_ms"]}
+        else {name: None for name in address_type_medians}
     )
     return summary
 

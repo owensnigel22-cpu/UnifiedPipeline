@@ -137,12 +137,12 @@ def meet_in_the_middle_bounded(
                 break
             if timed_out():
                 return result(None, "time_budget")
-            a = baby_table.get(gamma)
+            matched_a = baby_table.get(gamma)
             giant_steps += 1
             spent += 1
             pass_checks += 1
-            if a is not None:
-                candidate = lo + a + b * baby_count
+            if matched_a is not None:
+                candidate = lo + matched_a + b * baby_count
                 if candidate <= hi and scalar_mult(candidate, G) == point:
                     return result(candidate, "found")
             if b + 1 < giant_count:

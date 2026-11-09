@@ -284,21 +284,21 @@ def _build_model(
             for byte_in_block in range(64):
                 stream_index = block_index * 64 + byte_in_block
                 if stream_index < message_length:
-                    value: int | None = None
+                    byte_value: int | None = None
                 elif stream_index == message_length:
-                    value = 0x80
+                    byte_value = 0x80
                 elif stream_index >= padded_length - 8:
-                    value = length_bytes[stream_index - (padded_length - 8)]
+                    byte_value = length_bytes[stream_index - (padded_length - 8)]
                 else:
-                    value = 0
+                    byte_value = 0
 
-                if value is None:
+                if byte_value is None:
                     byte_bits = input_bits[stream_index * 8 : stream_index * 8 + 8]
                 else:
-                    byte_bits = [
-                        true_literal if (value >> (7 - bit)) & 1 else false_literal
+                    byte_bits = tuple(
+                        true_literal if (byte_value >> (7 - bit)) & 1 else false_literal
                         for bit in range(8)
-                    ]
+                    )
                 block_bits.extend(byte_bits)
             state_words = _compress_block_cnf(
                 cnf, block_bits, state_words, rounds, true_literal, false_literal

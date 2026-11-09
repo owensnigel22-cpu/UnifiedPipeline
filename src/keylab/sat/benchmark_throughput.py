@@ -9,8 +9,8 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from keylab.hashes.reduced import ripemd160_reduced, sha256_reduced
-from keylab.hashes.ripemd_cnf import ripemd160_preimage_cnf
-from keylab.hashes.sha256_cnf import sha256_hash_preimage_cnf
+from keylab.hashes.ripemd_cnf import RIPEMD160PreimageModel, ripemd160_preimage_cnf
+from keylab.hashes.sha256_cnf import SHA256CNFModel, sha256_hash_preimage_cnf
 from keylab.sat.parallel import solve_parallel_cubes
 from keylab.sat.solver import SOLVER_CANDIDATES, find_solver
 
@@ -67,6 +67,7 @@ def benchmark_solving_throughput(
             f"no supported SAT solver found on PATH ({', '.join(SOLVER_CANDIDATES)})"
         )
 
+    model: SHA256CNFModel | RIPEMD160PreimageModel
     if hash_name == "sha256":
         target = sha256_reduced(_BENCHMARK_MESSAGE, rounds=rounds)
         model = sha256_hash_preimage_cnf(

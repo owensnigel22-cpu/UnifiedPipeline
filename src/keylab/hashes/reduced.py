@@ -273,7 +273,7 @@ def sha256_reduced(data: bytes, rounds: int = 32) -> bytes:
     if rounds == 64:
         return hashlib.sha256(data).digest()
     bit_length = len(data) * 8
-    state = _SHA_IV
+    state: tuple[int, ...] = _SHA_IV
     complete_length = len(data) - len(data) % 64
     data_view = memoryview(data)
     for offset in range(0, complete_length, 64):
@@ -528,7 +528,7 @@ def sha256_reduced_stream(source: BinaryIO | Iterable[bytes], rounds: int = 32) 
             digest.update(chunk)
         return digest.digest()
 
-    state = _SHA_IV
+    state: tuple[int, ...] = _SHA_IV
     pending = bytearray()
     total_length = 0
     for chunk in _byte_chunks(source):

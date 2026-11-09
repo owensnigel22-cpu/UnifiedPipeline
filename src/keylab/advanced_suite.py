@@ -46,6 +46,7 @@ import hashlib
 import math
 import secrets
 import time
+from typing import Any
 
 from keylab import __version__
 from keylab._ct import constant_time_equal
@@ -105,7 +106,7 @@ def sha256_compression_trace(message: bytes) -> dict[str, object]:
     padded.extend(b"\x00" * ((56 - len(padded) % 64) % 64))
     padded.extend(bit_length.to_bytes(8, "big"))
     state = list(_SHA256_IV)
-    block_traces = []
+    block_traces: list[dict[str, Any]] = []
     mask = 0xFFFFFFFF
 
     def rotr(x: int, n: int) -> int:
@@ -253,7 +254,7 @@ def run_extended_joint_lookahead_sweep() -> list[dict[str, object]]:
     measured propagation or cryptanalytic results.
     """
     total_vars, total_clauses = 210, 582
-    records = []
+    records: list[dict[str, object]] = []
     for depth in (0, 2, 4, 8, 12, 16, 24, 32, 48, 64):
         remaining_vars = max(total_vars - depth, 146)
         eliminated_clauses = int(depth * 2.64)
@@ -1102,7 +1103,7 @@ def walkback_trace(target: str) -> dict[str, object]:
     elif hash160:
         if "P2SH" in kind:
             source = "HASH160(redeem script)"
-        elif kind == "SegWit v0" and witness and len(witness) == 64:
+        elif kind == "SegWit v0" and isinstance(witness, str) and len(witness) == 64:
             source = "SHA256(witness script)"
         else:
             source = "HASH160(public key)"
@@ -1125,16 +1126,18 @@ def solve_cnf(clauses: list[list[int]], variable_count: int, node_limit: int = 1
     if any(lit == 0 or abs(lit) > variable_count for clause in clauses for lit in clause):
         raise ValueError("CNF literal is zero or exceeds the declared variable count")
     stats = {"decisions": 0, "propagations": 0, "nodes": 0}
-    def search(assign: dict[int, bool]):
+    def search(assign: dict[int, bool]) -> dict[int, bool] | None:
         stats["nodes"] += 1
         if stats["nodes"] > node_limit:
             raise TimeoutError
         while True:
-            pending_clauses=[]; unit=None; polarities={}
+            pending_clauses: list[list[int]] = []
+            unit: int | None = None
+            polarities: dict[int, set[bool]] = {}
             for clause in clauses:
                 if any(assign.get(abs(lit)) == (lit > 0) for lit in clause if abs(lit) in assign):
                     continue
-                pending=[lit for lit in clause if abs(lit) not in assign]
+                pending = [lit for lit in clause if abs(lit) not in assign]
                 if not pending:
                     return None
                 pending_clauses.append(pending)
@@ -1150,10 +1153,10 @@ def solve_cnf(clauses: list[list[int]], variable_count: int, node_limit: int = 1
             if pure:
                 assign[pure[0]]=pure[1]; stats["propagations"] += 1; continue
             break
-        freq={}
+        freq: dict[int, int] = {}
         for clause in pending_clauses:
             for lit in clause: freq[abs(lit)]=freq.get(abs(lit),0)+1
-        var=max(freq,key=freq.get); stats["decisions"] += 1
+        var=max(freq,key=lambda variable: freq[variable]); stats["decisions"] += 1
         for val in (True,False):
             branch=dict(assign); branch[var]=val
             answer=search(branch)
@@ -1168,7 +1171,10 @@ def solve_cnf(clauses: list[list[int]], variable_count: int, node_limit: int = 1
 
 def parse_dimacs_cnf(text: str) -> tuple[int, list[list[int]]]:
     """Read a DIMACS CNF instance."""
-    nvars=nclauses=None; clauses=[]; pending=[]
+    nvars: int | None = None
+    nclauses: int | None = None
+    clauses: list[list[int]] = []
+    pending: list[int] = []
     for line_no,line in enumerate(text.splitlines(),1):
         line=line.strip()
         if not line or line.startswith('c'): continue

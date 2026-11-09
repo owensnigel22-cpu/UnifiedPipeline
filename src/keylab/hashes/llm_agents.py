@@ -108,7 +108,7 @@ def plan_sha256_cube_bits(
         "input_bit_order": "byte order, most-significant bit first",
     }
 
-    def ask(role: str, instructions: str) -> tuple[str, str | None]:
+    def ask(role: str, instructions: str) -> tuple[str, str]:
         try:
             response = client.responses.create(
                 model=model,
