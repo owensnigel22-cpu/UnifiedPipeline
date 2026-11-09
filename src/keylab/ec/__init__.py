@@ -1,7 +1,12 @@
 """Educational elliptic-curve arithmetic; not constant-time and not a production wallet backend."""
 
-from keylab.ec.ecdsa_recovery import recover_public_keys_from_signature
+from keylab.ec.coincurve_backend import (
+    ecdsa_sign_digest_coincurve,
+    ecdsa_sign_digest_python,
+    ecdsa_verify_digest_coincurve,
+)
 from keylab.ec.ecdh import ecdh, ecdh_coincurve, ecdh_reference
+from keylab.ec.ecdsa_recovery import recover_public_keys_from_signature
 from keylab.ec.musig2 import (
     InvalidContributionError,
     KeyAggContext,
@@ -48,11 +53,14 @@ __all__ = [
     "KeyAggContext",
     "N",
     "apply_tweak",
-    "ecdsa_sign_digest",
-    "ecdsa_verify_digest",
     "ecdh",
     "ecdh_coincurve",
     "ecdh_reference",
+    "ecdsa_sign_digest",
+    "ecdsa_sign_digest_coincurve",
+    "ecdsa_sign_digest_python",
+    "ecdsa_verify_digest",
+    "ecdsa_verify_digest_coincurve",
     "get_second_key",
     "has_even_y",
     "hash_keys",

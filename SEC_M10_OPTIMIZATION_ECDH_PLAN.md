@@ -1,8 +1,8 @@
 # M10 Optimization, ECDH, and Native Bindings — Plan
 
-**Status:** Acknowledged; implementation in progress.  
-**Plan baseline:** `origin/main` at `e9b9850a829422782573832b3fee7cf16aaf7874` (2026-11-09).  
-**M10 plan worktree:** `UnifiedPipeline-M10`, branch `docs/m10-optimization-ecdh-plan`.  
+**Status:** Acknowledged; implementation in progress.
+**Plan baseline:** `origin/main` at `e9b9850a829422782573832b3fee7cf16aaf7874` (2026-11-09).
+**M10 plan worktree:** `UnifiedPipeline-M10`, branch `docs/m10-optimization-ecdh-plan`.
 **Scope:** Add a first-class ECDH API, explicit libsecp256k1-backed ECDSA/ECDH operations, benchmark them, and evaluate safe batch verification in the existing read-only verification flow.
 
 ## 1. Verified baseline and constraints

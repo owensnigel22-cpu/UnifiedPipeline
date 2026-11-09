@@ -13,7 +13,7 @@ from importlib.util import find_spec
 
 from keylab.ec import reference
 from keylab.ec.sec1 import parse_sec1, serialize_sec1
-from keylab.ec.secp256k1 import N, Point, require_point, require_scalar
+from keylab.ec.secp256k1 import Point, require_point, require_scalar
 
 _BACKENDS = ("auto", "python", "coincurve")
 
