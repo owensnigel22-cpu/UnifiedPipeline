@@ -23,6 +23,8 @@ dependencies = [
 dev = ["hypothesis>=6.100", "mypy==2.4.1", "pytest>=8.0", "pytest-cov==7.1.0", "ruff==0.17.3"]
 # Optional native libsecp256k1 backend for accelerated ECC operations.
 fast = ["coincurve>=19.0.1,<20.0"]
+# OS credential-store integration only; KeyringProvider rejects non-native backends.
+wallet = ["keyring>=25.7,<26"]
 dashboard = ["pandas>=2.0", "pandas-stubs>=2.0", "streamlit>=1.40"]
 crypto = ["cryptography>=44.0"]
 crypto-alt = ["pycryptodome>=3.23"]
