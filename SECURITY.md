@@ -16,9 +16,15 @@ protect real keys or funds.
 - **Not safe for real funds.** M12 adds an experimental wallet workflow that
   can retrieve test-network WIFs from an OS-native credential store, select
   UTXOs, sign and finalize supported PSBTs, preflight transactions, and
-  broadcast on testnet or regtest. Mainnet broadcasts are hard-rejected by the
-  wallet workflow and guarded RPC method. This code is not audited custody and
-  must only be used with synthetic/test funds. `keylab.psbt` parses,
+  broadcast on testnet or regtest. **M14 adds mainnet broadcasting** via public
+  HTTP explorer APIs (mempool.space, BlockCypher) and direct P2P relay
+  (`keylab.wallet.broadcast`); a mainnet broadcast requires **one explicit
+  confirmation** per transaction and is never fired silently (the older M12
+  guarded RPC path still rejects mainnet). Broadcasting pushes an **already-signed**
+  transaction and handles no keys. **Signing real-value keys must use the audited
+  coincurve/libsecp256k1 backend** — the pure-Python ECC is **not constant-time**
+  (it can leak a secret key, see below) and must never sign real-value keys. This
+  code is not audited custody. `keylab.psbt` parses,
   validates (BIP-174 rules), and re-serializes Partially Signed Bitcoin
   Transactions, and implements the BIP-174 **Signer**, **Finalizer**,
   **Extractor**, and **Combiner** roles for P2WPKH and P2SH-P2WPKH inputs
@@ -107,7 +113,7 @@ Cryptographic assumptions and implementation notes are in
 | Throwaway keys created for experiments | Acceptable, on a machine you control |
 | M12 OS-keyring testnet/regtest WIFs | Test material only; accessible to the running process and not guaranteed to be erased from memory |
 | M12 node RPC credentials and transactions | Treat as sensitive; remote plaintext HTTP exposes credentials and transaction contents |
-| Any key that controls real value | **Out of scope.** Do not load it into Keylab |
+| Any key that controls real value | **Use the audited coincurve/libsecp256k1 backend only.** The pure-Python ECC is non-constant-time and must never sign real-value keys; mainnet broadcasting requires one explicit confirmation |
 
 The optional `wallet` extra enables `KeyringProvider`. It refuses non-native
 keyring backends and has no plaintext-file fallback, but OS credential-store
