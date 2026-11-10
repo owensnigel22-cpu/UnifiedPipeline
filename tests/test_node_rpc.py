@@ -26,6 +26,7 @@ from keylab.verify.node import BitcoinRPCClient, BitcoinRPCError
 class _FakeResponse:
     def __init__(self, payload: Any, status_code: int = 200) -> None:
         self._payload = payload
+        self.text = payload if isinstance(payload, str) else json.dumps(payload)
         self.status_code = status_code
         self.is_error = status_code >= 400
 

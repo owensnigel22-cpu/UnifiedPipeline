@@ -13,6 +13,7 @@ import re
 import threading
 import warnings
 from collections.abc import Sequence
+from decimal import Decimal
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Self
 from urllib.parse import urlsplit
@@ -156,7 +157,9 @@ class BitcoinRPCClient:
             raise
 
         try:
-            body = response.json()
+            # Decimal parsing preserves Bitcoin Core's BTC-denominated amount
+            # fields without a binary float round trip.
+            body = json.loads(response.text, parse_float=Decimal)
         except (ValueError, json.JSONDecodeError) as exc:
             raise BitcoinRPCError(method, "node returned invalid JSON") from exc
         if not isinstance(body, dict):
@@ -245,6 +248,22 @@ class BitcoinRPCClient:
         result = self.call("testmempoolaccept", (list(txs),))
         if not isinstance(result, list) or not all(isinstance(item, dict) for item in result):
             raise BitcoinRPCError("testmempoolaccept", "node returned malformed acceptance results")
+        return result
+
+    def scantxoutset(self, scan_objects: Sequence[str | dict[str, Any]]) -> dict[str, Any]:
+        """Scan the current UTXO set for descriptors using Bitcoin Core RPC."""
+        objects = tuple(scan_objects)
+        if not objects:
+            raise ValueError("scan_objects must not be empty")
+        for scan_object in objects:
+            descriptor = scan_object if isinstance(scan_object, str) else scan_object.get("desc")
+            if not isinstance(descriptor, str) or not descriptor.strip():
+                raise ValueError("each scan object must contain a non-empty descriptor")
+        result = self.call("scantxoutset", ("start", list(objects)))
+        if not isinstance(result, dict) or type(result.get("success")) is not bool:
+            raise BitcoinRPCError("scantxoutset", "node returned malformed scan results")
+        if result["success"] and not isinstance(result.get("unspents"), list):
+            raise BitcoinRPCError("scantxoutset", "node returned malformed unspent results")
         return result
 
     def sendrawtransaction(self, raw_tx: str) -> str:
