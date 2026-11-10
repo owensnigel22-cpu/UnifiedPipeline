@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -13,6 +14,7 @@ _MAX_MONEY_SATS = 21_000_000 * _SATOSHIS_PER_BTC
 _TXID_RE = re.compile(r"[0-9a-fA-F]{64}\Z")
 _PRIVATE_EXTENDED_KEY_MARKER_RE = re.compile(r"(?:xprv|tprv|yprv|zprv|uprv|vprv)", re.IGNORECASE)
 _BASE58_TOKEN_RE = re.compile(r"(?<![1-9A-HJ-NP-Za-km-z])[1-9A-HJ-NP-Za-km-z]{51,52}(?![1-9A-HJ-NP-Za-km-z])")
+_COMPRESSED_PUBKEY_RE = re.compile(r"(?<![0-9a-fA-F])(?:02|03)[0-9a-fA-F]{64}(?![0-9a-fA-F])")
 
 
 class NodeScanner(Protocol):
@@ -36,6 +38,7 @@ class UTXO:
     descriptor: str
     height: int
     input_vbytes: int
+    redeem_script: bytes | None = None
 
     @property
     def outpoint(self) -> tuple[str, int]:
@@ -82,6 +85,30 @@ def _descriptor_input_vbytes(descriptor: str) -> int:
     )
 
 
+def _hash160(data: bytes) -> bytes:
+    sha = hashlib.sha256(data).digest()
+    return hashlib.new("ripemd160", sha).digest()
+
+
+def _descriptor_script_info(descriptor: str) -> tuple[int, bytes | None, bytes]:
+    input_vbytes = _descriptor_input_vbytes(descriptor)
+    matches = _COMPRESSED_PUBKEY_RE.findall(descriptor)
+    if len(matches) != 1:
+        raise UTXOScanError("descriptor must specialize to exactly one compressed public key")
+    pubkey = bytes.fromhex(matches[0])
+    from keylab.ec.secp256k1 import decompress_pubkey
+
+    try:
+        decompress_pubkey(pubkey)
+    except ValueError as exc:
+        raise UTXOScanError("descriptor contains an invalid compressed public key") from exc
+    key_hash = _hash160(pubkey)
+    if input_vbytes == 68:
+        return input_vbytes, None, b"\x00\x14" + key_hash
+    redeem_script = b"\x00\x14" + key_hash
+    return input_vbytes, redeem_script, b"\xa9\x14" + _hash160(redeem_script) + b"\x87"
+
+
 def _reject_private_descriptor(descriptor: str) -> None:
     if _PRIVATE_EXTENDED_KEY_MARKER_RE.search(descriptor):
         raise ValueError("private extended keys must never be sent to the node")
@@ -122,9 +149,11 @@ def _parse_unspent(raw: Mapping[str, Any]) -> UTXO:
         raise UTXOScanError("node returned a UTXO amount with an unsupported numeric type")
     try:
         value_sats = btc_to_sats(amount)
-        input_vbytes = _descriptor_input_vbytes(descriptor)
+        input_vbytes, redeem_script, expected_script = _descriptor_script_info(descriptor)
     except (TypeError, ValueError, UTXOScanError) as exc:
         raise UTXOScanError(f"node returned an invalid or unsupported UTXO: {exc}") from exc
+    if script_pubkey != expected_script:
+        raise UTXOScanError("UTXO scriptPubKey does not match its specialized public descriptor")
     return UTXO(
         txid=txid.lower(),
         vout=vout,
@@ -133,6 +162,7 @@ def _parse_unspent(raw: Mapping[str, Any]) -> UTXO:
         descriptor=descriptor,
         height=height,
         input_vbytes=input_vbytes,
+        redeem_script=redeem_script,
     )
 
 
@@ -152,7 +182,7 @@ def scan_utxos(
     if not isinstance(descriptor, str) or not descriptor.strip():
         raise ValueError("descriptor must be a non-empty string")
     _reject_private_descriptor(descriptor)
-    _descriptor_input_vbytes(descriptor)
+    _descriptor_script_info(descriptor)
     if range_end is not None and (type(range_end) is not int or range_end < 0):
         raise ValueError("range_end must be a non-negative integer")
     if type(max_unspents) is not int or max_unspents < 1:

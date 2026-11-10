@@ -6,5 +6,6 @@ remote access.
 """
 
 from keylab.verify.node.client import BitcoinRPCClient, BitcoinRPCError
+from keylab.verify.node.models import Network, default_rpc_url
 
-__all__ = ["BitcoinRPCClient", "BitcoinRPCError"]
+__all__ = ["BitcoinRPCClient", "BitcoinRPCError", "Network", "default_rpc_url"]

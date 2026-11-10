@@ -23,6 +23,7 @@ class CoinSelection:
     """Selected inputs and exact fee/change accounting for one spend."""
 
     utxos: tuple[UTXO, ...]
+    target_sats: int
     total_input_sats: int
     fee_sats: int
     change_sats: int
@@ -134,6 +135,7 @@ def _selection_for_subset(
             return None
         return CoinSelection(
             utxos,
+            target_sats,
             total_sats,
             actual_fee,
             0,
@@ -151,6 +153,7 @@ def _selection_for_subset(
     waste = change_fee - no_change_fee + future_change_fee
     return CoinSelection(
         utxos,
+        target_sats,
         total_sats,
         change_fee,
         change_sats,
@@ -257,6 +260,7 @@ def select_coins_bnb(
         raise CoinSelectionError("available UTXOs cannot cover target and estimated fees")
     return CoinSelection(
         best.utxos,
+        best.target_sats,
         best.total_input_sats,
         best.fee_sats,
         best.change_sats,

@@ -18,6 +18,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Self
 from urllib.parse import urlsplit
 
+from keylab.verify.node.models import Network
+
 if TYPE_CHECKING:
     import httpx
 
@@ -42,6 +44,10 @@ class BitcoinRPCClient:
     authentication does not encrypt the credentials or RPC payload. Remote
     endpoints should use HTTPS or a separately secured tunnel.
     """
+
+    _READ_METHODS = frozenset(
+        {"getblockchaininfo", "gettxout", "getrawtransaction", "testmempoolaccept", "scantxoutset"}
+    )
 
     def __init__(
         self,
@@ -129,7 +135,13 @@ class BitcoinRPCClient:
         return None
 
     def call(self, method: str, params: Sequence[Any] = ()) -> Any:
-        """Make one JSON-RPC 1.0 call and return its validated result."""
+        """Call an allow-listed read/preflight method; sends require the guard below."""
+        if method not in self._READ_METHODS:
+            raise RuntimeError("RPC method is not exposed; use the guarded broadcast API for sends")
+        return self._call_rpc(method, params)
+
+    def _call_rpc(self, method: str, params: Sequence[Any]) -> Any:
+        """Make one validated JSON-RPC 1.0 call for an allow-listed internal use."""
         if not isinstance(method, str) or re.fullmatch(r"[A-Za-z][A-Za-z0-9]*", method) is None:
             raise ValueError("RPC method must be an alphanumeric method name")
         if isinstance(params, (str, bytes, bytearray)):
@@ -266,15 +278,37 @@ class BitcoinRPCClient:
             raise BitcoinRPCError("scantxoutset", "node returned malformed unspent results")
         return result
 
-    def sendrawtransaction(self, raw_tx: str) -> str:
-        """Submit one raw transaction exactly once; no automatic retry is performed."""
+    def sendrawtransaction(
+        self,
+        raw_tx: str,
+        *,
+        network: Network,
+        confirm_test_network: bool,
+    ) -> str:
+        """Submit once only after explicit confirmation and a matching test chain.
+
+        Mainnet rejection is unconditional. ``call('sendrawtransaction', ...)``
+        is blocked, so this guarded method is the only exposed raw-transaction
+        submission path in the client.
+        """
+        if network is Network.MAINNET:
+            raise RuntimeError("mainnet broadcasting is disabled in M12")
+        if not isinstance(network, Network):
+            raise TypeError("network must be a Network value")
+        if type(confirm_test_network) is not bool or not confirm_test_network:
+            raise RuntimeError("explicit test-network confirmation is required to broadcast")
         if not isinstance(raw_tx, str) or not raw_tx or len(raw_tx) % 2:
             raise ValueError("transaction must be non-empty even-length hex")
         try:
             bytes.fromhex(raw_tx)
         except ValueError as exc:
             raise ValueError("transaction must be hexadecimal") from exc
-        result = self.call("sendrawtransaction", (raw_tx,))
+        chain_info = self.getblockchaininfo()
+        if chain_info["chain"] != network.rpc_chain:
+            raise RuntimeError(
+                f"configured network {network.value!r} does not match node chain {chain_info['chain']!r}"
+            )
+        result = self._call_rpc("sendrawtransaction", (raw_tx,))
         if not isinstance(result, str) or re.fullmatch(r"[0-9a-fA-F]{64}", result) is None:
             raise BitcoinRPCError("sendrawtransaction", "node returned an invalid transaction id")
         return result.lower()

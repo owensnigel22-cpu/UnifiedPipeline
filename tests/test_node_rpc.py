@@ -20,7 +20,7 @@ except ImportError:
     _httpx_stub.Client = object  # type: ignore[attr-defined]
     sys.modules["httpx"] = _httpx_stub
 
-from keylab.verify.node import BitcoinRPCClient, BitcoinRPCError
+from keylab.verify.node import BitcoinRPCClient, BitcoinRPCError, Network
 
 
 class _FakeResponse:
@@ -166,11 +166,14 @@ def test_rpc_does_not_retry_sendrawtransaction_after_transport_error(
     del fake_httpx
     client = BitcoinRPCClient()
     fake = _FakeClient.instances[-1]
+    fake.results.append(
+        ({"result": {"chain": "regtest", "blocks": 1}, "error": None, "id": 1}, 200)
+    )
     fake.results.append(_FakeHTTPError("connection reset"))
     with pytest.raises(BitcoinRPCError):
-        client.sendrawtransaction("00")
-    assert len(fake.calls) == 1
-    assert json.loads(fake.calls[0]["content"])["method"] == "sendrawtransaction"
+        client.sendrawtransaction("00", network=Network.REGTEST, confirm_test_network=True)
+    assert len(fake.calls) == 2
+    assert json.loads(fake.calls[1]["content"])["method"] == "sendrawtransaction"
     client.close()
 
 
@@ -182,7 +185,9 @@ def test_rpc_validates_outpoints_and_transaction_hex(fake_httpx: types.ModuleTyp
     with pytest.raises(ValueError, match="vout"):
         client.gettxout("00" * 32, -1)
     with pytest.raises(ValueError, match="hexadecimal"):
-        client.sendrawtransaction("zz")
+        client.sendrawtransaction(
+            "zz", network=Network.REGTEST, confirm_test_network=True
+        )
     client.close()
 
 
@@ -197,7 +202,8 @@ def test_rpc_wrappers_use_expected_core_methods_and_parameters(
             ({"result": {"value": 1.25}, "error": None, "id": 1}, 200),
             ({"result": "00", "error": None, "id": 2}, 200),
             ({"result": [{"allowed": True}], "error": None, "id": 3}, 200),
-            ({"result": "ab" * 32, "error": None, "id": 4}, 200),
+            ({"result": {"chain": "regtest", "blocks": 1}, "error": None, "id": 4}, 200),
+            ({"result": "ab" * 32, "error": None, "id": 5}, 200),
         ]
     )
 
@@ -205,14 +211,55 @@ def test_rpc_wrappers_use_expected_core_methods_and_parameters(
     assert client.gettxout(txid, 2) == {"value": 1.25}
     assert client.getrawtransaction(txid) == "00"
     assert client.testmempoolaccept(["00"]) == [{"allowed": True}]
-    assert client.sendrawtransaction("00") == "ab" * 32
+    assert client.sendrawtransaction(
+        "00", network=Network.REGTEST, confirm_test_network=True
+    ) == "ab" * 32
     requests = [json.loads(call["content"]) for call in fake.calls]
     assert [request["method"] for request in requests] == [
         "gettxout",
         "getrawtransaction",
         "testmempoolaccept",
+        "getblockchaininfo",
         "sendrawtransaction",
     ]
     assert requests[0]["params"] == [txid, 2, True]
     assert requests[2]["params"] == [["00"]]
+    client.close()
+
+
+def test_rpc_broadcast_guard_rejects_mainnet_and_unconfirmed_calls_before_network_io(
+    fake_httpx: types.ModuleType,
+) -> None:
+    del fake_httpx
+    client = BitcoinRPCClient()
+    fake = _FakeClient.instances[-1]
+    with pytest.raises(RuntimeError, match="mainnet broadcasting is disabled"):
+        client.sendrawtransaction("00", network=Network.MAINNET, confirm_test_network=True)
+    with pytest.raises(RuntimeError, match="explicit test-network confirmation"):
+        client.sendrawtransaction("00", network=Network.REGTEST, confirm_test_network=False)
+    with pytest.raises(RuntimeError, match="guarded broadcast"):
+        client.call("sendrawtransaction", ("00",))
+    assert fake.calls == []
+    client.close()
+
+
+@pytest.mark.parametrize(
+    ("network", "chain"),
+    [(Network.TESTNET, "test"), (Network.REGTEST, "regtest")],
+)
+def test_rpc_broadcast_guard_checks_node_chain(
+    fake_httpx: types.ModuleType,
+    network: Network,
+    chain: str,
+) -> None:
+    del fake_httpx
+    client = BitcoinRPCClient()
+    fake = _FakeClient.instances[-1]
+    fake.results.append(({"result": {"chain": chain, "blocks": 3}, "error": None, "id": 1}, 200))
+    fake.results.append(({"result": "ab" * 32, "error": None, "id": 2}, 200))
+    assert client.sendrawtransaction("00", network=network, confirm_test_network=True) == "ab" * 32
+    assert [json.loads(call["content"])["method"] for call in fake.calls] == [
+        "getblockchaininfo",
+        "sendrawtransaction",
+    ]
     client.close()
