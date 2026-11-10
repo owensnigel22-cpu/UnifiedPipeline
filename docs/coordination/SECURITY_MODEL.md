@@ -22,7 +22,7 @@ The repository contains Python implementations and educational tools involving s
 
 ## Known Functional Limitations
 
-`SECURITY.md` documents that the project is not a wallet and does not provide key storage, broadcast, coin selection, or a full transaction lifecycle. Transaction helpers do not execute Bitcoin Script or validate consensus. PSBT handling supports only documented role/script subsets; it does not imply support for all BIP-174/BIP-370 cases. Research demonstrations require explicitly supplied data/assumptions and do not provide unconstrained real-key recovery. Consult source docs for exact supported scope before making changes.
+`SECURITY.md` documents that Keylab is not safe for real funds. M12 adds an experimental testnet/regtest wallet path with OS-keyring retrieval, descriptor UTXO scanning, bounded coin selection, supported PSBT signing/finalization, node preflight, and guarded broadcast. Mainnet broadcasting is hard-rejected. This is not audited custody or a full transaction lifecycle. Transaction helpers do not execute Bitcoin Script or validate consensus. PSBT handling supports only documented role/script subsets; it does not imply support for all BIP-174/BIP-370 cases. Research demonstrations require explicitly supplied data/assumptions and do not provide unconstrained real-key recovery. Consult source docs for exact supported scope before making changes.
 
 ## Security Review Expectations
 

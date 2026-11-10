@@ -1,18 +1,17 @@
 # Project Status
 
-**Snapshot date:** 2026-11-08  
+**Snapshot date:** 2026-11-10
 **Repository:** `UnifiedPipeline` (the Python distribution/import package is `keylab`)  
-**Observed local baseline:** branch `main`, commit `9fc9760`; `origin/main` matched at inspection. The worktree already contained 15 untracked planning/report documents before this coordination setup. This status is a dated snapshot, not a live GitHub feed.
+**Observed remote baseline:** `origin/main` at `152f0e64554a8c0e1f75afc485b2c10156d1a758`, fetched locally on 2026-11-10. This status is a dated snapshot, not a live GitHub feed.
 
-**M10 implementation update (2026-11-09):** An implementation branch,
-`docs/m10-optimization-ecdh-plan`, was created from verified `origin/main`
-`e9b9850a829422782573832b3fee7cf16aaf7874`. It currently contains first-class
-ECDH, explicit optional Coincurve ECDSA adapters, and an exact concurrent M7
-transaction-input collection API in three isolated local commits. The
-`[fast]` optional extra is available. M10 is in progress and is not merged.
-Native differential execution and full-suite validation remain pending in the
-current environment; see `SEC_STATE_JOURNAL.md` before treating benchmarks as
-evidence of a speedup.
+**Milestone update (2026-11-10):** M10 is present on `main`. M11 release
+preparation is complete in commit `152f0e64554a8c0e1f75afc485b2c10156d1a758`
+(`docs: complete M11 release preparation`), which adds the CycloneDX CBOM
+baseline, README updates, and generated API documentation. M12 remains in
+progress on `docs/m12-broadcast-plan`; implementation is complete and owner
+review is pending. This branch is restricted to testnet/regtest transaction
+broadcasts and has a hard mainnet rejection. The end-to-end regtest test uses
+mocked RPC calls; no live node or real funds are used.
 
 ## Purpose
 
@@ -27,7 +26,7 @@ The package requires Python 3.11 or newer. It is packaged with setuptools using 
 ## Completed Work (Evidence at Snapshot)
 
 - The current `main` includes merged milestone work through the changes represented by PR #33; verify source and tests for individual capability claims.
-- The documented PSBT v0 implementation includes parsing, validation, serialization, signing, finalization, transaction extraction, and combining for its documented scope. It is not a wallet workflow.
+- The documented PSBT v0 implementation includes parsing, validation, serialization, signing, finalization, transaction extraction, and combining for its documented scope. The M12 wallet path is separate and experimental, limited to supported P2WPKH and P2SH-P2WPKH inputs on testnet/regtest.
 - Official vectors, differential tests, property tests, fuzzing, and reproducible benchmarks are part of the repository's validation approach.
 - Security limitations and research results are recorded in `SECURITY.md`, `SEC_STATE_JOURNAL.md`, benchmark reports, and `docs/`.
 
@@ -50,7 +49,7 @@ Local documents describe plans, not active implementation ownership. In particul
 ## Known Limitations
 
 - Python cryptographic arithmetic and secret-dependent paths are variable-time and not side-channel hardened.
-- The project is not a wallet, not a Bitcoin consensus implementation, and is not independently audited.
+- The project is not safe for real funds, is not a Bitcoin consensus implementation, and is not independently audited. M12 wallet and broadcast features are test-network-only.
 - The implemented PSBT subset does not support all script types or a complete wallet lifecycle; see `SECURITY.md` and the relevant PSBT docs for exact scope.
 - Research and benchmark results have explicit resource, model, and environment limitations. An infeasible or failed experiment is not evidence of an implementation defect or a security break.
 - Optional backends and extras may be absent; a skipped test is not a passing test.

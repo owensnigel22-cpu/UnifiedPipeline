@@ -13,17 +13,21 @@ protect real keys or funds.
 - **Not side-channel hardened.** No blinding, no memory zeroization, no
   protection against fault injection beyond the self-verification noted below.
   Python cannot reliably erase secrets from memory.
-- **Not a wallet.** There is no key storage, encryption at rest, coin
-  selection, fee logic, or transaction broadcast. `keylab.psbt` parses,
+- **Not safe for real funds.** M12 adds an experimental wallet workflow that
+  can retrieve test-network WIFs from an OS-native credential store, select
+  UTXOs, sign and finalize supported PSBTs, preflight transactions, and
+  broadcast on testnet or regtest. Mainnet broadcasts are hard-rejected by the
+  wallet workflow and guarded RPC method. This code is not audited custody and
+  must only be used with synthetic/test funds. `keylab.psbt` parses,
   validates (BIP-174 rules), and re-serializes Partially Signed Bitcoin
   Transactions, and implements the BIP-174 **Signer**, **Finalizer**,
   **Extractor**, and **Combiner** roles for P2WPKH and P2SH-P2WPKH inputs
   (deterministic ECDSA partial signatures, final scriptSig/scriptWitness
   construction, final BIP-144 transaction assembly, and union of PSBTs sharing
-  one unsigned transaction), for study and test-vector verification only. It
-  does **not** broadcast a transaction or merge PSBTs for differing
-  transactions; it does not handle P2WSH, Taproot, or multisig inputs; and it is
-  not production wallet software. The signer takes a private scalar supplied by
+  one unsigned transaction), for study and test-vector verification. It does
+  not merge PSBTs for differing transactions; it does not handle P2WSH,
+  Taproot, or multisig inputs. The M12 wallet workflow currently supports
+  confirmed P2WPKH and P2SH-P2WPKH UTXOs only. The signer takes a private scalar supplied by
   the caller, uses the existing deterministic (RFC 6979, low-S) ECDSA primitive,
   verifies each signature it produces before emitting it, and never logs or
   prints key material. The finalizer **consumes existing signatures only** -- it
@@ -35,7 +39,7 @@ protect real keys or funds.
   not broadcast). The combiner also performs **no cryptography** -- it unions
   key-value pairs across PSBTs that share one unsigned transaction, interprets
   no value, and never mutates its inputs.
-- **Not a network client beyond read-only verification.** `keylab.verify.mainnet`
+- **Network calls have distinct trust and safety boundaries.** `keylab.verify.mainnet`
   may perform **HTTPS GET requests to an allow-listed set of public block
   explorers** (default: `mempool.space`) to fetch **public** artifacts --
   transactions, block headers, merkle proofs, and UTXO records -- **as data only**.
@@ -43,12 +47,18 @@ protect real keys or funds.
   merkle-root matching) is made **locally** by Keylab's own primitives; a fetched
   explorer field is never trusted as a verdict. The client enforces **TLS 1.2 or
   higher with certificate validation on** and has **no code path** to disable it.
-  It performs **read-only GETs only**: it does **not** broadcast transactions,
-  submit to a mempool, or transmit private keys, secrets, or signing payloads.
-  Standard network metadata, including the client IP address and requested
-  public identifiers, is exposed as expected for HTTPS requests. Signing and
-  broadcasting remain out of scope. This is the **only** network capability in
-  Keylab; the offline posture above otherwise stands.
+  It performs **read-only GETs only** and does not broadcast or transmit private
+  keys. Separately, `keylab.verify.node.BitcoinRPCClient` sends JSON-RPC requests
+  to a configured Bitcoin Core node for wallet state queries, mempool
+  preflight, and guarded raw-transaction submission. The client warns when a
+  non-loopback endpoint uses plaintext HTTP because RPC credentials and
+  transaction data are not encrypted; remote RPC must use HTTPS or an
+  operator-managed secure tunnel. The M12 broadcast APIs reject mainnet and
+  require explicit test-network confirmation, verify the node's reported chain,
+  recheck selected outputs, and require a passing `testmempoolaccept` response
+  before sending once. A preflight result is not a guarantee of later
+  confirmation, and a send timeout can leave acceptance uncertain. Do not
+  retry automatically or treat this path as suitable for real funds.
 - **Not a consensus implementation.** `keylab.encoding.transaction` computes
   BIP-341 and BIP-143 (SegWit v0) signature hashes for study; it does not
   validate transactions, execute Script, or process `OP_CODESEPARATOR` (the
@@ -95,7 +105,16 @@ Cryptographic assumptions and implementation notes are in
 |---|---|
 | Published test vectors and seeded benchmark corpora | Public; safe to print and share |
 | Throwaway keys created for experiments | Acceptable, on a machine you control |
+| M12 OS-keyring testnet/regtest WIFs | Test material only; accessible to the running process and not guaranteed to be erased from memory |
+| M12 node RPC credentials and transactions | Treat as sensitive; remote plaintext HTTP exposes credentials and transaction contents |
 | Any key that controls real value | **Out of scope.** Do not load it into Keylab |
+
+The optional `wallet` extra enables `KeyringProvider`. It refuses non-native
+keyring backends and has no plaintext-file fallback, but OS credential-store
+protections vary and do not protect a key from a process authorized to retrieve
+it. Python does not guarantee zeroization. `HardwareSigner` defines a PSBT
+handoff interface only; vendor device transport and on-device transaction
+review are not implemented in M12.
 
 Research modules (`halving`, `quartic`, `division_polynomials`, nonce-reuse
 and BIP-32 parent-recovery demonstrations) illustrate known mathematics. They

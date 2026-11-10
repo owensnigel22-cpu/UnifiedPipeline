@@ -10,7 +10,7 @@ This overview records repository structure visible in `src/keylab/`, `dashboard/
 | `src/keylab/ec/` | Elliptic-curve and protocol-related implementations, including secp256k1, Schnorr, ECDSA recovery, and MuSig2 public-key operations. Shared curve arithmetic and validation live in `ec/secp256k1.py`. |
 | `src/keylab/encoding/` | Base encodings, addresses, SEC1/WIF and transaction-related parsing/serialization, including Taproot and signature-hash helpers. |
 | `src/keylab/hd.py`, `mnemonic.py` | HD key derivation and BIP-39-related operations. These are reference implementations with the limitations in `SECURITY.md`. |
-| `src/keylab/psbt/` | PSBT v0 data model and documented parser/validator/serializer and workflow roles. The documented signer/finalizer/extractor/combiner support is scoped and is not a wallet. |
+| `src/keylab/psbt/` | PSBT v0 data model and documented parser/validator/serializer and workflow roles. The signer/finalizer/extractor/combiner support remains scoped; the separate experimental M12 wallet workflow uses only supported P2WPKH and P2SH-P2WPKH inputs on testnet/regtest. |
 | `src/keylab/research/` | Experimental and educational research, including elliptic-curve, ECDLP, HNP, and signature-analysis work. It is not selected by normal signing or verification paths, per project security/architecture docs. |
 | `src/keylab/sat/`, `numtheory/` | SAT/CNF and number-theory utilities used by educational and research workflows. Optional solver integrations are described by extras in `pyproject.toml`. |
 | `src/keylab/backends.py`, `benchmarks.py`, `feature_audit.py` | Backend discovery/integration, benchmark functions, and feature-presence/test-source auditing. Presence is not evidence that a test passed. |

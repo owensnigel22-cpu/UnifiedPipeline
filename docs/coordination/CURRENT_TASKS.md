@@ -1,9 +1,11 @@
 # Current Tasks
 
-Snapshot entered 2026-11-08. Verify PR/task state before claiming work; this register is not a live GitHub feed. One implementation owner per task. Unassigned proposals are not authorization to implement.
+Snapshot entered 2026-11-10. Verify PR/task state before claiming work; this register is not a live GitHub feed. One implementation owner per task. Unassigned proposals are not authorization to implement.
 
 | Task ID | Description | Assigned agent/owner | Status | Branch | PR | Files affected / scope | Dependencies | Review status |
 |---|---|---|---|---|---|---|---|---|
+| M11 | CBOM generation, README update, and generated API documentation | Copilot implementation; project owner | Complete; `origin/main` verified at `152f0e6` on 2026-11-10 | `main` | Merged | `cbom-baseline.json`, `requirements-cbom.txt`, `scripts/gen_cbom.py`, `scripts/gen_api_docs.py`, `docs/api.md`, README, journal | CycloneDX generation tooling | Complete |
+| M12 | Node RPC, keyring/hardware signer interfaces, descriptor UTXO scanning, bounded coin selection, and test-network PSBT broadcast | Codex implementation; project-owner review | In progress; implementation complete, owner review pending | `docs/m12-broadcast-plan` | None | `SEC_M12_BROADCAST_PLAN.md`, `src/keylab/verify/node/`, `src/keylab/wallet/`, `SECURITY.md`, focused tests, optional dependency and coordination docs | Existing `httpx`; optional `keyring`; mocked regtest integration test | Owner security review pending |
 | M10 | ECDH, optional Coincurve ECDSA, concurrent exact M7 verification collection, and reproducible ECC benchmarks | Codex implementation | Merged to `main`; verified at `cb5c7ea` on 2026-11-09 | `main` | Merged | ECDH API, Coincurve adapters, mainnet verification collection, benchmark and coordination docs | Optional Coincurve | Complete |
 | M10-MYPY | Reduce current Mypy errors to zero without behavior changes | Codex implementation; project owner review | In progress | `main` | None | `src/keylab` type fixes reported by Mypy; affected tests/config only if needed | Mypy plus project runtime/test dependencies | Not reviewed |
 | PR-31 | Review Dependabot update `actions/upload-artifact` 4 to 7 | Dependabot (change author); project owner to review | Open; not approved | `dependabot/github_actions/actions/upload-artifact-7` | #31 | Workflow action version pin(s); verify exact diff in PR | None recorded | Owner review pending |
