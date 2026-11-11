@@ -37,3 +37,21 @@ cited for study and are not vendored into this project.
 
 These references are the authority; where KeyLab disagrees with them on a
 standard input, KeyLab is wrong.
+
+## Transaction broadcasting (M14)
+
+KeyLab broadcasts an **already-signed** transaction via public HTTP explorer APIs
+or directly over the P2P protocol. The implementations are KeyLab's own; the
+methodology and endpoints are referenced below.
+
+| Project / API | What it is / why referenced |
+|---|---|
+| [`laanwj/bitcoin-submittx`](https://github.com/laanwj/bitcoin-submittx) | Standalone P2P transaction submitter — the methodology `keylab.wallet.broadcast_p2p` follows (version handshake, `inv`, then `tx` on `getdata`). |
+| [`petertodd/python-bitcoinlib`](https://github.com/petertodd/python-bitcoinlib) | The library KeyLab uses for P2P message serialization (`msg_version`/`inv`/`getdata`/`tx`) and transaction parsing. |
+| [mempool.space REST API](https://mempool.space/docs/api/rest) | `POST /api/tx` broadcast endpoint used by `MempoolSpaceBroadcaster` (mainnet and testnet). |
+| [BlockCypher API](https://www.blockcypher.com/dev/bitcoin/#transaction-api) | `POST /v1/btc/<chain>/txs/push` broadcast endpoint used by `BlockCypherBroadcaster`. |
+
+Broadcasting pushes a pre-signed transaction and handles no keys. A **mainnet**
+broadcast requires one explicit confirmation (`confirm_mainnet=True`), and signing
+real-value keys must use the audited coincurve/libsecp256k1 backend — the
+pure-Python ECC is non-constant-time (see [../SECURITY.md](../SECURITY.md)).
