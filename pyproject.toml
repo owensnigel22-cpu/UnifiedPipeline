@@ -23,13 +23,13 @@ dependencies = [
 # bump them in a dedicated PR (Dependabot proposes updates).
 dev = ["hypothesis>=6.100", "mypy==2.4.1", "pytest>=8.0", "pytest-cov==7.1.0", "ruff==0.17.3"]
 # Optional native libsecp256k1 backend for accelerated ECC operations.
-fast = ["coincurve>=19.0.1,<20.0"]
+fast = ["coincurve>=19.0.1,<22.0"]
 # OS credential-store integration only; KeyringProvider rejects non-native backends.
 wallet = ["keyring>=25.7,<26"]
 dashboard = ["pandas>=2.0", "pandas-stubs>=2.0", "streamlit>=1.40"]
 crypto = ["cryptography>=44.0"]
 crypto-alt = ["pycryptodome>=3.23"]
-secp256k1 = ["coincurve>=19.0.1,<20.0"]
+secp256k1 = ["coincurve>=19.0.1,<22.0"]
 ecc-alt = ["fastecdsa>=3.0"]
 number-theory = ["gmpy2>=2.2"]
 sat-native = ["python-sat>=1.8.dev20", "pycosat>=0.6.6"]
@@ -40,11 +40,11 @@ llm = ["openai>=1.0"]
 # 2.3.0 has no cp312 wheel, so the pin is exact, not a loose lower bound. Test/CI
 # tooling only -- never a runtime dependency.
 fuzz = ["atheris==3.1.0"]
-performance = ["cryptography>=44.0", "coincurve>=19.0.1,<20.0", "gmpy2>=2.2", "python-sat>=1.8.dev20"]
+performance = ["cryptography>=44.0", "coincurve>=19.0.1,<22.0", "gmpy2>=2.2", "python-sat>=1.8.dev20"]
 all-backends = [
     "cryptography>=44.0",
     "pycryptodome>=3.23",
-    "coincurve>=19.0.1,<20.0",
+    "coincurve>=19.0.1,<22.0",
     "fastecdsa>=3.0",
     "gmpy2>=2.2",
     "python-sat>=1.8.dev20",
