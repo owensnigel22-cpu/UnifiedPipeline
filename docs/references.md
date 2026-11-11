@@ -55,3 +55,22 @@ Broadcasting pushes a pre-signed transaction and handles no keys. A **mainnet**
 broadcast requires one explicit confirmation (`confirm_mainnet=True`), and signing
 real-value keys must use the audited coincurve/libsecp256k1 backend — the
 pure-Python ECC is non-constant-time (see [../SECURITY.md](../SECURITY.md)).
+
+## Reduced-round SHA-256 preimages (M15, Phase B)
+
+KeyLab's 19-step context-shaping solver
+(`keylab.research.sha256_reduced.context_shaping`) is a faithful Python port of
+the CPU solver below; the register-window identity it shares is credited the
+same way. **Reduced-round only** — no full 64-round preimage is claimed.
+
+| Project | License | What it is / why referenced |
+|---|---|---|
+| [`srw/sha256-19-and-20-step-preimages-with-padding`](https://github.com/srw/sha256-19-and-20-step-preimages-with-padding) | MIT | Source of the ported `src/pre19.c` 19-step solver (a-register window + context shaping + Q-table), the published `abc` 19/20-step witnesses verified in `keylab.research.sha256_reduced.published`, and the padding-inversion technique. Context shaping credited to K. S. Basra. |
+| [`kamb-code/sha256-r19-preimage`](https://github.com/kamb-code/sha256-r19-preimage) | see repo | Independent algebraic 19-round preimage work; cross-reference for the reduced-round approach. |
+
+Honest note: a full pure-Python run of the srw search is impractical (the Q-inverse
+table covers only `2**(table_bits - 32)` of the range, leaving ~`2**37` chains at a
+Python-feasible table size; measured: 5.77M chains in ~170s found nothing). The port
+is reference-correct and forward-verifying, intended for study and for driving the
+reference C/CUDA solvers; `register_window_preimage` handles the schedule-free
+8..16-round regime deterministically.
