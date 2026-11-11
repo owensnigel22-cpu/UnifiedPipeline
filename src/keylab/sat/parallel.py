@@ -3,15 +3,19 @@
 from __future__ import annotations
 
 import math
-from collections.abc import Iterator
-from concurrent.futures import ThreadPoolExecutor, as_completed
+import os
+import tempfile
+from collections.abc import Callable, Iterator
+from concurrent.futures import Future, ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from itertools import product
 from threading import Event
+from typing import Protocol
 
-from keylab.sat.solver import SolverResult, run_solver
+from keylab.sat.solver import SolverResult, parse_solver_output, run_solver
 
 _MAX_CUBE_DEPTH = 16
+_CubeOutcome = tuple[tuple[int, ...], str, SolverResult]
 
 
 @dataclass(frozen=True)
@@ -227,9 +231,169 @@ def solve_parallel_cubes(
     )
 
 
+class _CappedRun(Protocol):
+    """Shape of a :func:`scripts.run_capped.run_capped` result."""
+
+    status: str
+    stdout: str
+    stderr: str
+    returncode: int | None
+
+
+CappedRunner = Callable[..., _CappedRun]
+
+
+@dataclass(frozen=True)
+class CappedCubeResult:
+    """Aggregate result from solving cubes under per-process memory + time caps."""
+
+    status: str
+    total_cubes: int
+    completed_cubes: int
+    cube_depth: int
+    assignments: dict[int, bool]
+    satisfying_cube: tuple[int, ...] | None
+    memory_breaches: int
+    timeouts: int
+    errors: int
+
+
+def _default_capped_runner() -> CappedRunner:
+    """Load ``run_capped`` from the repo scripts (reused, not reimplemented)."""
+    try:
+        from scripts.run_capped import run_capped
+    except ImportError as exc:  # pragma: no cover - exercised only outside the repo checkout
+        raise RuntimeError(
+            "solve_cubes_capped needs scripts/run_capped.py; run from the repo checkout "
+            "or pass an explicit runner"
+        ) from exc
+    return run_capped
+
+
+def _solve_one_cube_capped(
+    runner: CappedRunner,
+    executable: str,
+    directory: str,
+    index: int,
+    formula: str,
+    cube: tuple[int, ...],
+    timeout: float,
+    mem_bytes: int,
+) -> _CubeOutcome:
+    path = os.path.join(directory, f"cube_{index}.cnf")
+    with open(path, "w", encoding="ascii") as handle:
+        handle.write(formula)
+    try:
+        run = runner([executable, path], mem_bytes=mem_bytes, timeout=timeout, input_text=None)
+    finally:
+        try:
+            os.unlink(path)
+        except OSError:  # pragma: no cover - best-effort cleanup
+            pass
+    if run.status != "ok":
+        # A memory or timeout kill makes this cube UNKNOWN; its output is not trusted.
+        return cube, run.status, SolverResult("UNKNOWN", {}, run.stdout, run.stderr, run.returncode or 0)
+    return cube, run.status, parse_solver_output(run.stdout, run.stderr, run.returncode or 0)
+
+
+def solve_cubes_capped(
+    executable: str,
+    dimacs: str,
+    variables: tuple[int, ...],
+    *,
+    depth: int,
+    workers: int,
+    timeout: float,
+    mem_bytes: int,
+    runner: CappedRunner | None = None,
+) -> CappedCubeResult:
+    """Solve a CNF under input-bit cubes, each in a memory- and time-capped process.
+
+    This is :func:`solve_parallel_cubes` with a hard per-cube memory cap enforced
+    by ``scripts/run_capped.py`` (Windows Job Object / POSIX ``RLIMIT_AS``): a cube
+    that exceeds ``mem_bytes`` or ``timeout`` is killed cleanly and counted as
+    UNKNOWN instead of exhausting the host. A satisfiable cube ends the search; the
+    aggregate is UNKNOWN if any cube was capped or returned UNKNOWN, and UNSAT only
+    if every cube proved UNSAT. ``runner`` is injectable for testing.
+
+    ``executable`` must accept a DIMACS file path as its argument (kissat,
+    cadical, minisat, and cryptominisat5 all do); each cube's formula is written
+    to a temporary file passed as ``[executable, path]``.
+    """
+    if type(workers) is not int or workers < 1:
+        raise ValueError("workers must be positive")
+    if type(timeout) not in (int, float) or not math.isfinite(timeout) or timeout <= 0:
+        raise ValueError("timeout must be positive")
+    if type(mem_bytes) is not int or mem_bytes <= 0:
+        raise ValueError("mem_bytes must be a positive integer")
+    _validate_cube_inputs(variables, depth)
+    active_runner = runner if runner is not None else _default_capped_runner()
+    base_dimacs = _prepare_dimacs(dimacs)
+    cube_iterator = iter(_iter_cubes(variables, depth))
+    total_cubes = 1 << depth
+    worker_count = min(workers, total_cubes)
+
+    completed = memory_breaches = timeouts = errors = 0
+    saw_unknown = False
+    with (
+        tempfile.TemporaryDirectory(prefix="keylab_cubes_") as directory,
+        ThreadPoolExecutor(max_workers=worker_count) as executor,
+    ):
+        pending: dict[Future[_CubeOutcome], int] = {}
+        next_index = 0
+
+        def submit_next() -> bool:
+            nonlocal next_index
+            cube = next(cube_iterator, None)
+            if cube is None:
+                return False
+            formula = base_dimacs.with_assumptions(cube)
+            future = executor.submit(
+                _solve_one_cube_capped,
+                active_runner, executable, directory, next_index, formula, cube, timeout, mem_bytes,
+            )
+            pending[future] = next_index
+            next_index += 1
+            return True
+
+        for _ in range(worker_count):
+            if not submit_next():
+                break
+
+        while pending:
+            future = next(as_completed(tuple(pending)))
+            pending.pop(future)
+            cube, run_status, result = future.result()
+            completed += 1
+            if run_status == "memory":
+                memory_breaches += 1
+            elif run_status == "timeout":
+                timeouts += 1
+            elif run_status == "error":
+                errors += 1
+            if result.status == "SATISFIABLE":
+                for outstanding in pending:
+                    outstanding.cancel()
+                return CappedCubeResult(
+                    "SATISFIABLE", total_cubes, completed, depth,
+                    result.assignments, cube, memory_breaches, timeouts, errors,
+                )
+            if result.status != "UNSATISFIABLE":
+                saw_unknown = True
+            submit_next()
+
+    status = "UNKNOWN" if (saw_unknown or memory_breaches or timeouts or errors) else "UNSATISFIABLE"
+    return CappedCubeResult(
+        status, total_cubes, completed, depth, {}, None, memory_breaches, timeouts, errors,
+    )
+
+
 __all__ = [
+    "CappedCubeResult",
+    "CappedRunner",
     "ParallelCubeResult",
     "dimacs_with_assumptions",
     "generate_cubes",
+    "solve_cubes_capped",
     "solve_parallel_cubes",
 ]
