@@ -68,9 +68,15 @@ same way. **Reduced-round only** — no full 64-round preimage is claimed.
 | [`srw/sha256-19-and-20-step-preimages-with-padding`](https://github.com/srw/sha256-19-and-20-step-preimages-with-padding) | MIT | Source of the ported `src/pre19.c` 19-step solver (a-register window + context shaping + Q-table), the published `abc` 19/20-step witnesses verified in `keylab.research.sha256_reduced.published`, and the padding-inversion technique. Context shaping credited to K. S. Basra. |
 | [`kamb-code/sha256-r19-preimage`](https://github.com/kamb-code/sha256-r19-preimage) | see repo | Independent algebraic 19-round preimage work; cross-reference for the reduced-round approach. |
 
-Honest note: a full pure-Python run of the srw search is impractical (the Q-inverse
-table covers only `2**(table_bits - 32)` of the range, leaving ~`2**37` chains at a
-Python-feasible table size; measured: 5.77M chains in ~170s found nothing). The port
-is reference-correct and forward-verifying, intended for study and for driving the
-reference C/CUDA solvers; `register_window_preimage` handles the schedule-free
-8..16-round regime deterministically.
+Honest note: a full pure-Python run of the srw *19/20-step* search is impractical
+(the Q-inverse table covers only `2**(table_bits - 32)` of the range, leaving
+~`2**37` chains at a Python-feasible table size; measured: 5.77M chains in ~170s
+found nothing). The port is reference-correct and forward-verifying, intended for
+study and for driving the reference C/CUDA solvers.
+
+What *is* feasible in pure Python, and exercised live in the test suite:
+`register_window_preimage` solves the schedule-free 8..16-round regime
+deterministically, and `search_17_step_preimage` solves a 17-round instance (a
+single expanded schedule word, `W_16`) by a meet-in-the-middle over two independent
+register words, returning a forward-verified compression preimage in seconds. No
+full 64-round preimage is attempted or claimed.

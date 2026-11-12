@@ -15,15 +15,28 @@ marker are absorbed algebraically so the block is a real 55-byte-message preimag
 Every candidate is run through the full 19-round compression and only returned if
 it reproduces the target (:func:`_compress`), so a returned result is always valid.
 
-**Honest performance note.** The inverse table covers only ``2**(table_bits - 32)``
-of the 32-bit range, so the per-chain success probability is about
+**Honest performance note (19/20-step search is infeasible in pure Python).** The
+19/20-step search needs *three* triangular schedule constraints solved through the
+``Q``-inverse table, and the table covers only ``2**(table_bits - 32)`` of the
+32-bit range, so the per-chain success probability is about
 ``coverage**3 * (3/4)**32``. In C with a ``2**28``-plus table and GPUs this is
-milliseconds; **in pure Python a full 19-step search is impractical** — a feasible
-table (``table_bits <= 24``, since larger ones are too slow/large to build in
-Python) leaves roughly ``2**37`` chains to walk. This port is therefore for study,
-for validating the technique, and for driving the C/CUDA reference for real
-searches; it is not a fast pure-Python preimage finder. Nothing here touches full
-64-round SHA-256, which remains infeasible.
+milliseconds; **in pure Python a full 19/20-step search is impractical** — the
+memory to hold a large table and the ``~2**37`` chains to walk both exceed what
+pure Python can do (a feasible ``table_bits <= 24`` leaves that chain count, and a
+measured run of 5.77M chains in 170s found nothing). This port is therefore for
+study, for validating the technique, and for driving the C/CUDA reference for real
+searches; it is **not** a fast pure-Python 19/20-step finder.
+
+**What *is* feasible in pure Python: 17-step.** A 17-round instance has a single
+schedule constraint (only ``W_16`` is expanded), so no ``Q``-table or chain walk is
+needed. :func:`search_17_step_preimage` solves it directly by a meet-in-the-middle
+over two independent free register words and returns a **forward-verified
+compression preimage** (a single 512-bit block whose 17-round compression, with
+feed-forward, equals the target — the same notion as
+:class:`keylab.research.sha256_reduced.register_window.CompressionPreimage`, which
+covers the schedule-free 8..16-round regime). This runs in seconds and is exercised
+live in the test suite. Nothing here touches full 64-round SHA-256, which remains
+infeasible.
 """
 
 from __future__ import annotations
@@ -176,6 +189,114 @@ class _NineteenStepSolver:
         ) & _MASK
 
 
+def _seed_endpoints(solver: _NineteenStepSolver, target_digest: bytes, rounds: int) -> tuple[int, ...]:
+    """Pin ``a_{-7..0}`` from the IV and ``a_{rounds-7..rounds}`` from the target window.
+
+    Returns the target digest as a tuple of eight 32-bit words. This is the shared
+    setup for every reduced-round search here: both ends of the ``a``-sequence are
+    fixed through the sliding-window identity, leaving the interior words free.
+    """
+    a = solver.a
+    for i, value in enumerate(window_from_state(_IV)):
+        a[i] = value  # a_{-7..0}
+    digest = tuple(int.from_bytes(target_digest[i : i + 4], "big") for i in range(0, 32, 4))
+    state = tuple((digest[i] - _IV[i]) & _MASK for i in range(8))
+    for i, value in enumerate(window_from_state(state)):
+        a[(rounds - 7 + i) + _OFF] = value  # a_{rounds-7..rounds}
+    return digest
+
+
+def search_17_step_preimage(
+    target_digest: bytes,
+    *,
+    seed: int = 1,
+    table_bits: int = 17,
+    draws: int | None = None,
+    max_attempts: int = 48,
+    time_budget: float = 25.0,
+) -> ShapingResult:
+    """Find a forward-verified **17-step compression preimage** of ``target_digest``.
+
+    A 17-round instance expands a single schedule word (``W_16``), so the whole
+    search reduces to one 32-bit constraint::
+
+        w(16) == sigma0(w(1)) + w(0) + w(9) + sigma1(w(14))
+
+    With both ends of the ``a``-sequence pinned (IV and target window), the free
+    interior words are ``a_1..a_9``. Two of them are *independent* levers on that
+    constraint: ``a_1`` enters only ``w(0)`` and ``w(1)``, and ``a_6`` enters only
+    ``w(9)``. Fixing the other seven free words makes the constraint
+    ``A(a_1) + B(a_6) == C`` for scalar ``A``/``B`` and a constant ``C``, which a
+    meet-in-the-middle hash join solves directly — no ``Q``-table or chain walk, so
+    it finishes in seconds in pure Python (unlike the 19/20-step search; see the
+    module note).
+
+    The result is a single 512-bit block whose 17-round compression (with
+    feed-forward, :func:`_compress`) equals ``target_digest`` — a *compression*
+    preimage, like :class:`register_window.CompressionPreimage`, **not** a
+    padded-message preimage. ``block`` holds that block and ``message`` is ``None``.
+    Every returned block is forward-verified, so ``found`` implies ``verified``.
+    """
+    if len(target_digest) != 32:
+        raise ValueError("target_digest must be exactly 32 bytes")
+    if type(table_bits) is not int or not 8 <= table_bits <= 22:
+        raise ValueError("table_bits must be between 8 and 22")
+    if type(max_attempts) is not int or max_attempts < 1:
+        raise ValueError("max_attempts must be a positive integer")
+    scan = (1 << table_bits) if draws is None else int(draws)
+    if scan < 1:
+        raise ValueError("draws must be positive")
+
+    rounds = 17
+    solver = _NineteenStepSolver()
+    digest = _seed_endpoints(solver, target_digest, rounds)
+    a = solver.a
+    rng = _SplitMix64(seed)
+    start = time.monotonic()
+    examined = 0
+    attempts = 0
+    # Indices of the seven free words we randomise per attempt: a2,a3,a4,a5,a7,a8,a9.
+    fixed_indices = (9, 10, 11, 12, 14, 15, 16)
+    for _ in range(max_attempts):
+        if time.monotonic() - start > time_budget:
+            break
+        attempts += 1
+        for idx in fixed_indices:
+            a[idx] = rng.next32()
+        constant = (solver.w(16) - _small_sigma1(solver.w(14))) & _MASK
+        # Tabulate B(a_6) = w(9) keyed by the value of A it would need.
+        table_b: dict[int, int] = {}
+        for _ in range(1 << table_bits):
+            a6 = rng.next32()
+            a[13] = a6
+            table_b[(constant - solver.w(9)) & _MASK] = a6
+        # Scan A(a_1) = sigma0(w(1)) + w(0) for a match.
+        base = rng.next32()
+        for i in range(scan):
+            if (i & 0x3FFF) == 0 and time.monotonic() - start > time_budget:
+                break
+            examined += 1
+            a[8] = (base + i) & _MASK
+            key = (_small_sigma0(solver.w(1)) + solver.w(0)) & _MASK
+            hit = table_b.get(key)
+            if hit is None:
+                continue
+            a[13] = hit
+            words = [solver.w(t) for t in range(16)]
+            out = _compress(words, rounds)
+            if any(out[k] != digest[k] for k in range(8)):
+                continue  # pragma: no cover - key collision without algebraic equality
+            block = b"".join(word.to_bytes(4, "big") for word in words)
+            return ShapingResult(
+                True, "comp17", target_digest, block, None, attempts,
+                examined, time.monotonic() - start, verified=True,
+            )
+    return ShapingResult(
+        False, "comp17", target_digest, None, None, attempts,
+        examined, time.monotonic() - start, verified=False,
+    )
+
+
 def search_19_step_preimage(
     target_digest: bytes,
     *,
@@ -208,14 +329,7 @@ def search_19_step_preimage(
     table = build_q_table(table_bits)
     rng = _SplitMix64(seed)
     solver = _NineteenStepSolver()
-    a = solver.a
-
-    for i, value in enumerate(window_from_state(_IV)):
-        a[i] = value  # a_{-7..0}
-    digest = tuple(int.from_bytes(target_digest[i : i + 4], "big") for i in range(0, 32, 4))
-    state = tuple((digest[i] - _IV[i]) & _MASK for i in range(8))
-    for i, value in enumerate(window_from_state(state)):
-        a[(_ROUNDS - 7 + i) + _OFF] = value  # a_{12..19}
+    digest = _seed_endpoints(solver, target_digest, _ROUNDS)  # pin a_{-7..0} and a_{12..19}
 
     start = time.monotonic()
     contexts = chains = 0
@@ -334,6 +448,7 @@ def _walk_chains(
 __all__ = [
     "ShapingResult",
     "build_q_table",
+    "search_17_step_preimage",
     "search_19_step_preimage",
     "window_from_state",
 ]

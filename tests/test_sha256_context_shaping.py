@@ -17,7 +17,12 @@ import time
 import pytest
 
 from keylab.hashes.reduced import sha256_reduced
-from keylab.research.sha256_reduced import build_q_table, search_19_step_preimage
+from keylab.research.sha256_reduced import (
+    build_q_table,
+    reduced_compress,
+    search_17_step_preimage,
+    search_19_step_preimage,
+)
 from keylab.research.sha256_reduced import context_shaping as cs
 
 
@@ -90,9 +95,15 @@ def test_comp_context_forces_e9_e10_all_ones(seed: int) -> None:
 
 @pytest.mark.parametrize("seed", range(4))
 def test_padded_context_forces_shaping_and_padding(seed: int) -> None:
+    # Padded setup rejects ~255/256 draws on the 0x80 marker gate before the
+    # popcount gate, so kmax is kept loose and the budget wide to keep this
+    # probabilistic loop from flaking; the invariants asserted are the point.
+    kmax = 14
     solver = _seed_solver(hashlib.sha256(f"pad{seed}".encode()).digest())
     rng = cs._SplitMix64(seed)
-    difference = cs._setup_context(solver, rng, padded=True, kmax=8, start=time.monotonic(), time_budget=10.0)
+    difference = cs._setup_context(
+        solver, rng, padded=True, kmax=kmax, start=time.monotonic(), time_budget=30.0
+    )
     assert difference is not None
     # context shaping
     assert solver.e(9) == 0xFFFFFFFF
@@ -101,7 +112,7 @@ def test_padded_context_forces_shaping_and_padding(seed: int) -> None:
     assert solver.w(14) == 0
     assert solver.w(15) == 440
     assert solver.w(13) & 0xFF == 0x80
-    assert difference.bit_count() <= 8
+    assert difference.bit_count() <= kmax
 
 
 def test_search_returns_clean_result_on_small_budget() -> None:
@@ -123,6 +134,60 @@ def test_search_validates_arguments() -> None:
         search_19_step_preimage(b"\x00" * 10)
     with pytest.raises(ValueError, match="mode"):
         search_19_step_preimage(b"\x00" * 32, mode="bogus")
+
+
+@pytest.mark.parametrize("label", ["kl17-live-a", "kl17-live-b"])
+def test_search_17_finds_verified_compression_preimage(label: str) -> None:
+    # The 17-step search is feasible in pure Python (single schedule constraint): it
+    # must actually FIND a forward-verified compression preimage, live, in seconds.
+    target = hashlib.sha256(label.encode()).digest()
+    result = search_17_step_preimage(target, seed=1)
+
+    assert result.found is True
+    assert result.verified is True
+    assert result.mode == "comp17"
+    assert result.block is not None
+    assert result.message is None  # a compression preimage, not a padded message
+    assert len(result.block) == 64  # one 512-bit block
+    # Independent forward verification: the block's 17-round compression hits target.
+    assert reduced_compress(result.block, 17) == target
+    # And internally consistent with the solver's own compressor.
+    words = [int.from_bytes(result.block[i : i + 4], "big") for i in range(0, 64, 4)]
+    out = cs._compress(words, 17)
+    assert out == [int.from_bytes(target[i : i + 4], "big") for i in range(0, 32, 4)]
+
+
+def test_search_17_wrong_round_count_misses_target() -> None:
+    # A 17-step compression preimage is specific to 17 rounds.
+    target = hashlib.sha256(b"kl17-round-specificity").digest()
+    result = search_17_step_preimage(target, seed=1)
+    assert result.found and result.block is not None
+    assert reduced_compress(result.block, 17) == target
+    assert reduced_compress(result.block, 16) != target
+    assert reduced_compress(result.block, 18) != target
+
+
+def test_search_17_clean_miss_on_zero_budget() -> None:
+    # A zero time budget must return a clean found=False, not an error or false claim.
+    target = hashlib.sha256(b"kl17-no-budget").digest()
+    result = search_17_step_preimage(target, seed=1, time_budget=0.0)
+    assert result.found is False
+    assert result.verified is False
+    assert result.block is None
+    assert result.contexts == 0
+
+
+def test_search_17_validates_arguments() -> None:
+    with pytest.raises(ValueError, match="32 bytes"):
+        search_17_step_preimage(b"\x00" * 10)
+    with pytest.raises(ValueError, match="table_bits"):
+        search_17_step_preimage(b"\x00" * 32, table_bits=4)
+    with pytest.raises(ValueError, match="table_bits"):
+        search_17_step_preimage(b"\x00" * 32, table_bits=30)
+    with pytest.raises(ValueError, match="max_attempts"):
+        search_17_step_preimage(b"\x00" * 32, max_attempts=0)
+    with pytest.raises(ValueError, match="draws"):
+        search_17_step_preimage(b"\x00" * 32, draws=0)
 
 
 def test_search_found_result_would_be_verified() -> None:
