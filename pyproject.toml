@@ -34,6 +34,9 @@ ecc-alt = ["fastecdsa>=3.0"]
 number-theory = ["gmpy2>=2.2"]
 sat-native = ["python-sat>=1.8.dev20", "pycosat>=0.6.6"]
 sat-certified = ["cdclkit>=0.1.3"]
+# Optional MILP solver for the Phase C reduced-round compression model. Emission to
+# .lp/.mps is pure-Python; only MILPModel.solve() needs pulp (bundles the CBC solver).
+milp = ["pulp>=2.8,<4"]
 llm = ["openai>=1.0"]
 # Coverage-guided fuzzing (Linux-only; CI runs this on ubuntu + Python 3.12).
 # atheris 3.1.0 ships cp312/cp313/cp314 manylinux wheels (verified on PyPI);

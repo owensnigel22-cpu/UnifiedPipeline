@@ -80,3 +80,29 @@ deterministically, and `search_17_step_preimage` solves a 17-round instance (a
 single expanded schedule word, `W_16`) by a meet-in-the-middle over two independent
 register words, returning a forward-verified compression preimage in seconds. No
 full 64-round preimage is attempted or claimed.
+
+## Probabilistic & algebraic solvers (M15, Phase C)
+
+`keylab.research.sha256_prob` models the reduced-round compression as one shared
+bit circuit (`_circuit.py`, validated against the reference compression) and solves
+it two ways. **Reduced-round and truncated only** — no full 64-round preimage.
+
+| Project | License | What it is / why referenced |
+|---|---|---|
+| [`hirorylabo/preimage-attacks`](https://github.com/hirorylabo/preimage-attacks) | see repo | Factor-graph / belief-propagation preimage research; reference for the bit factor-graph and loopy BP approach in `belief_propagation.py`. |
+| [`trevphil/cryptosym`](https://github.com/trevphil/cryptosym) | see repo | Symbolic/probabilistic hash-inversion toolkit (BP, and MILP/SAT encodings); reference for the factor-graph construction and the MILP bit-model. |
+
+Honest note on BP: loopy belief propagation does **not** converge on, or invert,
+the SHA-256 circuit — the engine is *exact on trees* (pinned against brute force in
+the tests), but on the hash it is at best a weak solver for easy instances. Measured
+over 5 seeds at `n_bits=64`, `max_iters=60`: one round decodes a forward-verified
+truncated preimage 5/5 at `target_bits=8`, 2/5 at 16, 1/5 at 24; two rounds, 0/5.
+Those results are reported, never hidden, and every decode is forward-verified.
+
+Honest note on MILP: `sha256_milp.compression_milp(rounds)` emits a correct bit-level
+0/1 model (every gate linearised; the true wire assignment satisfies all constraints
+in the tests) to `.lp`/`.mps` with no solver dependency. `MILPModel.solve()` needs
+the optional `milp` extra (`pulp`, bundling CBC) and, when present, returns a
+forward-verified preimage for small reduced-round instances. It is a feasibility /
+constraint model — **not** a differential active-S-box bound model — and only small
+instances are tractable.
