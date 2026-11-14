@@ -101,6 +101,14 @@ For any real secret key, use a reviewed implementation such as
   (ECDSA, BIP-340, RFC 6979, nonce reuse) print intermediate values such as
   nonces and signatures for a hard-coded demo key so the arithmetic can be
   followed. That key is public and must never hold funds.
+- **Key-weakness demos are offline and single-target.** The educational
+  attacks on bad key generation — `keylab brainwallet` (weak passphrases),
+  `keylab weak-rng-scan` (sequential / low-entropy keys), and `keylab
+  halving-lsb` (an LSB side-channel leak) — only answer whether a passphrase,
+  a bounded scalar range, or a set of leaked bits reproduces **one public
+  value you supply**. They perform no balance lookups, make no network calls,
+  and do not scan the chain for funded keys. They exist to show *why* these
+  key-generation practices are unsafe, not to locate other people's funds.
 
 Cryptographic assumptions and implementation notes are in
 [docs/architecture.md](docs/architecture.md).

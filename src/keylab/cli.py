@@ -58,6 +58,10 @@ from keylab.numtheory.rsa import (
     pollard_rho_factor,
     rsa_exponentiation_roundtrip,
 )
+from keylab.research.brainwallet import crack_brainwallet
+from keylab.research.ecdlp.halving_lsb import demo_instance as halving_lsb_demo
+from keylab.research.ecdlp.halving_lsb import lsb_halving_attack
+from keylab.research.weak_rng import incremental_pubkey_scan
 from keylab.sat.anf import MQCNFEncoder
 from keylab.sat.backends import solve_cnf
 from keylab.sat.diagnostics import write_formula_diagnostics
@@ -1646,6 +1650,99 @@ def _backward_traverse(args: argparse.Namespace, parser: argparse.ArgumentParser
     return 0
 
 
+def _brainwallet(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
+    if not Path(args.wordlist).is_file():
+        parser.error(f"wordlist not found: {args.wordlist}")
+    try:
+        result = crack_brainwallet(
+            args.address, args.wordlist, reveal_private_key=args.reveal, limit=args.limit
+        )
+    except (ValueError, OSError) as exc:
+        parser.error(str(exc))
+    output = {
+        "mode": "brainwallet-dictionary-attack",
+        "target_address": args.address,
+        "target_hash160": result.target_hash160,
+        "found": result.found,
+        "tried": result.tried,
+        "matched_form": result.matched_form,
+        "passphrase": result.passphrase.decode("utf-8", "replace") if result.passphrase else None,
+        "private_key_hex": result.private_key_hex,
+        "warning": (
+            "Educational. Brainwallets are trivially broken; never store funds in one. "
+            "Offline single-address match only -- no balance or network lookups."
+        ),
+    }
+    print(json.dumps(output, sort_keys=True))
+    return 0 if result.found else 1
+
+
+def _weak_rng_scan(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
+    try:
+        target = bytes.fromhex(args.target_pubkey)
+    except ValueError:
+        parser.error("--target-pubkey must be hexadecimal SEC1 bytes")
+    try:
+        result = incremental_pubkey_scan(target, args.start, args.count)
+    except (ValueError, TypeError) as exc:
+        parser.error(str(exc))
+    output = {
+        "mode": "weak-rng-incremental-scan",
+        "start": result.start,
+        "count": result.count,
+        "scanned": result.scanned,
+        "found": result.found,
+        "private_key": result.private_key,
+        "verified": result.verified,
+        "warning": (
+            "Educational. Demonstrates why sequential / low-entropy keys are unsafe. "
+            "Offline, bounded scan against one supplied public key."
+        ),
+    }
+    print(json.dumps(output, sort_keys=True))
+    return 0 if result.found else 1
+
+
+def _halving_lsb(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
+    from keylab.ec.secp256k1 import N as _N
+    if args.pubkey is not None:
+        from keylab.ec.sec1 import parse_sec1
+        try:
+            point = parse_sec1(bytes.fromhex(args.pubkey))
+        except ValueError as exc:
+            parser.error(f"--pubkey invalid: {exc}")
+        if not args.lsb_bits or any(character not in "01" for character in args.lsb_bits):
+            parser.error("--lsb-bits must be a binary string (bit 0 first)")
+        leaked = [int(character) for character in args.lsb_bits]
+        interval = (0, args.interval_high if args.interval_high is not None else _N - 1)
+        try:
+            result = lsb_halving_attack(point, leaked, interval=interval)
+        except ValueError as exc:
+            parser.error(str(exc))
+        output = {
+            "mode": "halving-lsb-attack",
+            "recovered": result.recovered_scalar,
+            "verified": result.verified,
+            "leaked_bits": result.leaked_bits,
+            "low_bits_value": result.low_bits_value,
+            "high_window_width": result.high_window_width,
+            "warning": "Educational side-channel demo; requires a real LSB leak to apply.",
+        }
+        print(json.dumps(output, sort_keys=True))
+        return 0 if result.verified else 1
+    try:
+        summary = halving_lsb_demo(args.secret, args.leaks)
+    except ValueError as exc:
+        parser.error(str(exc))
+    summary = {
+        "mode": "halving-lsb-demo",
+        **summary,
+        "warning": "Educational side-channel demo on a bounded secp256k1 scalar.",
+    }
+    print(json.dumps(summary, sort_keys=True))
+    return 0 if summary["verified"] else 1
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="keylab", description=__doc__)
     parser.add_argument("--version", action="version", version=f"keylab {__version__}")
@@ -2194,6 +2291,54 @@ def build_parser() -> argparse.ArgumentParser:
     forward_feed.add_argument("--prefix-block", type=_hex_bytes, required=True, help="exact 64-byte (512-bit) prefix block")
     forward_feed.add_argument("--suffix", type=_hex_bytes, default=b"", help="bytes appended after the prefix block, in hex")
     forward_feed.add_argument("--target", type=_hex_bytes, help="optional expected 32-byte SHA-256 digest")
+    brainwallet = commands.add_parser(
+        "brainwallet",
+        help="offline brainwallet dictionary attack against one address (educational)",
+        description=(
+            "Stream a wordlist and report whether any passphrase derives the target "
+            "address (d = SHA256(passphrase)). Offline only: no balance or network lookups."
+        ),
+    )
+    brainwallet.add_argument("--address", required=True, help="target P2PKH or P2WPKH(v0) address")
+    brainwallet.add_argument("--wordlist", required=True, help="wordlist path (streamed in binary)")
+    brainwallet.add_argument("--limit", type=int, default=None, help="maximum passphrases to try")
+    brainwallet.add_argument(
+        "--reveal", action="store_true", help="include the recovered private key in the output"
+    )
+
+    weak_rng = commands.add_parser(
+        "weak-rng-scan",
+        help="incremental O(1) range scan for one target public key (educational)",
+        description=(
+            "Seed P = start*G, then add G each step to scan [start, start+count) for the "
+            "key behind a supplied public key. Offline and bounded by count."
+        ),
+    )
+    weak_rng.add_argument(
+        "--target-pubkey", required=True, help="SEC1 public key hex (compressed or uncompressed)"
+    )
+    weak_rng.add_argument("--start", type=int, required=True, help="first scalar in the window")
+    weak_rng.add_argument("--count", type=int, required=True, help="number of keys to scan")
+
+    halving = commands.add_parser(
+        "halving-lsb",
+        help="LSB-leak interval-shrink halving attack (educational)",
+        description=(
+            "Turn leaked least-significant bits of a scalar into exact interval halvings via "
+            "point halving, then sweep the shrunk high window. Demo mode uses a bounded secret."
+        ),
+    )
+    halving.add_argument(
+        "--secret", type=lambda value: int(value, 0), default=0xC0FFEE,
+        help="demo secret scalar (int; 0x accepted)",
+    )
+    halving.add_argument("--leaks", type=int, default=12, help="number of leaked low bits (demo mode)")
+    halving.add_argument("--pubkey", default=None, help="explicit SEC1 pubkey hex (use with --lsb-bits)")
+    halving.add_argument("--lsb-bits", default=None, help="leaked low bits as a 0/1 string, bit 0 first")
+    halving.add_argument(
+        "--interval-high", type=int, default=None, help="upper bound of the scalar interval"
+    )
+
     return parser
 
 
@@ -2285,6 +2430,12 @@ def main(argv: list[str] | None = None) -> int:
         return _sha256_backward_ledger(args, parser)
     if args.command == "backward-traverse":
         return _backward_traverse(args, parser)
+    if args.command == "brainwallet":
+        return _brainwallet(args, parser)
+    if args.command == "weak-rng-scan":
+        return _weak_rng_scan(args, parser)
+    if args.command == "halving-lsb":
+        return _halving_lsb(args, parser)
     print(f"{args.command}: not yet implemented", file=sys.stderr)
     return 2
 

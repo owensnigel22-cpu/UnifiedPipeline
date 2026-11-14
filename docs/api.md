@@ -39,6 +39,9 @@ CLI commands are listed by `keylab --help` and `keylab-advanced --help`;
 - [`keylab.research.ecdlp.rho`](#keylabresearchecdlprho) — Research: Pollard's rho DLP (full-group; does not exploit the interval)
 - [`keylab.research.ecdlp.negation_map`](#keylabresearchecdlpnegation_map) — Research: negation-map symmetric kangaroo variant
 - [`keylab.research.ecdlp.sat_encoding`](#keylabresearchecdlpsat_encoding) — Research: SAT encoding of the bounded-range ECDLP (measured dead-end)
+- [`keylab.research.ecdlp.halving_lsb`](#keylabresearchecdlphalving_lsb) — Research: LSB-leak interval-shrink halving attack (educational)
+- [`keylab.research.brainwallet`](#keylabresearchbrainwallet) — Research: offline brainwallet dictionary attack (educational)
+- [`keylab.research.weak_rng`](#keylabresearchweak_rng) — Research: weak-RNG incremental public-key range scan (educational)
 - [`keylab.research.cryptanalysis`](#keylabresearchcryptanalysis) — Small, bounded cryptanalysis demonstrations
 - [`keylab.research.cryptanalysis.mitm_ecdlp`](#keylabresearchcryptanalysismitm_ecdlp) — Research: memory-bounded meet-in-the-middle ECDLP
 - [`keylab.research.cryptanalysis.musig2_rogue_key`](#keylabresearchcryptanalysismusig2_rogue_key) — Research: MuSig2 rogue-key resistance demonstration
@@ -575,6 +578,45 @@ SAT encoding of the bounded-range ECDLP: find k in [L, U] with k*G == Q.
 | `BoundedECDLPInstance` | `class BoundedECDLPInstance(formula: 'CNF', difference_bits: 'Bits', lower: 'int', steps: 'int') -> None` | A built CNF for k in [L, U] with k*G == Q, plus the bits to recover k. |
 | `encode_bounded_ecdlp` | `encode_bounded_ecdlp(*, p: 'int', width: 'int', base_point: 'CurvePoint', doubling_points: 'list[CurvePoint]', target: 'CurvePoint', lower: 'int', upper: 'int', cnf: 'CNF \| None' = None) -> 'BoundedECDLPInstance'` | Encode ``k*G == target`` for ``k in [lower, upper]`` as CNF. |
 | `SATEncodingStats` | `class SATEncodingStats(steps: 'int', variable_count: 'int', clause_count: 'int') -> None` | SATEncodingStats(steps: 'int', variable_count: 'int', clause_count: 'int') |
+
+## `keylab.research.ecdlp.halving_lsb`
+
+Research: LSB-leak interval-shrink halving attack (educational).
+
+LSB-leak interval-shrink attack by point halving (educational side-channel demo).
+
+| Name | Signature / value | Summary |
+|---|---|---|
+| `demo_instance` | `demo_instance(secret: 'int' = 12648430, leaked_bits: 'int' = 12) -> 'dict[str, object]'` | Build a secp256k1 demo: pick a bounded secret, leak its low bits, recover it. |
+| `HalvingLSBResult` | `class HalvingLSBResult(recovered_scalar: 'int \| None', verified: 'bool', leaked_bits: 'int', low_bits_value: 'int', high_window_width: 'int', steps: 'list[dict[str, object]]' = <factory>) -> None` | Outcome of an LSB-leak interval-shrink halving attack. |
+| `lsb_halving_attack` | `lsb_halving_attack(public_key: 'Point', leaked_lsbs: 'Sequence[int]', *, interval: 'tuple[int, int]' = (0, 115792089237316195423570985008687907852837564279074904382605163141518161494336), max_high_window: 'int' = 1048576) -> 'HalvingLSBResult'` | Recover ``k`` from ``Q = k*G`` given its ``leaked_lsbs`` (bit 0 first). |
+
+## `keylab.research.brainwallet`
+
+Research: offline brainwallet dictionary attack (educational).
+
+Brainwallet dictionary attack — an educational demonstration of weak key choice.
+
+| Name | Signature / value | Summary |
+|---|---|---|
+| `BrainwalletResult` | `class BrainwalletResult(found: 'bool', passphrase: 'bytes \| None', private_key_hex: 'str \| None', tried: 'int', target_hash160: 'str', matched_form: 'str \| None') -> None` | Outcome of a brainwallet dictionary attack against one target address. |
+| `crack_brainwallet` | `crack_brainwallet(target_address: 'str', wordlist_path: 'str \| Path', *, reveal_private_key: 'bool' = False, limit: 'int \| None' = None, progress: 'Callable[[int], None] \| None' = None) -> 'BrainwalletResult'` | Search ``wordlist_path`` for a passphrase whose key yields ``target_address``. |
+| `iter_wordlist` | `iter_wordlist(path: 'str \| Path') -> 'Iterator[bytes]'` | Stream a wordlist line by line in **binary** mode (no full-file buffering). |
+| `passphrase_hash160s` | `passphrase_hash160s(passphrase: 'bytes') -> 'dict[str, bytes]'` | Return the HASH160 of each SEC form (the P2PKH / P2WPKH witness program). |
+| `passphrase_to_privkey` | `passphrase_to_privkey(passphrase: 'bytes') -> 'int'` | Return the brainwallet private key ``int(SHA256(passphrase))``. |
+| `passphrase_to_pubkeys` | `passphrase_to_pubkeys(passphrase: 'bytes') -> 'dict[str, bytes]'` | Return the compressed and uncompressed SEC public keys for a passphrase. |
+
+## `keylab.research.weak_rng`
+
+Research: weak-RNG incremental public-key range scan (educational).
+
+Weak-RNG incremental range scan — why low-entropy / sequential keys are unsafe.
+
+| Name | Signature / value | Summary |
+|---|---|---|
+| `incremental_pubkey_scan` | `incremental_pubkey_scan(target_pubkey: 'bytes \| Point', start: 'int', count: 'int', *, progress: 'Callable[[int], None] \| None' = None) -> 'WeakRNGScanResult'` | Scan ``[start, start + count)`` for the key behind ``target_pubkey``. |
+| `pubkey_sec` | `pubkey_sec(private_key: 'int', *, compressed: 'bool' = True) -> 'bytes'` | Helper: the SEC1 public key for a private scalar (for building demo targets). |
+| `WeakRNGScanResult` | `class WeakRNGScanResult(found: 'bool', private_key: 'int \| None', scanned: 'int', start: 'int', count: 'int', verified: 'bool') -> None` | Outcome of an incremental public-key range scan. |
 
 ## `keylab.research.cryptanalysis`
 
