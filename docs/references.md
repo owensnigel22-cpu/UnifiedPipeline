@@ -125,3 +125,26 @@ hash and many message lengths, the forged digest equals
 `hashlib.new(algorithm, secret || forged_message).digest()` (the same guarantee
 hash_extender gives). `sha256_length_extend` is retained as a thin, backward-
 compatible wrapper over `length_extend("sha256", ...)`.
+
+## High-performance RIPEMD-160 / HASH160 (optional accelerators)
+
+`keylab.hashes.ripemd_backend.Ripemd160Backend` defaults to KeyLab's pure-Python
+RIPEMD-160 and transparently uses a native shared library **only if one is present
+on the project path and reproduces the published RIPEMD-160 test vectors** at load
+time (a mismatched ABI is rejected, never trusted). `batch_hash160` fans a large
+pubkey list across a `ProcessPoolExecutor` to emulate SIMD batch throughput. None
+of the libraries below is a dependency or is bundled; they are strictly optional
+accelerators referenced for study.
+
+| Project | Language | What it is / why referenced |
+|---|---|---|
+| [`FrozenCryptoLibs`](https://github.com/FrozenCryptoLibs) | C / SIMD | Compiled RIPEMD-160 primitives; a candidate native library the backend will load and self-verify if its shared object is on the project path. |
+| [`vladkens/ecloop`](https://github.com/vladkens/ecloop) | C (AVX2/NEON) | SIMD HASH160 pipeline for bulk EC key scanning; a candidate native accelerator. |
+| [`gdavidbutler/rmd160`](https://github.com/gdavidbutler/rmd160) | C | Compact standalone RIPEMD-160; a readable reference for the compression function. |
+| [`rust-bitcoin/bitcoin_hashes`](https://github.com/rust-bitcoin/rust-bitcoin) | Rust | The hashing crate used across rust-bitcoin; reference for RIPEMD-160/HASH160 behaviour. |
+| [`RustCrypto/hashes` (ripemd)](https://github.com/RustCrypto/hashes) | Rust | Audited pure-Rust RIPEMD-160; a second independent reference. |
+| [`ripemd160mb`](https://github.com/ripemd160mb) | Go (SIMD) | Multi-buffer/SIMD RIPEMD-160 for bulk hashing; the throughput model `batch_hash160` emulates with a process pool. |
+
+Honest note: no native library is present in this repository, so the backend runs
+pure-Python here; the native path is exercised only by its load-time self-test
+against the RIPEMD-160 vectors, not against a specific compiled build.
