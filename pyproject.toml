@@ -21,7 +21,7 @@ dependencies = [
 [project.optional-dependencies]
 # Lint, type-check, and coverage tools are pinned so local runs and CI agree;
 # bump them in a dedicated PR (Dependabot proposes updates).
-dev = ["hypothesis>=6.100", "mypy==2.4.1", "pytest>=8.0", "pytest-cov==7.1.0", "ruff==0.17.3"]
+dev = ["hypothesis>=6.100", "mypy==2.4.1", "pytest>=8.0", "pytest-cov==7.1.0", "ruff==0.17.4"]
 # Optional native libsecp256k1 backend for accelerated ECC operations.
 fast = ["coincurve>=19.0.1,<20.0"]
 # OS credential-store integration only; KeyringProvider rejects non-native backends.
