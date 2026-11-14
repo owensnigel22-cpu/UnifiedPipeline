@@ -106,3 +106,22 @@ the optional `milp` extra (`pulp`, bundling CBC) and, when present, returns a
 forward-verified preimage for small reduced-round instances. It is a feasibility /
 constraint model — **not** a differential active-S-box bound model — and only small
 instances are tractable.
+
+## Length-extension expansion (M15, Phase D)
+
+`keylab.hashes.length_extension.length_extend(algorithm, ...)` forges
+`H(secret || message || glue || append)` from `H(secret || message)` and the
+original length alone, for MD5, SHA-1, SHA-256, and SHA-512. This is a property
+of every plain Merkle-Damgard hash, not a weakness unique to any one; it recovers
+no secret and inverts no hash. **Use HMAC, never `H(secret || message)` as a MAC.**
+
+| Project | License | What it is / why referenced |
+|---|---|---|
+| [`iagox86/hash_extender`](https://github.com/iagox86/hash_extender) | BSD-3-Clause | The canonical length-extension tool (MD5, SHA-1, SHA-256, SHA-512, and more). KeyLab's `length_extend` implements the same algorithm; the per-hash constants are derived from first principles (MD5 from `sin`; SHA-512 from integer cube/square roots of the first primes), not transcribed. |
+
+Honest note: this port is not cross-checked against a captured hash_extender run
+here; its correctness is pinned to the **`hashlib` oracle** — for every supported
+hash and many message lengths, the forged digest equals
+`hashlib.new(algorithm, secret || forged_message).digest()` (the same guarantee
+hash_extender gives). `sha256_length_extend` is retained as a thin, backward-
+compatible wrapper over `length_extend("sha256", ...)`.
