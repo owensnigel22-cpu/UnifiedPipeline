@@ -148,3 +148,41 @@ accelerators referenced for study.
 Honest note: no native library is present in this repository, so the backend runs
 pure-Python here; the native path is exercised only by its load-time self-test
 against the RIPEMD-160 vectors, not against a specific compiled build.
+
+## Differential cryptanalysis (M15, Phase E)
+
+`keylab.research.sha256_differential` builds heuristic XOR-differential trails for
+**reduced-round** SHA-256 and a Dobbertin-style **reduced-round** collision
+scaffold. Trail probabilities are the characteristic (single-path) weights — an
+upper bound on the true cost — and are re-checked by direct sampling. No full
+64-round preimage or collision is claimed; the Dobbertin module is scaffolding,
+not a shipped collision.
+
+| Project | License | What it is / why referenced |
+|---|---|---|
+| [`nahiyan/cryptanalysis`](https://github.com/nahiyan/cryptanalysis) | see repo | SAT/differential cryptanalysis of reduced-round SHA-256/MD hashes; reference for the differential modelling and reduced-round framing. |
+| [`ChakshuGupta13/lab`](https://github.com/ChakshuGupta13/lab) | see repo | Reduced-round SHA-256 differential/collision lab work; cross-reference for the trail structure and collision harness. |
+
+The modular-addition weight uses the Lipmaa-Moriai `xdp+` result (Lipmaa &
+Moriai, *Efficient Algorithms for Computing Differential Properties of Addition*,
+FSE 2001), validated exhaustively in the tests. The reduced-round collision
+scaffold follows Hans Dobbertin's MD4/MD5 methodology, applied only to
+reduced-round instances.
+
+## SAT mod-9 encoding (M15)
+
+| Project | License | What it is / why referenced |
+|---|---|---|
+| Shelbydon Mod-9 SAT (paper + implementation) | cited | The mod-9 arithmetic SAT encoding `keylab.sat.mod9` is modelled on; cited for the technique, not vendored. |
+
+## GPU brute-force (reference only — NOT implemented, NOT a dependency)
+
+KeyLab implements **no** GPU code and takes **no** GPU/CUDA/OpenCL/Vulkan
+dependency (M15 Phase F was deliberately dropped under the pure-first/no-forced-
+dependency policy). The repositories below are cited only as external reference
+implementations a user could drive separately; nothing here runs on a GPU.
+
+| Project | What it is / why referenced (reference only) |
+|---|---|
+| [`shroudy-bit32/CUDA-BruteForce`](https://github.com/shroudy-bit32) | CUDA brute-force search — an external reference implementation, **not a dependency**. |
+| [`floflo777/open-crypto-puzzles`](https://github.com/floflo777) | GPU crypto-puzzle brute forcing — an external reference implementation, **not a dependency**. |

@@ -298,3 +298,13 @@ Entry format:
 - Reason: this is heuristic, reduced-round differential modelling for study — "best trail found", never optimal; the Dobbertin module is scaffolding, explicitly not a shipped full collision. Full 64-round SHA-256 collision resistance is intact; weights grow quickly with rounds, which is the wall.
 - State change: new package `src/keylab/research/sha256_differential/` (trail_search.py, dobbertin.py, __init__.py); new `tests/test_sha256_differential.py`. No new dependency; no new CI job. Phase F (GPU stubs) is skipped per owner decision (pure-first/no-forced-dep policy); references and the SECURITY.md Wall are added in Phase G.
 - Reference: `src/keylab/research/sha256_differential/trail_search.py`, `.../dobbertin.py`; `tests/test_sha256_differential.py`.
+
+## 2026-11-14 — M15 Phase G: documentation, references, SECURITY Wall (Phase F skipped)
+- Kind: implemented
+- Action: finalize M15 documentation. docs/references.md gains the differential-cryptanalysis references (nahiyan/cryptanalysis, ChakshuGupta13/lab) with the Lipmaa-Moriai xdp+ and Dobbertin citations, the Shelbydon mod-9 SAT citation for keylab.sat.mod9, and the GPU brute-force repositories (shroudy-bit32/CUDA-BruteForce, floflo777/open-crypto-puzzles) explicitly marked reference-only / not a dependency. SECURITY.md gains a "Wall" section stating that every M15 SHA-256 module (sat.*, hashes.*_cnf, sha256_reduced, sha256_prob, sha256_differential) targets truncated / reduced-round / constrained instances only, that no full 64-round preimage or collision is attempted or claimed, and that no GPU acceleration is implemented or depended on.
+- Outcome: complete. Phase F (GPU interface stubs) was skipped entirely per owner decision (pure-first / no-forced-dependency policy); the SECURITY Wall and references record that KeyLab implements no GPU code and takes no GPU dependency.
+- Cost observed: ruff clean; mypy clean; docs/api.md check up to date (no M15 module is in the generated API MODULES set, consistent with Phases A-C, so no api.md drift). Documentation-only change.
+- Cost extrapolated: n/a.
+- Reason: honest positioning — the M15 attacks are reduced-round / truncated / constrained research; full 64-round SHA-256 remains infeasible and is neither attempted nor claimed.
+- State change: docs/references.md and SECURITY.md updated; M15 phases A-E + G delivered, Phase F deliberately dropped. No new dependency; no new CI job.
+- Reference: `docs/references.md`; `SECURITY.md`.
