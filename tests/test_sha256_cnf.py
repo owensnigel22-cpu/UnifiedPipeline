@@ -592,6 +592,80 @@ def test_sha256_cnf_benchmark_defaults_to_pre_expansion_range(capsys) -> None:
         for encoding in ("direct", "chain")
     ]
     assert [row["schedule_expansion_words_per_block"] for row in rows] == [0] * 6
+    # Defaults keep the explicit feed-forward and fix the whole known input.
+    assert all(row["feedforward"] == "explicit" for row in rows)
+    assert all(row["free_input_bits"] == 0 for row in rows)
+
+
+def test_sha256_cnf_benchmark_unwound_variant_is_smaller_and_equivalent(capsys) -> None:
+    assert (
+        main(
+            [
+                "sha256-cnf-benchmark",
+                "--start-round",
+                "4",
+                "--end-round",
+                "4",
+                "--xor3-encoding",
+                "direct",
+                "--feedforward",
+                "both",
+            ]
+        )
+        == 0
+    )
+
+    rows = [json.loads(line) for line in capsys.readouterr().out.splitlines()]
+    by_variant = {row["feedforward"]: row for row in rows}
+    assert set(by_variant) == {"explicit", "unwound"}
+    # The Davies-Meyer unwind removes the final output-equality adder network, so
+    # the unwound model is strictly smaller than the explicit one.
+    assert by_variant["unwound"]["clauses"] < by_variant["explicit"]["clauses"]
+    assert by_variant["unwound"]["variables"] < by_variant["explicit"]["variables"]
+    # Both models remain satisfiable and recover the same known input (equivalence).
+    solver = find_solver()
+    if solver is not None:
+        assert all(row["solver_status"] == "SATISFIABLE" for row in rows)
+        assert all(row["candidate_validated"] for row in rows)
+
+
+def test_sha256_cnf_benchmark_free_input_bits_leaves_a_search_window(capsys) -> None:
+    free_bits = 8
+    assert (
+        main(
+            [
+                "sha256-cnf-benchmark",
+                "--start-round",
+                "4",
+                "--end-round",
+                "4",
+                "--xor3-encoding",
+                "direct",
+                "--free-input-bits",
+                str(free_bits),
+            ]
+        )
+        == 0
+    )
+
+    rows = [json.loads(line) for line in capsys.readouterr().out.splitlines()]
+    assert rows, "expected at least one benchmark row"
+    total_input_bits = len(b"keylab benchmark input") * 8
+    for row in rows:
+        assert row["free_input_bits"] == free_bits
+        assert row["fixed_input_bits"] == total_input_bits - free_bits
+        solver = find_solver()
+        if solver is not None:
+            # A satisfying assignment is any reduced-round preimage, verified by the
+            # handler to actually hash to the target.
+            assert row["solver_status"] == "SATISFIABLE"
+            assert row["candidate_validated"] is True
+
+
+def test_sha256_cnf_benchmark_rejects_negative_free_input_bits() -> None:
+    with pytest.raises(SystemExit) as exc_info:
+        main(["sha256-cnf-benchmark", "--free-input-bits", "-1"])
+    assert exc_info.value.code == 2
 
 
 def test_sha256_cnf_benchmark_exports_csv_and_compares_solvers(tmp_path, capsys) -> None:
