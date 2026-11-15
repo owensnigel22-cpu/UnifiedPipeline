@@ -6,6 +6,12 @@ recovered key forward-verified. It breaks no primitive and gives no advantage
 against soundly generated keys. See SECURITY.md.
 """
 
+from keylab.research.forensics.address_search import (
+    PubkeyNotRevealed,
+    ResolvedPubkey,
+    recover_key_for_address,
+    resolve_pubkey_for_address,
+)
 from keylab.research.forensics.nonce_scan import (
     NonceReuseScanner,
     NonceScanReport,
@@ -21,7 +27,11 @@ __all__ = [
     "InputSignature",
     "NonceReuseScanner",
     "NonceScanReport",
+    "PubkeyNotRevealed",
     "RecoveredKey",
+    "ResolvedPubkey",
     "extract_input_signatures",
+    "recover_key_for_address",
+    "resolve_pubkey_for_address",
     "script_type_of",
 ]

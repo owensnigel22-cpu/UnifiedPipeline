@@ -61,6 +61,7 @@ CLI commands are listed by `keylab --help` and `keylab-advanced --help`;
 - [`keylab.research.forensics.signatures`](#keylabresearchforensicssignatures) — Research: extract ECDSA (z, r, s) from P2WPKH / P2SH-P2WPKH inputs
 - [`keylab.research.forensics.nonce_scan`](#keylabresearchforensicsnonce_scan) — Research: automated ECDSA nonce-reuse forensics
 - [`keylab.research.forensics.bloom`](#keylabresearchforensicsbloom) — Research: dependency-free Bloom filter for membership pre-screening
+- [`keylab.research.forensics.address_search`](#keylabresearchforensicsaddress_search) — Research: resolve an address's pubkey on-chain, then bounded kangaroo search
 - [`keylab.verify.mainnet`](#keylabverifymainnet) — Read-only mainnet transaction signature verification
 - [`keylab.verify.mainnet.client`](#keylabverifymainnetclient) — Read-only public explorer client
 - [`keylab.verify.mainnet.verification`](#keylabverifymainnetverification) — Bitcoin transaction signature verification
@@ -534,8 +535,8 @@ Pollard's kangaroo (lambda) method for the bounded-interval ECDLP on secp256k1.
 |---|---|---|
 | `KangarooResult` | `class KangarooResult(solution: 'int \| None', spent_steps: 'int', dps_found: 'int', memory_peak_bytes: 'int \| None', attempts_used: 'int', dp_table_size: 'int' = 0, last_tame: 'int \| None' = None, last_wild: 'int \| None' = None, last_hop: 'int' = 0, elapsed_sec: 'float' = 0.0, walkers_used: 'int' = 1, checkpoint_path: 'str \| None' = None) -> None` | State of a kangaroo run, returned when ``return_state=True``. |
 | `load_checkpoint` | `load_checkpoint(path: 'str \| os.PathLike[str]') -> 'dict[str, Any]'` | Load a checkpoint written by :func:`save_checkpoint`. |
-| `pollard_kangaroo` | `pollard_kangaroo(point: 'Point', lo: 'int', hi: 'int', *, dp_bits: 'int \| None' = None, max_steps: 'int \| None' = None, return_state: 'bool' = False, progress_callback: 'Callable[[int, int], None] \| None' = None, progress_every: 'int' = 100000, checkpoint_path: 'str \| os.PathLike[str] \| None' = None, resume_from: 'str \| os.PathLike[str] \| None' = None) -> 'int \| None \| KangarooResult'` | Recover ``k`` in ``[lo, hi]`` with ``k*G == point`` via the DP kangaroo. |
-| `recover_via_kangaroo` | `recover_via_kangaroo(point: 'Point', lo: 'int', hi: 'int', *, dp_bits: 'int \| None' = None, max_steps: 'int \| None' = None) -> 'dict[str, object]'` | Recover ``k`` in ``[lo, hi]`` and report timing, as a dict mirroring the backward API. |
+| `pollard_kangaroo` | `pollard_kangaroo(point: 'Point', lo: 'int', hi: 'int', *, dp_bits: 'int \| None' = None, max_table_entries: 'int \| None' = None, max_steps: 'int \| None' = None, return_state: 'bool' = False, progress_callback: 'Callable[[int, int], None] \| None' = None, progress_every: 'int' = 100000, checkpoint_path: 'str \| os.PathLike[str] \| None' = None, resume_from: 'str \| os.PathLike[str] \| None' = None) -> 'int \| None \| KangarooResult'` | Recover ``k`` in ``[lo, hi]`` with ``k*G == point`` via the DP kangaroo. |
+| `recover_via_kangaroo` | `recover_via_kangaroo(point: 'Point', lo: 'int', hi: 'int', *, dp_bits: 'int \| None' = None, max_table_entries: 'int \| None' = None, max_steps: 'int \| None' = None) -> 'dict[str, object]'` | Recover ``k`` in ``[lo, hi]`` and report timing, as a dict mirroring the backward API. |
 | `save_checkpoint` | `save_checkpoint(path: 'str \| os.PathLike[str]', state: 'dict[str, Any]') -> 'None'` | Atomically write a resumable kangaroo state to ``path`` as JSON. |
 
 ## `keylab.research.ecdlp.bsgs`
@@ -806,7 +807,11 @@ Educational Bitcoin forensics over public on-chain data.
 | `InputSignature` | `class InputSignature(txid: 'str', input_index: 'int', z: 'int', r: 'int', s: 'int', pubkey: 'bytes', public_point: 'Point', script_type: 'str') -> None` | One input's signed digest and decoded ECDSA signature. |
 | `NonceReuseScanner` | `class NonceReuseScanner(client: 'ReadOnlyExplorerClient \| None' = None, *, max_txs: 'int' = 50) -> 'None'` | Scan transactions (or an address) for recoverable ECDSA nonce reuse. |
 | `NonceScanReport` | `class NonceScanReport(address: 'str \| None', txids: 'tuple[str, ...]', signatures_examined: 'int', reused_r_groups: 'int', low_s_count: 'int', recovered: 'tuple[RecoveredKey, ...]') -> None` | The outcome of scanning a set of transactions for nonce reuse. |
+| `PubkeyNotRevealed` | `class PubkeyNotRevealed` | Raised when an address has not exposed its public key on-chain. |
+| `recover_key_for_address` | `recover_key_for_address(address: 'str', lo: 'int', hi: 'int', *, client: 'ReadOnlyExplorerClient', network: 'str' = 'mainnet', max_txs: 'int' = 50, dp_bits: 'int \| None' = None, max_table_entries: 'int \| None' = None, max_steps: 'int \| None' = None, reveal_private: 'bool' = False) -> 'dict[str, object]'` | Resolve an address's public key, then run a bounded kangaroo search on ``[lo, hi]``. |
 | `RecoveredKey` | `class RecoveredKey(private_key: 'int', pubkey: 'bytes', addresses: 'dict[str, str]', evidence: 'tuple[InputSignature, InputSignature]', verified: 'bool') -> None` | A private key recovered from an on-chain nonce-reuse pair. |
+| `resolve_pubkey_for_address` | `resolve_pubkey_for_address(address: 'str', *, client: 'ReadOnlyExplorerClient', network: 'str' = 'mainnet', max_txs: 'int' = 50) -> 'ResolvedPubkey'` | Return the SEC public key an address exposed by spending (read-only). |
+| `ResolvedPubkey` | `class ResolvedPubkey(address: 'str', pubkey: 'bytes', public_point: 'Point', txid: 'str', input_index: 'int') -> None` | A public key recovered from a spending input, with the revealing location. |
 | `script_type_of` | `script_type_of(script_pubkey: 'bytes') -> 'str \| None'` | Classify a spent output's ``scriptPubKey`` as a supported input type. |
 
 ## `keylab.research.forensics.signatures`
@@ -842,6 +847,19 @@ A small, dependency-free Bloom filter for fast membership pre-screening.
 | Name | Signature / value | Summary |
 |---|---|---|
 | `BloomFilter` | `class BloomFilter(capacity: 'int', error_rate: 'float' = 1e-06) -> 'None'` | A classic bit-array Bloom filter keyed on ``bytes`` items. |
+
+## `keylab.research.forensics.address_search`
+
+Research: resolve an address's pubkey on-chain, then bounded kangaroo search.
+
+Resolve an address's public key from an on-chain spend, then bounded search.
+
+| Name | Signature / value | Summary |
+|---|---|---|
+| `PubkeyNotRevealed` | `class PubkeyNotRevealed` | Raised when an address has not exposed its public key on-chain. |
+| `recover_key_for_address` | `recover_key_for_address(address: 'str', lo: 'int', hi: 'int', *, client: 'ReadOnlyExplorerClient', network: 'str' = 'mainnet', max_txs: 'int' = 50, dp_bits: 'int \| None' = None, max_table_entries: 'int \| None' = None, max_steps: 'int \| None' = None, reveal_private: 'bool' = False) -> 'dict[str, object]'` | Resolve an address's public key, then run a bounded kangaroo search on ``[lo, hi]``. |
+| `resolve_pubkey_for_address` | `resolve_pubkey_for_address(address: 'str', *, client: 'ReadOnlyExplorerClient', network: 'str' = 'mainnet', max_txs: 'int' = 50) -> 'ResolvedPubkey'` | Return the SEC public key an address exposed by spending (read-only). |
+| `ResolvedPubkey` | `class ResolvedPubkey(address: 'str', pubkey: 'bytes', public_point: 'Point', txid: 'str', input_index: 'int') -> None` | A public key recovered from a spending input, with the revealing location. |
 
 ## `keylab.verify.mainnet`
 
