@@ -56,6 +56,21 @@ broadcast requires one explicit confirmation (`confirm_mainnet=True`), and signi
 real-value keys must use the audited coincurve/libsecp256k1 backend — the
 pure-Python ECC is non-constant-time (see [../SECURITY.md](../SECURITY.md)).
 
+## Educational key-weakness demos
+
+`keylab.research.brainwallet`, `keylab.research.weak_rng`, and
+`keylab.research.ecdlp.halving_lsb` demonstrate why weak key generation is unsafe.
+The implementations are KeyLab's own; they are **offline and single-target** (no
+balance or network lookups, no chain scanning — see [../SECURITY.md](../SECURITY.md)).
+
+| Project / reference | What it is / why referenced |
+|---|---|
+| [`Alon-Alush/brainwallet-checker`](https://github.com/Alon-Alush/brainwallet-checker) | Brainwallet dictionary-attack methodology referenced by `keylab.research.brainwallet` (SHA-256(passphrase) → key → address). |
+| [`brichard19/BitCrack`](https://github.com/brichard19/BitCrack) | Incremental-scan architecture (`(k+1)G = kG + G`) referenced by `keylab.research.weak_rng`; KeyLab's is a bounded, offline CPU demonstration. |
+| [`J08nY/pyecsca`](https://github.com/J08nY/pyecsca) | Side-channel analysis concepts behind the LSB-leak interval-shrink demo in `keylab.research.ecdlp.halving_lsb`. |
+
+These are teaching tools: they recover nothing that the leaked information plus a
+small bounded search would not, and threaten no real 256-bit key.
 ## Reduced-round SHA-256 preimages (M15, Phase B)
 
 KeyLab's 19-step context-shaping solver
