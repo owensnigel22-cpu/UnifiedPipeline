@@ -13,6 +13,7 @@ non-``https://`` URL raises before any socket opens. See SECURITY.md.
 
 from __future__ import annotations
 
+import re
 import ssl
 from typing import Self
 from urllib.parse import urlsplit
@@ -121,6 +122,32 @@ class ReadOnlyExplorerClient:
         """Fetch a tx's merkle inclusion proof (``GET /api/tx/<txid>/merkle-proof``)."""
         return self._get(f"/api/tx/{_hex(txid, 32)}/merkle-proof", base=base).json()
 
+    def get_address_transactions(
+        self,
+        address: str,
+        *,
+        base: str | None = None,
+        last_seen_txid: str | None = None,
+    ) -> list[dict]:
+        """Fetch an address's transactions as JSON (Esplora ``GET /api/address/<a>/txs``).
+
+        Without ``last_seen_txid`` this returns the newest page (up to 50 mempool and
+        confirmed transactions). Supplying the oldest txid of the previous page via
+        ``last_seen_txid`` pages backwards through confirmed history
+        (``GET /api/address/<a>/txs/chain/<last_seen_txid>``). This is a read-only
+        fetch of **public** data; it verifies nothing.
+        """
+        path = f"/api/address/{_address(address)}/txs"
+        if last_seen_txid is not None:
+            path += f"/chain/{_hex(last_seen_txid, 32)}"
+        result = self._get(path, base=base).json()
+        if not isinstance(result, list):
+            # Malformed explorer payload, not a caller type error -> ValueError.
+            raise ValueError(  # noqa: TRY004
+                "explorer returned a non-list address transactions response"
+            )
+        return result
+
     def close(self) -> None:
         self._client.close()
 
@@ -137,3 +164,17 @@ def _hex(value: str, nbytes: int) -> str:
         raise ValueError(f"expected a {nbytes}-byte hex string, got {value!r}")
     int(value, 16)  # raises ValueError on non-hex
     return value.lower()
+
+
+_ADDRESS_RE = re.compile(r"\A[0-9A-Za-z]{14,100}\Z")
+
+
+def _address(value: str) -> str:
+    """Validate a Base58/Bech32 address for safe path building (no path separators).
+
+    This is a conservative character/length check that blocks URL path injection; it
+    does not validate the address checksum or network, which the explorer does.
+    """
+    if not isinstance(value, str) or not _ADDRESS_RE.match(value):
+        raise ValueError(f"expected a Base58/Bech32 address, got {value!r}")
+    return value
