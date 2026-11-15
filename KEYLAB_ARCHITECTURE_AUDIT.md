@@ -78,7 +78,7 @@ labelled experimental) · **MISSING**.
 `ec/musig2.py` (BIP-327), `verify/mainnet/*` + `verify/node/*` (read-only chain
 verification), `wallet/*` (coin selection, tx build, broadcast adapters),
 `research/forensics/*` + `research/weak_rng_milksad.py` (the forensics suite,
-Phases A–D merged; the unified `keylab forensics` CLI is **PR #45, open**).
+Phases A–E merged — the unified `keylab forensics` CLI landed via PR #45).
 
 ## 3. Issues found
 
@@ -105,9 +105,11 @@ arithmetic, or unsupported cryptographic claims in the shipped package. Specific
    it is a destructive rewrite of working code with no correctness upside.
 2. **Housekeeping (needs explicit OK, touches files):** delete the empty
    `toy_hnp_lattice_demo.py`; move/ignore `keylab_review_bundle.zip`.
-3. **Optional additions (additive, if wanted):** a top-level `python keylab.py`
-   convenience shim mapping to `keylab.cli:main`; an interactive numbered-menu CLI
-   mode wrapping existing subcommands (current CLI is subcommand-style, not a menu).
-4. Merge **PR #45** to land the unified `forensics` CLI.
+3. **Optional additions (additive) — DELIVERED in this branch:** a `run-keylab.py`
+   launcher mapping to `keylab.cli:main` (named `run-keylab.py`, not `keylab.py`,
+   which would shadow the package and break every import); a `keylab interactive`
+   numbered-menu mode wrapping the existing subcommands; and an expanded `selftest`
+   asserting the full invariant list.
+4. PR #45 (unified `forensics` CLI) is merged.
 
 See `KEYLAB_MATH_VALIDATION.md` for the invariant evidence table.

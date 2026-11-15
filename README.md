@@ -42,6 +42,26 @@ libsecp256k1-backed operations:
 python -m pip install ".[fast]"
 ```
 
+### Running the CLI
+
+After installation the `keylab` and `keylab-advanced` console scripts are on the
+path. From a source checkout you can also run without installing:
+
+```powershell
+python run-keylab.py --help          # thin launcher -> keylab.cli:main
+python -m keylab.cli selftest        # assert-backed self-test (prints PASS/FAIL)
+python -m keylab.cli interactive     # interactive numbered-menu CLI
+```
+
+The `selftest` command asserts the core invariants (field arithmetic, EEA,
+modular inverse, secp256k1 generator, affine/scalar multiplication, wNAF, GLV
+decomposition and endomorphism, SEC1, ECDSA/RFC6979, BIP-340, HMAC, HASH160, and
+toy bounded kangaroo / Pollard rho). `interactive` wraps the existing subcommands
+in a menu; it is for interactive terminals and dispatches through the same parser,
+so all argument validation is reused. For an architecture map and the independent
+invariant evidence see [`KEYLAB_ARCHITECTURE_AUDIT.md`](KEYLAB_ARCHITECTURE_AUDIT.md)
+and [`KEYLAB_MATH_VALIDATION.md`](KEYLAB_MATH_VALIDATION.md).
+
 ## Release artifacts
 
 ### API reference
