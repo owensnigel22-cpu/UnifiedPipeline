@@ -14,14 +14,17 @@ See ``SECURITY.md`` and ``docs/references.md``.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterable, Iterator, Sequence
+from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
+from typing import cast
 
 from keylab.ec.sec1 import serialize_sec1
 from keylab.ec.secp256k1 import G, N, Point, scalar_mult
 from keylab.encoding.address import address_to_target_hash, hash160
+from keylab.research.forensics.bloom import BloomFilter
 
 
 def passphrase_to_privkey(passphrase: bytes) -> int:
@@ -130,9 +133,131 @@ def crack_brainwallet(
     )
 
 
+@dataclass(frozen=True)
+class BrainwalletHit:
+    """One passphrase whose derived HASH160 matched a target in a multi-target scan."""
+
+    passphrase: bytes
+    target_hash160: bytes
+    matched_form: str  # "compressed" or "uncompressed"
+    private_key_hex: str | None
+
+
+def _derive_hash160s(passphrase: bytes) -> dict[str, bytes] | None:
+    try:
+        return passphrase_hash160s(passphrase)
+    except ValueError:  # pragma: no cover - vanishingly rare out-of-range digest
+        return None
+
+
+def _scan_chunk(
+    passphrases: Sequence[bytes],
+    bloom: BloomFilter,
+    targets: frozenset[bytes],
+    reveal_private_key: bool,
+) -> list[BrainwalletHit]:
+    hits: list[BrainwalletHit] = []
+    for passphrase in passphrases:
+        hashes = _derive_hash160s(passphrase)
+        if hashes is None:
+            continue
+        for form, candidate_hash in hashes.items():
+            # Bloom pre-screen (no false negatives), then the exact set confirms.
+            if candidate_hash in bloom and candidate_hash in targets:
+                private_hex = (
+                    f"{passphrase_to_privkey(passphrase):064x}" if reveal_private_key else None
+                )
+                hits.append(BrainwalletHit(passphrase, candidate_hash, form, private_hex))
+    return hits
+
+
+_WORKER_STATE: dict[str, object] = {}
+
+
+def _init_worker(bloom: BloomFilter, targets: frozenset[bytes], reveal: bool) -> None:
+    _WORKER_STATE["bloom"] = bloom
+    _WORKER_STATE["targets"] = targets
+    _WORKER_STATE["reveal"] = reveal
+
+
+def _process_scan(chunk: Sequence[bytes]) -> list[BrainwalletHit]:
+    return _scan_chunk(
+        chunk,
+        cast(BloomFilter, _WORKER_STATE["bloom"]),
+        cast("frozenset[bytes]", _WORKER_STATE["targets"]),
+        bool(_WORKER_STATE["reveal"]),
+    )
+
+
+def _chunked(items: Iterable[bytes], size: int) -> Iterator[list[bytes]]:
+    chunk: list[bytes] = []
+    for item in items:
+        chunk.append(item)
+        if len(chunk) >= size:
+            yield chunk
+            chunk = []
+    if chunk:
+        yield chunk
+
+
+def crack_brainwallet_multi(
+    passphrases: Iterable[bytes],
+    targets: Iterable[bytes],
+    *,
+    reveal_private_key: bool = False,
+    executor: str = "thread",
+    workers: int | None = None,
+    chunk_size: int = 1024,
+) -> list[BrainwalletHit]:
+    """Search ``passphrases`` for any that derive a HASH160 in ``targets``.
+
+    A Bloom filter pre-screens each derived HASH160 before the exact set check, which
+    keeps many-target scans fast. ``executor`` selects ``"serial"``, ``"thread"``, or
+    ``"process"`` parallelism; derivation is CPU-bound pure-Python EC math, so measure
+    before assuming threads help (the GIL limits them). Returns every hit found; the
+    private key appears only when ``reveal_private_key`` is set. Offline -- no network.
+    """
+    if executor not in ("serial", "thread", "process"):
+        raise ValueError("executor must be 'serial', 'thread', or 'process'")
+    if type(chunk_size) is not int or chunk_size < 1:
+        raise ValueError("chunk_size must be a positive integer")
+    target_set = frozenset(bytes(target) for target in targets)
+    for target in target_set:
+        if len(target) != 20:
+            raise ValueError("each target must be a 20-byte HASH160")
+    if not target_set:
+        return []
+    bloom = BloomFilter.from_items(target_set)
+
+    chunks = _chunked(passphrases, chunk_size)
+    hits: list[BrainwalletHit] = []
+    if executor == "serial":
+        for chunk in chunks:
+            hits.extend(_scan_chunk(chunk, bloom, target_set, reveal_private_key))
+        return hits
+    if executor == "thread":
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            for chunk_hits in pool.map(
+                lambda chunk: _scan_chunk(chunk, bloom, target_set, reveal_private_key),
+                chunks,
+            ):
+                hits.extend(chunk_hits)
+        return hits
+    with ProcessPoolExecutor(
+        max_workers=workers,
+        initializer=_init_worker,
+        initargs=(bloom, target_set, reveal_private_key),
+    ) as pool:
+        for chunk_hits in pool.map(_process_scan, chunks):
+            hits.extend(chunk_hits)
+    return hits
+
+
 __all__ = [
+    "BrainwalletHit",
     "BrainwalletResult",
     "crack_brainwallet",
+    "crack_brainwallet_multi",
     "iter_wordlist",
     "passphrase_hash160s",
     "passphrase_to_privkey",
