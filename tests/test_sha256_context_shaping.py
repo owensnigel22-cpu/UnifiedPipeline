@@ -177,6 +177,22 @@ def test_search_17_clean_miss_on_zero_budget() -> None:
     assert result.contexts == 0
 
 
+def test_search_17_zero_budget_is_clean_under_coarse_clock(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Regression: a coarse monotonic clock (Windows + Python <= 3.12 has ~15.6ms
+    # granularity) can report 0.0 elapsed on the first guard check. The zero-budget
+    # guard must still do no work, independent of clock resolution. Freeze the clock
+    # to a constant so elapsed is always exactly 0.0 on every platform.
+    monkeypatch.setattr(time, "monotonic", lambda: 1234.0)
+    target = hashlib.sha256(b"kl17-frozen-clock").digest()
+    result = search_17_step_preimage(target, seed=1, time_budget=0.0)
+    assert result.found is False
+    assert result.verified is False
+    assert result.block is None
+    assert result.contexts == 0
+
+
 def test_search_17_validates_arguments() -> None:
     with pytest.raises(ValueError, match="32 bytes"):
         search_17_step_preimage(b"\x00" * 10)

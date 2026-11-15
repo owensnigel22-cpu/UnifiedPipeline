@@ -120,6 +120,19 @@ def _p2wpkh_script_code(txin_script: bytes, script_pubkey: bytes) -> tuple[bytes
     return b"\x76\xa9\x14" + pubkey_hash + b"\x88\xac", pubkey_hash
 
 
+def prepare_witness_signature(
+    tx: Transaction, input_index: int, spent_output: TxOut
+) -> tuple[bytes, tuple[int, int], tuple[int, int]] | None:
+    """Return ``(sighash_digest, (r, s), public_point)`` for a P2WPKH/P2SH-P2WPKH input.
+
+    This is the public, verification-free extraction used by forensic callers that
+    need the signed digest and the decoded ECDSA ``(r, s)`` (for example, nonce-reuse
+    detection). It returns ``None`` for inputs outside the supported BIP-143 scope or
+    for malformed witnesses, and it verifies nothing.
+    """
+    return _prepare_p2wpkh_input(tx, input_index, spent_output)
+
+
 def verify_p2wpkh_input(tx: Transaction, input_index: int, spent_output: TxOut) -> bool:
     """Verify one P2WPKH or P2SH-P2WPKH input against its supplied spent output.
 
@@ -209,6 +222,7 @@ def verify_transactions_signatures_batch(
 
 
 __all__ = [
+    "prepare_witness_signature",
     "verify_p2wpkh_input",
     "verify_transaction_signatures",
     "verify_transactions_signatures_batch",

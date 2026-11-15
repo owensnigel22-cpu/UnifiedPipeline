@@ -58,6 +58,10 @@ CLI commands are listed by `keylab --help` and `keylab-advanced --help`;
 - [`keylab.research.ecdsa.hnp`](#keylabresearchecdsahnp) — Research: ECDSA biased-nonce (HNP) key recovery
 - [`keylab.research.ecdsa.nonce_preimage`](#keylabresearchecdsanonce_preimage) — Research: bounded ECDSA nonce pre-image recovery
 - [`keylab.research.schnorr_nonce_reuse`](#keylabresearchschnorr_nonce_reuse) — Research: BIP-340 Schnorr nonce-reuse key recovery
+- [`keylab.research.forensics`](#keylabresearchforensics) — Research: Bitcoin forensics over public chain data (educational)
+- [`keylab.research.forensics.signatures`](#keylabresearchforensicssignatures) — Research: extract ECDSA (z, r, s) from P2WPKH / P2SH-P2WPKH inputs
+- [`keylab.research.forensics.nonce_scan`](#keylabresearchforensicsnonce_scan) — Research: automated ECDSA nonce-reuse forensics
+- [`keylab.research.forensics.bloom`](#keylabresearchforensicsbloom) — Research: dependency-free Bloom filter for membership pre-screening
 - [`keylab.verify.mainnet`](#keylabverifymainnet) — Read-only mainnet transaction signature verification
 - [`keylab.verify.mainnet.client`](#keylabverifymainnetclient) — Read-only public explorer client
 - [`keylab.verify.mainnet.verification`](#keylabverifymainnetverification) — Bitcoin transaction signature verification
@@ -600,8 +604,10 @@ Brainwallet dictionary attack — an educational demonstration of weak key choic
 
 | Name | Signature / value | Summary |
 |---|---|---|
+| `BrainwalletHit` | `class BrainwalletHit(passphrase: 'bytes', target_hash160: 'bytes', matched_form: 'str', private_key_hex: 'str \| None') -> None` | One passphrase whose derived HASH160 matched a target in a multi-target scan. |
 | `BrainwalletResult` | `class BrainwalletResult(found: 'bool', passphrase: 'bytes \| None', private_key_hex: 'str \| None', tried: 'int', target_hash160: 'str', matched_form: 'str \| None') -> None` | Outcome of a brainwallet dictionary attack against one target address. |
 | `crack_brainwallet` | `crack_brainwallet(target_address: 'str', wordlist_path: 'str \| Path', *, reveal_private_key: 'bool' = False, limit: 'int \| None' = None, progress: 'Callable[[int], None] \| None' = None) -> 'BrainwalletResult'` | Search ``wordlist_path`` for a passphrase whose key yields ``target_address``. |
+| `crack_brainwallet_multi` | `crack_brainwallet_multi(passphrases: 'Iterable[bytes]', targets: 'Iterable[bytes]', *, reveal_private_key: 'bool' = False, executor: 'str' = 'thread', workers: 'int \| None' = None, chunk_size: 'int' = 1024) -> 'list[BrainwalletHit]'` | Search ``passphrases`` for any that derive a HASH160 in ``targets``. |
 | `iter_wordlist` | `iter_wordlist(path: 'str \| Path') -> 'Iterator[bytes]'` | Stream a wordlist line by line in **binary** mode (no full-file buffering). |
 | `passphrase_hash160s` | `passphrase_hash160s(passphrase: 'bytes') -> 'dict[str, bytes]'` | Return the HASH160 of each SEC form (the P2PKH / P2WPKH witness program). |
 | `passphrase_to_privkey` | `passphrase_to_privkey(passphrase: 'bytes') -> 'int'` | Return the brainwallet private key ``int(SHA256(passphrase))``. |
@@ -804,6 +810,55 @@ Recover a BIP-340 (Schnorr) private key from two signatures that reused a nonce.
 |---|---|---|
 | `recover_private_key_from_schnorr_nonce_reuse` | `recover_private_key_from_schnorr_nonce_reuse(signature1: 'bytes', message1: 'bytes', signature2: 'bytes', message2: 'bytes', public_key_x: 'bytes') -> 'int \| None'` | Return the BIP-340 private scalar from a nonce-reuse pair, or ``None``. |
 
+## `keylab.research.forensics`
+
+Research: Bitcoin forensics over public chain data (educational).
+
+Educational Bitcoin forensics over public on-chain data.
+
+| Name | Signature / value | Summary |
+|---|---|---|
+| `extract_input_signatures` | `extract_input_signatures(tx: 'Transaction', spent_outputs: 'Sequence[TxOut]', *, txid: 'str') -> 'list[InputSignature]'` | Return an :class:`InputSignature` for each in-scope, well-formed input. |
+| `InputSignature` | `class InputSignature(txid: 'str', input_index: 'int', z: 'int', r: 'int', s: 'int', pubkey: 'bytes', public_point: 'Point', script_type: 'str') -> None` | One input's signed digest and decoded ECDSA signature. |
+| `NonceReuseScanner` | `class NonceReuseScanner(client: 'ReadOnlyExplorerClient \| None' = None, *, max_txs: 'int' = 50) -> 'None'` | Scan transactions (or an address) for recoverable ECDSA nonce reuse. |
+| `NonceScanReport` | `class NonceScanReport(address: 'str \| None', txids: 'tuple[str, ...]', signatures_examined: 'int', reused_r_groups: 'int', low_s_count: 'int', recovered: 'tuple[RecoveredKey, ...]') -> None` | The outcome of scanning a set of transactions for nonce reuse. |
+| `RecoveredKey` | `class RecoveredKey(private_key: 'int', pubkey: 'bytes', addresses: 'dict[str, str]', evidence: 'tuple[InputSignature, InputSignature]', verified: 'bool') -> None` | A private key recovered from an on-chain nonce-reuse pair. |
+| `script_type_of` | `script_type_of(script_pubkey: 'bytes') -> 'str \| None'` | Classify a spent output's ``scriptPubKey`` as a supported input type. |
+
+## `keylab.research.forensics.signatures`
+
+Research: extract ECDSA (z, r, s) from P2WPKH / P2SH-P2WPKH inputs.
+
+Extract ECDSA ``(z, r, s)`` material from fetched Bitcoin transactions.
+
+| Name | Signature / value | Summary |
+|---|---|---|
+| `extract_input_signatures` | `extract_input_signatures(tx: 'Transaction', spent_outputs: 'Sequence[TxOut]', *, txid: 'str') -> 'list[InputSignature]'` | Return an :class:`InputSignature` for each in-scope, well-formed input. |
+| `InputSignature` | `class InputSignature(txid: 'str', input_index: 'int', z: 'int', r: 'int', s: 'int', pubkey: 'bytes', public_point: 'Point', script_type: 'str') -> None` | One input's signed digest and decoded ECDSA signature. |
+| `script_type_of` | `script_type_of(script_pubkey: 'bytes') -> 'str \| None'` | Classify a spent output's ``scriptPubKey`` as a supported input type. |
+
+## `keylab.research.forensics.nonce_scan`
+
+Research: automated ECDSA nonce-reuse forensics.
+
+Automated ECDSA nonce-reuse forensics over public Bitcoin transactions.
+
+| Name | Signature / value | Summary |
+|---|---|---|
+| `NonceReuseScanner` | `class NonceReuseScanner(client: 'ReadOnlyExplorerClient \| None' = None, *, max_txs: 'int' = 50) -> 'None'` | Scan transactions (or an address) for recoverable ECDSA nonce reuse. |
+| `NonceScanReport` | `class NonceScanReport(address: 'str \| None', txids: 'tuple[str, ...]', signatures_examined: 'int', reused_r_groups: 'int', low_s_count: 'int', recovered: 'tuple[RecoveredKey, ...]') -> None` | The outcome of scanning a set of transactions for nonce reuse. |
+| `RecoveredKey` | `class RecoveredKey(private_key: 'int', pubkey: 'bytes', addresses: 'dict[str, str]', evidence: 'tuple[InputSignature, InputSignature]', verified: 'bool') -> None` | A private key recovered from an on-chain nonce-reuse pair. |
+
+## `keylab.research.forensics.bloom`
+
+Research: dependency-free Bloom filter for membership pre-screening.
+
+A small, dependency-free Bloom filter for fast membership pre-screening.
+
+| Name | Signature / value | Summary |
+|---|---|---|
+| `BloomFilter` | `class BloomFilter(capacity: 'int', error_rate: 'float' = 1e-06) -> 'None'` | A classic bit-array Bloom filter keyed on ``bytes`` items. |
+
 ## `keylab.verify.mainnet`
 
 Read-only mainnet transaction signature verification.
@@ -837,6 +892,7 @@ Local BIP-143 signature verification for P2WPKH input witnesses.
 
 | Name | Signature / value | Summary |
 |---|---|---|
+| `prepare_witness_signature` | `prepare_witness_signature(tx: 'Transaction', input_index: 'int', spent_output: 'TxOut') -> 'tuple[bytes, tuple[int, int], tuple[int, int]] \| None'` | Return ``(sighash_digest, (r, s), public_point)`` for a P2WPKH/P2SH-P2WPKH input. |
 | `verify_p2wpkh_input` | `verify_p2wpkh_input(tx: 'Transaction', input_index: 'int', spent_output: 'TxOut') -> 'bool'` | Verify one P2WPKH or P2SH-P2WPKH input against its supplied spent output. |
 | `verify_transaction_signatures` | `verify_transaction_signatures(raw_transaction: 'bytes', spent_outputs: 'Sequence[TxOut]') -> 'bool'` | Verify every input in a transaction using caller-supplied spent outputs. |
 | `verify_transactions_signatures_batch` | `verify_transactions_signatures_batch(transactions: 'Sequence[tuple[bytes, Sequence[TxOut]]]', *, backend: 'str' = 'auto', max_workers: 'int \| None' = None) -> 'bool'` | Verify caller-supplied transaction/input corpora concurrently. |
