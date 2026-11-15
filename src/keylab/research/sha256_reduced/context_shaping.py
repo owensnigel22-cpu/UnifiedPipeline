@@ -258,7 +258,7 @@ def search_17_step_preimage(
     # Indices of the seven free words we randomise per attempt: a2,a3,a4,a5,a7,a8,a9.
     fixed_indices = (9, 10, 11, 12, 14, 15, 16)
     for _ in range(max_attempts):
-        if time.monotonic() - start > time_budget:
+        if time_budget <= 0.0 or time.monotonic() - start > time_budget:
             break
         attempts += 1
         for idx in fixed_indices:
@@ -334,7 +334,7 @@ def search_19_step_preimage(
     start = time.monotonic()
     contexts = chains = 0
     for _ in range(max_contexts):
-        if time.monotonic() - start > time_budget:
+        if time_budget <= 0.0 or time.monotonic() - start > time_budget:
             break
         difference = _setup_context(solver, rng, padded, kmax, start, time_budget)
         if difference is None:
@@ -374,7 +374,7 @@ def _setup_context(
         a[10 + _OFF] = (0xFFFFFFFF + _big_sigma0(a[9 + _OFF]) + _maj(a[9 + _OFF], a[8 + _OFF], a[7 + _OFF]) - a[6 + _OFF]) & _MASK
         return 0
     while True:
-        if time.monotonic() - start > time_budget:
+        if time_budget <= 0.0 or time.monotonic() - start > time_budget:
             return None
         a[9 + _OFF] = rng.next32()
         a[10 + _OFF] = rng.next32()
