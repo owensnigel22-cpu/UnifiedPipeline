@@ -73,6 +73,7 @@ MODULES = (
     ("keylab.research.forensics", "Research: Bitcoin forensics over public chain data (educational)"),
     ("keylab.research.forensics.signatures", "Research: extract ECDSA (z, r, s) from P2WPKH / P2SH-P2WPKH inputs"),
     ("keylab.research.forensics.nonce_scan", "Research: automated ECDSA nonce-reuse forensics"),
+    ("keylab.research.forensics.bloom", "Research: dependency-free Bloom filter for membership pre-screening"),
     ("keylab.verify.mainnet", "Read-only mainnet transaction signature verification"),
     ("keylab.verify.mainnet.client", "Read-only public explorer client"),
     ("keylab.verify.mainnet.verification", "Bitcoin transaction signature verification"),

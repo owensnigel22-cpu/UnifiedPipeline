@@ -60,6 +60,7 @@ CLI commands are listed by `keylab --help` and `keylab-advanced --help`;
 - [`keylab.research.forensics`](#keylabresearchforensics) — Research: Bitcoin forensics over public chain data (educational)
 - [`keylab.research.forensics.signatures`](#keylabresearchforensicssignatures) — Research: extract ECDSA (z, r, s) from P2WPKH / P2SH-P2WPKH inputs
 - [`keylab.research.forensics.nonce_scan`](#keylabresearchforensicsnonce_scan) — Research: automated ECDSA nonce-reuse forensics
+- [`keylab.research.forensics.bloom`](#keylabresearchforensicsbloom) — Research: dependency-free Bloom filter for membership pre-screening
 - [`keylab.verify.mainnet`](#keylabverifymainnet) — Read-only mainnet transaction signature verification
 - [`keylab.verify.mainnet.client`](#keylabverifymainnetclient) — Read-only public explorer client
 - [`keylab.verify.mainnet.verification`](#keylabverifymainnetverification) — Bitcoin transaction signature verification
@@ -602,8 +603,10 @@ Brainwallet dictionary attack — an educational demonstration of weak key choic
 
 | Name | Signature / value | Summary |
 |---|---|---|
+| `BrainwalletHit` | `class BrainwalletHit(passphrase: 'bytes', target_hash160: 'bytes', matched_form: 'str', private_key_hex: 'str \| None') -> None` | One passphrase whose derived HASH160 matched a target in a multi-target scan. |
 | `BrainwalletResult` | `class BrainwalletResult(found: 'bool', passphrase: 'bytes \| None', private_key_hex: 'str \| None', tried: 'int', target_hash160: 'str', matched_form: 'str \| None') -> None` | Outcome of a brainwallet dictionary attack against one target address. |
 | `crack_brainwallet` | `crack_brainwallet(target_address: 'str', wordlist_path: 'str \| Path', *, reveal_private_key: 'bool' = False, limit: 'int \| None' = None, progress: 'Callable[[int], None] \| None' = None) -> 'BrainwalletResult'` | Search ``wordlist_path`` for a passphrase whose key yields ``target_address``. |
+| `crack_brainwallet_multi` | `crack_brainwallet_multi(passphrases: 'Iterable[bytes]', targets: 'Iterable[bytes]', *, reveal_private_key: 'bool' = False, executor: 'str' = 'thread', workers: 'int \| None' = None, chunk_size: 'int' = 1024) -> 'list[BrainwalletHit]'` | Search ``passphrases`` for any that derive a HASH160 in ``targets``. |
 | `iter_wordlist` | `iter_wordlist(path: 'str \| Path') -> 'Iterator[bytes]'` | Stream a wordlist line by line in **binary** mode (no full-file buffering). |
 | `passphrase_hash160s` | `passphrase_hash160s(passphrase: 'bytes') -> 'dict[str, bytes]'` | Return the HASH160 of each SEC form (the P2PKH / P2WPKH witness program). |
 | `passphrase_to_privkey` | `passphrase_to_privkey(passphrase: 'bytes') -> 'int'` | Return the brainwallet private key ``int(SHA256(passphrase))``. |
@@ -829,6 +832,16 @@ Automated ECDSA nonce-reuse forensics over public Bitcoin transactions.
 | `NonceReuseScanner` | `class NonceReuseScanner(client: 'ReadOnlyExplorerClient \| None' = None, *, max_txs: 'int' = 50) -> 'None'` | Scan transactions (or an address) for recoverable ECDSA nonce reuse. |
 | `NonceScanReport` | `class NonceScanReport(address: 'str \| None', txids: 'tuple[str, ...]', signatures_examined: 'int', reused_r_groups: 'int', low_s_count: 'int', recovered: 'tuple[RecoveredKey, ...]') -> None` | The outcome of scanning a set of transactions for nonce reuse. |
 | `RecoveredKey` | `class RecoveredKey(private_key: 'int', pubkey: 'bytes', addresses: 'dict[str, str]', evidence: 'tuple[InputSignature, InputSignature]', verified: 'bool') -> None` | A private key recovered from an on-chain nonce-reuse pair. |
+
+## `keylab.research.forensics.bloom`
+
+Research: dependency-free Bloom filter for membership pre-screening.
+
+A small, dependency-free Bloom filter for fast membership pre-screening.
+
+| Name | Signature / value | Summary |
+|---|---|---|
+| `BloomFilter` | `class BloomFilter(capacity: 'int', error_rate: 'float' = 1e-06) -> 'None'` | A classic bit-array Bloom filter keyed on ``bytes`` items. |
 
 ## `keylab.verify.mainnet`
 
