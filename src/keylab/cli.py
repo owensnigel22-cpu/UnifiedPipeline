@@ -13,6 +13,8 @@ from pathlib import Path
 from subprocess import run
 from typing import Any, TextIO, cast
 
+import httpx
+
 from keylab import __version__
 from keylab.backends import backend_info
 from keylab.benchmarks import (
@@ -58,15 +60,27 @@ from keylab.numtheory.rsa import (
     pollard_rho_factor,
     rsa_exponentiation_roundtrip,
 )
-from keylab.research.brainwallet import crack_brainwallet
+from keylab.research.brainwallet import (
+    crack_brainwallet,
+    crack_brainwallet_multi,
+    iter_wordlist,
+)
 from keylab.research.ecdlp.halving_lsb import demo_instance as halving_lsb_demo
 from keylab.research.ecdlp.halving_lsb import lsb_halving_attack
+from keylab.research.forensics.address_search import (
+    PubkeyNotRevealed,
+    recover_key_for_address,
+    resolve_pubkey_for_address,
+)
+from keylab.research.forensics.nonce_scan import NonceReuseScanner
 from keylab.research.weak_rng import incremental_pubkey_scan
+from keylab.research.weak_rng_milksad import scan_timestamp_range
 from keylab.sat.anf import MQCNFEncoder
 from keylab.sat.backends import solve_cnf
 from keylab.sat.diagnostics import write_formula_diagnostics
 from keylab.sat.parallel import solve_parallel_cubes
 from keylab.sat.solver import SOLVER_CANDIDATES, find_solver, run_solver
+from keylab.verify.mainnet.client import ReadOnlyExplorerClient
 
 
 def _number_theory(args: argparse.Namespace) -> int:
@@ -1785,6 +1799,216 @@ def _halving_lsb(args: argparse.Namespace, parser: argparse.ArgumentParser) -> i
     return 0 if summary["verified"] else 1
 
 
+_FORENSICS_WARNING = (
+    "Educational read-only forensics. Recovers keys ONLY from already-broken "
+    "constructions (leaked nonce reuse, weak passphrase, weak PRNG, a revealed key "
+    "in a bounded interval) over public data. No sweeping, signing, or broadcasting; "
+    "keys masked unless --reveal. See SECURITY.md."
+)
+
+_NETWORK_ERRORS = (ValueError, OSError, httpx.HTTPError)
+
+
+def _make_explorer_client(args: argparse.Namespace) -> ReadOnlyExplorerClient:
+    """Build the read-only explorer client (GET-only, TLS 1.2+, allow-listed).
+
+    A single seam so tests can substitute an ``httpx.MockTransport``-backed client
+    and run fully offline. An optional ``--explorer https://host`` narrows the
+    allow-list to that origin; the client validates it.
+    """
+    explorer = getattr(args, "explorer", None)
+    if explorer:
+        return ReadOnlyExplorerClient(allowlist=(explorer,))
+    return ReadOnlyExplorerClient()
+
+
+def _forensics_nonce_scan(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
+    client = _make_explorer_client(args)
+    try:
+        report = NonceReuseScanner(client, max_txs=args.max_txs).scan_address(
+            args.address, network=args.network
+        )
+    except _NETWORK_ERRORS as exc:
+        parser.error(str(exc))
+    finally:
+        client.close()
+    output = report.to_dict(reveal_private=args.reveal)
+    output["mode"] = "forensics-nonce-scan"
+    output["warning"] = _FORENSICS_WARNING
+    print(json.dumps(output, sort_keys=True))
+    return 0 if report.vulnerable else 1
+
+
+def _forensics_address_pubkey(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
+    client = _make_explorer_client(args)
+    try:
+        resolved = resolve_pubkey_for_address(
+            args.address, client=client, network=args.network, max_txs=args.max_txs
+        )
+    except PubkeyNotRevealed as exc:
+        print(json.dumps({
+            "mode": "forensics-address-pubkey",
+            "address": args.address,
+            "pubkey_revealed": False,
+            "message": str(exc),
+            "warning": _FORENSICS_WARNING,
+        }, sort_keys=True))
+        return 1
+    except _NETWORK_ERRORS as exc:
+        parser.error(str(exc))
+    finally:
+        client.close()
+    print(json.dumps({
+        "mode": "forensics-address-pubkey",
+        "address": args.address,
+        "pubkey_revealed": True,
+        "pubkey": resolved.pubkey.hex(),
+        "revealed_by": {"txid": resolved.txid, "input_index": resolved.input_index},
+        "warning": _FORENSICS_WARNING,
+    }, sort_keys=True))
+    return 0
+
+
+def _forensics_address_search(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
+    client = _make_explorer_client(args)
+    try:
+        report = recover_key_for_address(
+            args.address, args.lo, args.hi,
+            client=client, network=args.network, max_txs=args.max_txs,
+            dp_bits=args.dp_bits, max_table_entries=args.max_table_entries,
+            max_steps=args.max_steps, reveal_private=args.reveal,
+        )
+    except PubkeyNotRevealed as exc:
+        print(json.dumps({
+            "mode": "forensics-address-search",
+            "address": args.address,
+            "pubkey_revealed": False,
+            "message": str(exc),
+            "warning": _FORENSICS_WARNING,
+        }, sort_keys=True))
+        return 1
+    except _NETWORK_ERRORS as exc:
+        parser.error(str(exc))
+    finally:
+        client.close()
+    report["mode"] = "forensics-address-search"
+    report["warning"] = _FORENSICS_WARNING
+    print(json.dumps(report, sort_keys=True))
+    return 0 if report["found"] else 1
+
+
+def _forensics_milksad(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
+    try:
+        targets = [bytes.fromhex(value) for value in args.target_hash160]
+    except ValueError:
+        parser.error("--target-hash160 must be hexadecimal")
+    try:
+        hits = scan_timestamp_range(
+            args.start_ts, args.end_ts, targets, entropy_bytes=args.entropy_bytes
+        )
+    except (ValueError, TypeError) as exc:
+        parser.error(str(exc))
+    output = {
+        "mode": "forensics-milksad",
+        "start_ts": args.start_ts,
+        "end_ts": args.end_ts,
+        "seeds_examined": max(0, args.end_ts - args.start_ts),
+        "found": bool(hits),
+        "hits": [hit.to_dict(reveal_private=args.reveal) for hit in hits],
+        "warning": _FORENSICS_WARNING,
+    }
+    print(json.dumps(output, sort_keys=True))
+    return 0 if hits else 1
+
+
+def _forensics_brainwallet_multi(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
+    if not Path(args.wordlist).is_file():
+        parser.error(f"wordlist not found: {args.wordlist}")
+    try:
+        targets = [address_to_target_hash(address) for address in args.address]
+    except ValueError as exc:
+        parser.error(str(exc))
+    try:
+        hits = crack_brainwallet_multi(
+            iter_wordlist(args.wordlist), targets,
+            reveal_private_key=args.reveal, executor=args.executor,
+            workers=args.workers, chunk_size=args.chunk_size,
+        )
+    except (ValueError, OSError) as exc:
+        parser.error(str(exc))
+    output = {
+        "mode": "forensics-brainwallet-multi",
+        "targets": [target.hex() for target in targets],
+        "found": bool(hits),
+        "hits": [
+            {
+                "passphrase": hit.passphrase.decode("utf-8", "replace"),
+                "target_hash160": hit.target_hash160.hex(),
+                "matched_form": hit.matched_form,
+                "private_key_hex": hit.private_key_hex,
+            }
+            for hit in hits
+        ],
+        "warning": _FORENSICS_WARNING,
+    }
+    print(json.dumps(output, sort_keys=True))
+    return 0 if hits else 1
+
+
+def _forensics_triage(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
+    client = _make_explorer_client(args)
+    try:
+        report = NonceReuseScanner(client, max_txs=args.max_txs).scan_address(
+            args.address, network=args.network
+        )
+        try:
+            resolved = resolve_pubkey_for_address(
+                args.address, client=client, network=args.network, max_txs=args.max_txs
+            )
+            pubkey_info: dict[str, object] = {
+                "revealed": True,
+                "pubkey": resolved.pubkey.hex(),
+                "revealed_by": {"txid": resolved.txid, "input_index": resolved.input_index},
+            }
+        except PubkeyNotRevealed:
+            pubkey_info = {"revealed": False}
+    except _NETWORK_ERRORS as exc:
+        parser.error(str(exc))
+    finally:
+        client.close()
+    output = {
+        "mode": "forensics-triage",
+        "address": args.address,
+        "network": args.network,
+        "nonce_reuse": {
+            "vulnerable": report.vulnerable,
+            "signatures_examined": report.signatures_examined,
+            "reused_r_groups": report.reused_r_groups,
+            "low_s_count": report.low_s_count,
+            "recovered_count": len(report.recovered),
+        },
+        "pubkey": pubkey_info,
+        "warning": (
+            "Read-only triage; no keys recovered or printed. Use "
+            "'forensics nonce-scan' / 'forensics address-search' with --reveal for details."
+        ),
+    }
+    print(json.dumps(output, sort_keys=True))
+    return 0
+
+
+def _forensics(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
+    dispatch = {
+        "nonce-scan": _forensics_nonce_scan,
+        "address-pubkey": _forensics_address_pubkey,
+        "address-search": _forensics_address_search,
+        "milksad": _forensics_milksad,
+        "brainwallet-multi": _forensics_brainwallet_multi,
+        "triage": _forensics_triage,
+    }
+    return dispatch[args.forensics_command](args, parser)
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="keylab", description=__doc__)
     parser.add_argument("--version", action="version", version=f"keylab {__version__}")
@@ -2402,6 +2626,107 @@ def build_parser() -> argparse.ArgumentParser:
         "--interval-high", type=int, default=None, help="upper bound of the scalar interval"
     )
 
+    forensics = commands.add_parser(
+        "forensics",
+        help="read-only Bitcoin forensics over public chain data (educational)",
+        description=(
+            "Recover keys ONLY from already-broken constructions (leaked nonce reuse, weak "
+            "passphrase, weak PRNG, a revealed key in a bounded interval) over public, "
+            "read-only data. No sweeping, signing, or broadcasting; keys masked unless "
+            "--reveal. See SECURITY.md."
+        ),
+    )
+    forensics_sub = forensics.add_subparsers(dest="forensics_command", required=True)
+
+    f_nonce = forensics_sub.add_parser(
+        "nonce-scan", help="scan an address's transactions for recoverable ECDSA nonce reuse"
+    )
+    f_nonce.add_argument("--address", required=True, help="address to scan (read-only)")
+    f_nonce.add_argument("--network", default="mainnet", help="address network (default: mainnet)")
+    f_nonce.add_argument("--max-txs", type=int, default=50, help="max transactions to examine")
+    f_nonce.add_argument("--explorer", default=None, help="override explorer base URL (https://host)")
+    f_nonce.add_argument("--reveal", action="store_true", help="print recovered private keys")
+
+    f_pubkey = forensics_sub.add_parser(
+        "address-pubkey", help="resolve an address's public key from an on-chain spend"
+    )
+    f_pubkey.add_argument("--address", required=True)
+    f_pubkey.add_argument("--network", default="mainnet")
+    f_pubkey.add_argument("--max-txs", type=int, default=50)
+    f_pubkey.add_argument("--explorer", default=None, help="override explorer base URL (https://host)")
+
+    f_search = forensics_sub.add_parser(
+        "address-search",
+        help="resolve an address's pubkey, then bounded kangaroo search (bounded/puzzle keys only)",
+        description=(
+            "Resolve the public key from an on-chain spend, then run Pollard's kangaroo over "
+            "the supplied [lo, hi]. Bounded intervals only: a sound 256-bit key is infeasible."
+        ),
+    )
+    f_search.add_argument("--address", required=True)
+    f_search.add_argument("--lo", type=int, required=True, help="interval lower bound (inclusive)")
+    f_search.add_argument("--hi", type=int, required=True, help="interval upper bound (inclusive)")
+    f_search.add_argument("--network", default="mainnet")
+    f_search.add_argument("--max-txs", type=int, default=50)
+    f_search.add_argument("--explorer", default=None, help="override explorer base URL (https://host)")
+    f_search.add_argument("--dp-bits", type=int, default=None, help="distinguished-point bits")
+    f_search.add_argument(
+        "--max-table-entries", type=int, default=None,
+        help="cap the DP table size (memory bound; mutually exclusive with --dp-bits)",
+    )
+    f_search.add_argument("--max-steps", type=int, default=None, help="cap total kangaroo hops")
+    f_search.add_argument("--reveal", action="store_true", help="print the recovered private key")
+
+    f_milksad = forensics_sub.add_parser(
+        "milksad",
+        help="scan a timestamp-seed range for Milk Sad weak keys (offline)",
+        description=(
+            "Faithful MT19937 reconstruction of libbitcoin bx seed; search [start-ts, end-ts) "
+            "for a 32-bit seed that derives a target HASH160. Offline; faithful-construction demo."
+        ),
+    )
+    f_milksad.add_argument("--start-ts", type=int, required=True, help="first 32-bit seed (inclusive)")
+    f_milksad.add_argument("--end-ts", type=int, required=True, help="last 32-bit seed (exclusive)")
+    f_milksad.add_argument(
+        "--target-hash160", action="append", required=True,
+        help="target 20-byte HASH160 as hex (repeatable)",
+    )
+    f_milksad.add_argument("--entropy-bytes", type=int, default=32, help="entropy bytes per seed")
+    f_milksad.add_argument("--reveal", action="store_true", help="print recovered private keys")
+
+    f_brain = forensics_sub.add_parser(
+        "brainwallet-multi",
+        help="Bloom-screened multi-target brainwallet crack (offline)",
+        description=(
+            "Stream a wordlist against many target addresses at once, Bloom-pre-screened. "
+            "Offline only: no balance or network lookups."
+        ),
+    )
+    f_brain.add_argument("--wordlist", required=True, help="wordlist path (streamed in binary)")
+    f_brain.add_argument(
+        "--address", action="append", required=True, help="target address (repeatable)"
+    )
+    f_brain.add_argument(
+        "--executor", choices=("serial", "thread", "process"), default="thread",
+        help="parallelism strategy (default: thread)",
+    )
+    f_brain.add_argument("--workers", type=int, default=None, help="worker count (default: auto)")
+    f_brain.add_argument("--chunk-size", type=int, default=1024, help="passphrases per work chunk")
+    f_brain.add_argument("--reveal", action="store_true", help="print recovered private keys")
+
+    f_triage = forensics_sub.add_parser(
+        "triage",
+        help="consolidated read-only triage for an address (recovers/prints no keys)",
+        description=(
+            "Run the read-only checks (nonce reuse + public-key exposure) and summarise the "
+            "verdict. Recovers and prints no private keys."
+        ),
+    )
+    f_triage.add_argument("--address", required=True)
+    f_triage.add_argument("--network", default="mainnet")
+    f_triage.add_argument("--max-txs", type=int, default=50)
+    f_triage.add_argument("--explorer", default=None, help="override explorer base URL (https://host)")
+
     return parser
 
 
@@ -2499,6 +2824,8 @@ def main(argv: list[str] | None = None) -> int:
         return _weak_rng_scan(args, parser)
     if args.command == "halving-lsb":
         return _halving_lsb(args, parser)
+    if args.command == "forensics":
+        return _forensics(args, parser)
     print(f"{args.command}: not yet implemented", file=sys.stderr)
     return 2
 

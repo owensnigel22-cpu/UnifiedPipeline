@@ -187,6 +187,45 @@ As with the ECDLP tooling, this is a wall, not a slowdown: reducing rounds or
 truncating the target is what makes these instances tractable, and no budget or
 patience extends them to full 64-round SHA-256.
 
+## The Forensics boundary: recovery only from already-broken constructions
+
+The `keylab.research.forensics.*` modules, `keylab.research.weak_rng_milksad`, the
+Bloom-screened `crack_brainwallet_multi`, and the `keylab forensics` CLI recover
+keys **only** from constructions that were **already broken by the key's owner**,
+over **public, read-only** blockchain data. They give **no** advantage against a
+soundly generated key and break **no** primitive. Specifically, a key is
+recoverable here only when:
+
+- **A signer reused an ECDSA nonce on-chain** (`forensics nonce-scan`): the same
+  key signed two different digests with the same `r`, which leaks the key by
+  ordinary algebra. Scope is SegWit v0 **P2WPKH / P2SH-P2WPKH** (BIP-143); legacy
+  P2PKH is out of scope and skipped, never guessed.
+- **A passphrase was weak** (`forensics brainwallet-multi`): a brainwallet key is
+  `SHA256(passphrase)`, so a wordlist match recovers it. Offline; no lookups.
+- **A wallet used a weak PRNG** (`forensics milksad`): Milk Sad (CVE-2023-39910)
+  seeded a 32-bit Mersenne Twister. The MT19937 core is verified against the C++
+  standard vector; the key derivation is a **faithful-construction demo**, not a
+  claimed match to a specific disclosed wallet.
+- **A public key is already exposed and the key is known to lie in a small
+  interval** (`forensics address-pubkey`, `forensics address-search`): a public
+  key is resolved **only** from an actual on-chain spend — an unspent address
+  raises `PubkeyNotRevealed`, never a guess — and Pollard's kangaroo is run
+  **only** over a caller-supplied bounded `[lo, hi]`. A soundly generated
+  256-bit key spans the whole group (`~2**128` hops) and stays infeasible; this
+  is not a general address cracker.
+
+Hard operational boundary:
+
+- **Read-only.** Chain data is fetched through the GET-only, TLS-1.2+,
+  allow-listed `ReadOnlyExplorerClient` (structurally enforced; see the AST test).
+  There is **no** sweeping, signing, or broadcasting anywhere in the suite —
+  recovery is verified by re-deriving the address only.
+- **Keys are masked by default.** Serialized output withholds any recovered
+  private key unless an explicit `--reveal` / `reveal_private=True` is passed;
+  `forensics triage` recovers and prints **no** key at all.
+- **Authorized use only.** Run these only against addresses you own or are
+  explicitly authorized to analyze.
+
 ## Reporting a vulnerability
 
 If you find a correctness bug (a mismatch with a BIP, RFC, or libsecp256k1),
