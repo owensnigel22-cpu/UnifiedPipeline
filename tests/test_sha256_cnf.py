@@ -592,6 +592,80 @@ def test_sha256_cnf_benchmark_defaults_to_pre_expansion_range(capsys) -> None:
         for encoding in ("direct", "chain")
     ]
     assert [row["schedule_expansion_words_per_block"] for row in rows] == [0] * 6
+    # Defaults keep the explicit feed-forward and fix the whole known input.
+    assert all(row["feedforward"] == "explicit" for row in rows)
+    assert all(row["free_input_bits"] == 0 for row in rows)
+
+
+def test_sha256_cnf_benchmark_unwound_variant_is_smaller_and_equivalent(capsys) -> None:
+    assert (
+        main(
+            [
+                "sha256-cnf-benchmark",
+                "--start-round",
+                "4",
+                "--end-round",
+                "4",
+                "--xor3-encoding",
+                "direct",
+                "--feedforward",
+                "both",
+            ]
+        )
+        == 0
+    )
+
+    rows = [json.loads(line) for line in capsys.readouterr().out.splitlines()]
+    by_variant = {row["feedforward"]: row for row in rows}
+    assert set(by_variant) == {"explicit", "unwound"}
+    # The Davies-Meyer unwind removes the final output-equality adder network, so
+    # the unwound model is strictly smaller than the explicit one.
+    assert by_variant["unwound"]["clauses"] < by_variant["explicit"]["clauses"]
+    assert by_variant["unwound"]["variables"] < by_variant["explicit"]["variables"]
+    # Both models remain satisfiable and recover the same known input (equivalence).
+    solver = find_solver()
+    if solver is not None:
+        assert all(row["solver_status"] == "SATISFIABLE" for row in rows)
+        assert all(row["candidate_validated"] for row in rows)
+
+
+def test_sha256_cnf_benchmark_free_input_bits_leaves_a_search_window(capsys) -> None:
+    free_bits = 8
+    assert (
+        main(
+            [
+                "sha256-cnf-benchmark",
+                "--start-round",
+                "4",
+                "--end-round",
+                "4",
+                "--xor3-encoding",
+                "direct",
+                "--free-input-bits",
+                str(free_bits),
+            ]
+        )
+        == 0
+    )
+
+    rows = [json.loads(line) for line in capsys.readouterr().out.splitlines()]
+    assert rows, "expected at least one benchmark row"
+    total_input_bits = len(b"keylab benchmark input") * 8
+    for row in rows:
+        assert row["free_input_bits"] == free_bits
+        assert row["fixed_input_bits"] == total_input_bits - free_bits
+        solver = find_solver()
+        if solver is not None:
+            # A satisfying assignment is any reduced-round preimage, verified by the
+            # handler to actually hash to the target.
+            assert row["solver_status"] == "SATISFIABLE"
+            assert row["candidate_validated"] is True
+
+
+def test_sha256_cnf_benchmark_rejects_negative_free_input_bits() -> None:
+    with pytest.raises(SystemExit) as exc_info:
+        main(["sha256-cnf-benchmark", "--free-input-bits", "-1"])
+    assert exc_info.value.code == 2
 
 
 def test_sha256_cnf_benchmark_exports_csv_and_compares_solvers(tmp_path, capsys) -> None:
@@ -709,6 +783,99 @@ def test_hash_cnf_selftest_checks_sha_schedule_transition(capsys) -> None:
     assert [row["rounds"] for row in rows] == [16, 17]
     assert all(row["solver_status"] == "SATISFIABLE" for row in rows)
     assert all(row["candidate_validated"] is True for row in rows)
+
+
+def test_feedforward_unwind_compression_is_smaller_than_explicit_adder() -> None:
+    block = bytes(range(64))
+    target_words = _sha_compress(block, _SHA_IV, rounds=8)
+    target = b"".join(word.to_bytes(4, "big") for word in target_words)
+
+    explicit = sha256_compression_cnf(target, rounds=8)
+    unwound = sha256_compression_cnf(target, rounds=8, unwind_feedforward=True)
+
+    assert explicit.feedforward_unwound is False
+    assert unwound.feedforward_unwound is True
+    # Both expose the same 512 free input bits; only the feed-forward encoding differs.
+    assert len(unwound.input_bits) == len(explicit.input_bits) == 512
+    # The unwind drops the 8-word output adder network and its auxiliary variables.
+    assert unwound.variable_count < explicit.variable_count
+    assert unwound.clause_count < explicit.clause_count
+
+
+def test_feedforward_unwind_single_block_hash_is_smaller() -> None:
+    message = b"unwind me"
+    target = sha256_reduced(message, rounds=4)
+
+    explicit = sha256_hash_preimage_cnf(target, message_length=len(message), rounds=4)
+    unwound = sha256_hash_preimage_cnf(
+        target, message_length=len(message), rounds=4, unwind_feedforward=True
+    )
+
+    assert unwound.feedforward_unwound is True
+    assert unwound.variable_count < explicit.variable_count
+    assert unwound.clause_count < explicit.clause_count
+
+
+def test_feedforward_unwind_rejects_multiblock_message() -> None:
+    # 56 bytes needs two 64-byte blocks once padding is added, so the final
+    # block's incoming chaining state is a variable and cannot be unwound.
+    with pytest.raises(ValueError, match="single-block"):
+        sha256_hash_preimage_cnf(bytes(32), message_length=56, unwind_feedforward=True)
+
+
+@pytest.mark.parametrize(
+    "mode,rounds",
+    [("compression", 8), ("hash", 4), ("hash", 17)],
+)
+def test_feedforward_unwind_is_sat_equivalent_to_explicit_adder(mode: str, rounds: int) -> None:
+    solver = find_solver()
+    if solver is None:
+        pytest.skip("no supported external SAT solver is installed")
+
+    if mode == "compression":
+        known_input = bytes((index * 7 + 1) & 0xFF for index in range(64))
+        target_words = _sha_compress(known_input, _SHA_IV, rounds)
+        target = b"".join(word.to_bytes(4, "big") for word in target_words)
+        model = sha256_compression_cnf(target, rounds=rounds, unwind_feedforward=True)
+    else:
+        known_input = b"feedfwd!"
+        target = sha256_reduced(known_input, rounds)
+        model = sha256_hash_preimage_cnf(
+            target, message_length=len(known_input), rounds=rounds, unwind_feedforward=True
+        )
+
+    model.constrain_input_bits(
+        {
+            byte_index * 8 + bit_index: (byte >> (7 - bit_index)) & 1
+            for byte_index, byte in enumerate(known_input)
+            for bit_index in range(8)
+        }
+    )
+    result = run_solver(solver, model.to_dimacs(), timeout=30)
+
+    assert result.status == "SATISFIABLE"
+    assert model.recover_input(result.assignments) == known_input
+
+
+def test_feedforward_unwind_rejects_wrong_target_as_unsat() -> None:
+    solver = find_solver()
+    if solver is None:
+        pytest.skip("no supported external SAT solver is installed")
+    known_input = bytes(range(64))
+    target_words = _sha_compress(known_input, _SHA_IV, rounds=8)
+    # Flip one bit of the target so no input can satisfy the unwound registers.
+    corrupted = bytearray(b"".join(word.to_bytes(4, "big") for word in target_words))
+    corrupted[0] ^= 0x01
+    model = sha256_compression_cnf(bytes(corrupted), rounds=8, unwind_feedforward=True)
+    model.constrain_input_bits(
+        {
+            byte_index * 8 + bit_index: (byte >> (7 - bit_index)) & 1
+            for byte_index, byte in enumerate(known_input)
+            for bit_index in range(8)
+        }
+    )
+
+    assert run_solver(solver, model.to_dimacs(), timeout=30).status == "UNSATISFIABLE"
 
 
 def test_hash_cnf_selftest_reports_when_solver_is_missing(monkeypatch, capsys) -> None:

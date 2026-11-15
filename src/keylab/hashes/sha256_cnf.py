@@ -27,6 +27,7 @@ class SHA256CNFModel:
     initial_state: bytes
     message_length: int | None
     fixed_bits: dict[int, int] = field(default_factory=dict)
+    feedforward_unwound: bool = False
 
     @property
     def variable_count(self) -> int:
@@ -189,6 +190,8 @@ def _compress_block_cnf(
     rounds: int,
     true_literal: int,
     false_literal: int,
+    *,
+    feedforward: bool = True,
 ) -> tuple[_WORD, ...]:
     schedule: list[_WORD] = []
     for word_index in range(16):
@@ -221,9 +224,14 @@ def _compress_block_cnf(
         next_e = _add(cnf, d, temp1, false_literal)
         a, b, c, d, e, f, g, h = next_a, a, b, c, next_e, e, f, g
 
+    registers = (a, b, c, d, e, f, g, h)
+    if not feedforward:
+        # Return the pre-feed-forward working registers. The caller applies the
+        # Davies-Meyer addition, or algebraically unwinds it against a known target.
+        return registers
     return tuple(
         _add(cnf, original, current, false_literal)
-        for original, current in zip(state_words, (a, b, c, d, e, f, g, h))
+        for original, current in zip(state_words, registers)
     )
 
 
@@ -236,6 +244,7 @@ def _build_model(
     fixed_bits: Mapping[int, int] | None,
     track_dag: bool,
     xor3_encoding: str,
+    unwind_feedforward: bool = False,
 ) -> SHA256CNFModel:
     _rounds(rounds)
     target_words = _state_words(target_state, "target_state")
@@ -252,6 +261,13 @@ def _build_model(
         input_bit_count = message_length * 8
         mode = "hash"
         block_count = (message_length + 9 + 63) // 64
+
+    if unwind_feedforward and block_count > 1:
+        raise ValueError(
+            "unwind_feedforward requires a single-block message so the incoming "
+            "chaining state is a known constant; a multi-block feed-forward adds "
+            "a variable intermediate state that cannot be algebraically unwound"
+        )
 
     cnf = CNF(track_dag=track_dag, xor3_encoding=xor3_encoding)
     true_literal = cnf.constant(True, label="true")
@@ -270,10 +286,12 @@ def _build_model(
             cnf.constrain_variable(input_bits[index], int(value))
 
     state_words = tuple(_word(value, true_literal) for value in initial_words)
+    feedforward = not unwind_feedforward
     if message_length is None:
         block_bits = list(input_bits)
         state_words = _compress_block_cnf(
-            cnf, block_bits, state_words, rounds, true_literal, false_literal
+            cnf, block_bits, state_words, rounds, true_literal, false_literal,
+            feedforward=feedforward,
         )
     else:
         padded_length = block_count * 64
@@ -301,14 +319,27 @@ def _build_model(
                     )
                 block_bits.extend(byte_bits)
             state_words = _compress_block_cnf(
-                cnf, block_bits, state_words, rounds, true_literal, false_literal
+                cnf, block_bits, state_words, rounds, true_literal, false_literal,
+                feedforward=feedforward,
             )
 
-    output_state = state_words
-    for word_index, word in enumerate(output_state):
-        for bit_index, literal in enumerate(word):
-            expected = (target_words[word_index] >> bit_index) & 1
-            cnf.add_clause(literal if expected else -literal)
+    if unwind_feedforward:
+        # Davies-Meyer feed-forward unwound. With a constant incoming state the
+        # post-feed-forward output is (initial_i + register_i) mod 2**32, so the
+        # target forces register_i = (target_i - initial_i) mod 2**32. Constrain
+        # the pre-feed-forward registers directly and omit the 8-word adder
+        # network and its auxiliary variables entirely.
+        for word_index, word in enumerate(state_words):
+            required = (target_words[word_index] - initial_words[word_index]) & 0xFFFFFFFF
+            for bit_index, literal in enumerate(word):
+                expected = (required >> bit_index) & 1
+                cnf.add_clause(literal if expected else -literal)
+    else:
+        output_state = state_words
+        for word_index, word in enumerate(output_state):
+            for bit_index, literal in enumerate(word):
+                expected = (target_words[word_index] >> bit_index) & 1
+                cnf.add_clause(literal if expected else -literal)
 
     model = SHA256CNFModel(
         formula=cnf,
@@ -319,6 +350,7 @@ def _build_model(
         initial_state=initial_state,
         message_length=message_length,
         fixed_bits=normalized_fixed_bits.copy(),
+        feedforward_unwound=unwind_feedforward,
     )
     return model
 
@@ -331,11 +363,19 @@ def sha256_compression_cnf(
     fixed_bits: Mapping[int, int] | None = None,
     track_dag: bool = False,
     xor3_encoding: str = "direct",
+    unwind_feedforward: bool = False,
 ) -> SHA256CNFModel:
     """Model one SHA-256 compression invocation for an arbitrary 512-bit block.
 
     ``target_state`` is the 32-byte feed-forward output. The initial chaining
     state, round count, and any fixed input bits are explicit.
+
+    With ``unwind_feedforward=True`` the Davies-Meyer feed-forward is unwound
+    algebraically: because the incoming state is a known constant, the pre-feed-
+    forward registers are constrained directly to ``(target - initial) mod 2**32``
+    and the 8-word output adder network is omitted, yielding a strictly smaller,
+    SAT-equivalent model. This is an opt-in optimization; the default path keeps
+    the explicit adder so existing variable/clause counts are unchanged.
     """
     return _build_model(
         target_state=target_state,
@@ -345,6 +385,7 @@ def sha256_compression_cnf(
         fixed_bits=fixed_bits,
         track_dag=track_dag,
         xor3_encoding=xor3_encoding,
+        unwind_feedforward=unwind_feedforward,
     )
 
 
@@ -356,12 +397,19 @@ def sha256_hash_preimage_cnf(
     fixed_bits: Mapping[int, int] | None = None,
     track_dag: bool = False,
     xor3_encoding: str = "direct",
+    unwind_feedforward: bool = False,
 ) -> SHA256CNFModel:
     """Model a padded hash preimage for an exact, fixed message length.
 
     The input may span any number of 64-byte blocks. At 64 rounds this is a
     standard SHA-256 hash preimage model; smaller round counts are experiments
     using identical byte-stream padding and chaining.
+
+    ``unwind_feedforward=True`` applies the algebraic feed-forward unwind (see
+    :func:`sha256_compression_cnf`). It requires a single-block message (one
+    whose padded length is 64 bytes, i.e. ``message_length <= 55``) so the
+    incoming chaining state is the known constant SHA-256 IV; it raises
+    ``ValueError`` for a multi-block message.
     """
     return _build_model(
         target_state=target_digest,
@@ -371,6 +419,7 @@ def sha256_hash_preimage_cnf(
         fixed_bits=fixed_bits,
         track_dag=track_dag,
         xor3_encoding=xor3_encoding,
+        unwind_feedforward=unwind_feedforward,
     )
 
 

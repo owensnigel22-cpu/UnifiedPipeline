@@ -672,6 +672,9 @@ def _sha256_cnf_benchmark(args: argparse.Namespace, parser: argparse.ArgumentPar
     if args.timeout <= 0:
         parser.error("--timeout must be positive")
 
+    if args.free_input_bits < 0:
+        parser.error("--free-input-bits must be non-negative")
+
     solvers = args.solver if args.solver else [find_solver()]
     solvers = [solver for solver in solvers if solver is not None]
     xor3_encodings = (
@@ -679,70 +682,107 @@ def _sha256_cnf_benchmark(args: argparse.Namespace, parser: argparse.ArgumentPar
         if args.xor3_encoding == "both"
         else (args.xor3_encoding,)
     )
+    feedforward_variants = (
+        ("explicit", "unwound")
+        if args.feedforward == "both"
+        else (args.feedforward,)
+    )
     known_message = b"keylab benchmark input"
+    total_input_bits = len(known_message) * 8
+    if args.free_input_bits > total_input_bits:
+        parser.error(
+            f"--free-input-bits must not exceed the input width ({total_input_bits})"
+        )
+    # The feed-forward unwind is only valid when the incoming chaining state is the
+    # known constant IV, i.e. a single-block (<= 55-byte) message. The fixed
+    # benchmark message is 22 bytes, but guard explicitly for clarity.
+    if "unwound" in feedforward_variants and len(known_message) > 55:
+        parser.error(
+            "feed-forward unwind requires a single-block message (<= 55 bytes)"
+        )
+
+    # Fix every known input bit except the final ``--free-input-bits`` bits. Leaving
+    # a small window free turns the near-trivial known-input verification into a
+    # genuine bounded preimage search, which is where a smaller CNF can change the
+    # solver's work rather than only the clause count.
+    fixed_bit_count = total_input_bits - args.free_input_bits
     bit_constraints = {
         byte_index * 8 + bit_index: (byte >> (7 - bit_index)) & 1
         for byte_index, byte in enumerate(known_message)
         for bit_index in range(8)
+        if byte_index * 8 + bit_index < fixed_bit_count
     }
     rows: list[dict[str, object]] = []
     failed = False
     for rounds in range(args.start_round, args.end_round + 1):
         target = sha256_reduced(known_message, rounds=rounds)
         for xor3_encoding in xor3_encodings:
-            generation_started = time.perf_counter()
-            model = sha256_hash_preimage_cnf(
-                target,
-                message_length=len(known_message),
-                rounds=rounds,
-                xor3_encoding=xor3_encoding,
-            )
-            generation_seconds = time.perf_counter() - generation_started
-            constraint_started = time.perf_counter()
-            model.constrain_input_bits(bit_constraints)
-            input_constraint_seconds = time.perf_counter() - constraint_started
-            serialization_started = time.perf_counter()
-            dimacs = model.to_dimacs()
-            serialization_seconds = time.perf_counter() - serialization_started
+            for feedforward in feedforward_variants:
+                generation_started = time.perf_counter()
+                model = sha256_hash_preimage_cnf(
+                    target,
+                    message_length=len(known_message),
+                    rounds=rounds,
+                    xor3_encoding=xor3_encoding,
+                    unwind_feedforward=feedforward == "unwound",
+                )
+                generation_seconds = time.perf_counter() - generation_started
+                constraint_started = time.perf_counter()
+                if bit_constraints:
+                    model.constrain_input_bits(bit_constraints)
+                input_constraint_seconds = time.perf_counter() - constraint_started
+                serialization_started = time.perf_counter()
+                dimacs = model.to_dimacs()
+                serialization_seconds = time.perf_counter() - serialization_started
 
-            for solver in solvers or [None]:
-                row: dict[str, object] = {
-                    "benchmark": "sha256-cnf-known-input",
-                    "hash": "sha256",
-                    "rounds": rounds,
-                    "xor3_encoding": xor3_encoding,
-                    "schedule_expansion_words_per_block": max(0, rounds - 16),
-                    "message_length": len(known_message),
-                    "fixed_input_bits": len(model.fixed_bits),
-                    "variables": model.variable_count,
-                    "clauses": model.clause_count,
-                    "generation_seconds": generation_seconds,
-                    "input_constraint_seconds": input_constraint_seconds,
-                    "dimacs_serialization_seconds": serialization_seconds,
-                    "dimacs_bytes": len(dimacs.encode("ascii")),
-                    "solver": solver,
-                    "solver_seconds": None,
-                    "solver_status": "NOT_FOUND" if solver is None else "UNKNOWN",
-                    "candidate_validated": None,
-                }
-                if solver is not None:
-                    solver_started = time.perf_counter()
-                    result = run_solver(solver, dimacs, timeout=args.timeout)
-                    row["solver_seconds"] = time.perf_counter() - solver_started
-                    row["solver_status"] = result.status
-                    if result.status == "SATISFIABLE":
-                        candidate = model.recover_input(result.assignments)
-                        row["candidate_validated"] = (
-                            candidate == known_message
-                            and sha256_reduced(candidate, rounds) == target
-                        )
-                    if (
-                        result.status != "SATISFIABLE"
-                        or row["candidate_validated"] is not True
-                    ):
-                        failed = True
-                rows.append(row)
-                print(json.dumps(row, sort_keys=True))
+                for solver in solvers or [None]:
+                    row: dict[str, object] = {
+                        "benchmark": "sha256-cnf-known-input",
+                        "hash": "sha256",
+                        "rounds": rounds,
+                        "xor3_encoding": xor3_encoding,
+                        "feedforward": feedforward,
+                        "schedule_expansion_words_per_block": max(0, rounds - 16),
+                        "message_length": len(known_message),
+                        "free_input_bits": args.free_input_bits,
+                        "fixed_input_bits": len(model.fixed_bits),
+                        "variables": model.variable_count,
+                        "clauses": model.clause_count,
+                        "generation_seconds": generation_seconds,
+                        "input_constraint_seconds": input_constraint_seconds,
+                        "dimacs_serialization_seconds": serialization_seconds,
+                        "dimacs_bytes": len(dimacs.encode("ascii")),
+                        "solver": solver,
+                        "solver_seconds": None,
+                        "solver_status": "NOT_FOUND" if solver is None else "UNKNOWN",
+                        "candidate_validated": None,
+                    }
+                    if solver is not None:
+                        solver_started = time.perf_counter()
+                        result = run_solver(solver, dimacs, timeout=args.timeout)
+                        row["solver_seconds"] = time.perf_counter() - solver_started
+                        row["solver_status"] = result.status
+                        if result.status == "SATISFIABLE":
+                            candidate = model.recover_input(result.assignments)
+                            hashes_to_target = (
+                                sha256_reduced(candidate, rounds) == target
+                            )
+                            # With free bits, any assignment hashing to the target is
+                            # a valid reduced-round preimage; only the fully fixed case
+                            # must recover the exact known message.
+                            if args.free_input_bits == 0:
+                                row["candidate_validated"] = (
+                                    candidate == known_message and hashes_to_target
+                                )
+                            else:
+                                row["candidate_validated"] = hashes_to_target
+                        if (
+                            result.status != "SATISFIABLE"
+                            or row["candidate_validated"] is not True
+                        ):
+                            failed = True
+                    rows.append(row)
+                    print(json.dumps(row, sort_keys=True))
 
     if args.csv_output:
         fields: list[str] = [
@@ -750,8 +790,10 @@ def _sha256_cnf_benchmark(args: argparse.Namespace, parser: argparse.ArgumentPar
             "hash",
             "rounds",
             "message_length",
+            "free_input_bits",
             "fixed_input_bits",
             "xor3_encoding",
+            "feedforward",
             "variables",
             "clauses",
             "generation_seconds",
@@ -2102,6 +2144,27 @@ def build_parser() -> argparse.ArgumentParser:
         choices=("direct", "chain", "both"),
         default="both",
         help="compare direct and chained XOR3 encodings, or run only one",
+    )
+    sha_benchmark.add_argument(
+        "--feedforward",
+        choices=("explicit", "unwound", "both"),
+        default="explicit",
+        help=(
+            "CNF feed-forward handling: 'explicit' constrains the final output words "
+            "(default), 'unwound' applies the Davies-Meyer algebraic unwind "
+            "(single-block only), 'both' emits paired rows to compare clause count and "
+            "solver time"
+        ),
+    )
+    sha_benchmark.add_argument(
+        "--free-input-bits",
+        type=int,
+        default=0,
+        help=(
+            "leave the final N message input bits unconstrained to measure a genuine "
+            "bounded preimage search instead of pure known-input encoding speed "
+            "(default 0 fixes the entire known input)"
+        ),
     )
     sha_benchmark.add_argument(
         "--csv-output",
