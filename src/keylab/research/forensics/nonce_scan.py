@@ -105,6 +105,46 @@ def _addresses(pubkey: bytes, network: str) -> dict[str, str]:
     }
 
 
+def assemble_transaction(
+    client: ReadOnlyExplorerClient, entry: dict
+) -> ParsedTransaction | None:
+    """Build ``(txid, Transaction, spent_outputs)`` from an explorer tx entry.
+
+    Returns ``None`` for a coinbase input, a missing/malformed prevout, an
+    unparsable raw transaction, or an input/output count mismatch. The spent
+    outputs come from the explorer ``vin[].prevout`` in input order; the raw
+    transaction bytes are fetched read-only via ``client``.
+    """
+    txid = entry.get("txid")
+    vin = entry.get("vin")
+    if not isinstance(txid, str) or not isinstance(vin, list):
+        return None
+
+    spent_outputs: list[TxOut] = []
+    for vin_entry in vin:
+        prevout = vin_entry.get("prevout") if isinstance(vin_entry, dict) else None
+        if not isinstance(prevout, dict):
+            return None  # coinbase or missing prevout -> skip the whole tx
+        try:
+            spent_outputs.append(
+                TxOut(
+                    amount=int(prevout["value"]),
+                    script_pubkey=bytes.fromhex(prevout["scriptpubkey"]),
+                )
+            )
+        except (KeyError, TypeError, ValueError):
+            return None
+
+    try:
+        raw = client.get_transaction_hex(txid)
+        tx = parse_transaction(raw)
+    except (ValueError, TypeError):
+        return None
+    if len(tx.inputs) != len(spent_outputs):
+        return None
+    return txid, tx, spent_outputs
+
+
 def _recovered_to_dict(key: RecoveredKey, *, reveal_private: bool) -> dict[str, object]:
     return {
         "verified": key.verified,
@@ -234,33 +274,6 @@ class NonceReuseScanner:
 
     def _assemble_transaction(self, entry: dict) -> ParsedTransaction | None:
         """Build ``(txid, Transaction, spent_outputs)`` from an explorer tx entry."""
-        txid = entry.get("txid")
-        vin = entry.get("vin")
-        if not isinstance(txid, str) or not isinstance(vin, list):
-            return None
-
-        spent_outputs: list[TxOut] = []
-        for vin_entry in vin:
-            prevout = vin_entry.get("prevout") if isinstance(vin_entry, dict) else None
-            if not isinstance(prevout, dict):
-                return None  # coinbase or missing prevout -> skip the whole tx
-            try:
-                spent_outputs.append(
-                    TxOut(
-                        amount=int(prevout["value"]),
-                        script_pubkey=bytes.fromhex(prevout["scriptpubkey"]),
-                    )
-                )
-            except (KeyError, TypeError, ValueError):
-                return None
-
         if self._client is None:  # pragma: no cover - guarded by scan_address
             return None
-        try:
-            raw = self._client.get_transaction_hex(txid)
-            tx = parse_transaction(raw)
-        except (ValueError, TypeError):
-            return None
-        if len(tx.inputs) != len(spent_outputs):
-            return None
-        return txid, tx, spent_outputs
+        return assemble_transaction(self._client, entry)

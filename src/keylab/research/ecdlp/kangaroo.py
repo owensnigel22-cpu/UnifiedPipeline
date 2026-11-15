@@ -112,6 +112,33 @@ def _default_dp_bits(width: int) -> int:
     return max(1, width.bit_length() // 2 - 2)
 
 
+def _expected_tame_hops(width: int) -> int:
+    """The single tame-walk length used to seed the DP table (mirrors ``base_hops``)."""
+    return max(16, int(2.0 * (width ** 0.5)) + 1)
+
+
+def _dp_bits_for_budget(width: int, max_table_entries: int) -> int:
+    """Pick ``dp_bits`` so the expected tame DP table fits ``max_table_entries``.
+
+    A tame walk of ``~2*sqrt(width)`` hops records a distinguished point with
+    probability ``1/2**dp_bits`` each, so its expected table size is
+    ``hops / 2**dp_bits``. This returns the smallest ``dp_bits`` keeping that at or
+    below ``max_table_entries``, but never below :func:`_default_dp_bits` (the
+    reliability floor). Because the default density already holds the table to a
+    handful of points, this only raises ``dp_bits`` when a tighter bound is asked
+    for -- trading collision reliability (sparser points) for memory, not speed;
+    the expected hop count is unchanged. The estimate is for one walk, so restarts
+    (interval retries) can still exceed it.
+    """
+    if type(max_table_entries) is not int or max_table_entries < 1:
+        raise ValueError("max_table_entries must be a positive integer")
+    floor_bits = _default_dp_bits(width)
+    hops = _expected_tame_hops(width)
+    ratio = -(-hops // max_table_entries)  # ceil(hops / max_table_entries)
+    needed = (ratio - 1).bit_length() if ratio > 1 else 0  # smallest b with 2**b >= ratio
+    return min(256, max(floor_bits, needed))
+
+
 def _peak_memory_bytes() -> int | None:
     # getattr avoids a mypy attr-defined error on platforms (e.g. Windows) whose
     # `resource` stub lacks these POSIX-only names; None where unavailable.
@@ -189,6 +216,7 @@ def pollard_kangaroo(
     hi: int,
     *,
     dp_bits: int | None = None,
+    max_table_entries: int | None = None,
     max_steps: int | None = None,
     return_state: bool = False,
     progress_callback: Callable[[int, int], None] | None = None,
@@ -207,7 +235,10 @@ def pollard_kangaroo(
 
     ``dp_bits`` sets the distinguished-point density (a point is distinguished
     when the low ``dp_bits`` of its x-coordinate are zero, so density is
-    ``1/2**dp_bits``); it defaults to a width-dependent value. ``checkpoint_path``
+    ``1/2**dp_bits``); it defaults to a width-dependent value. Alternatively,
+    ``max_table_entries`` caps the expected distinguished-point table by raising
+    ``dp_bits`` (never below the reliability floor) -- a memory bound, not a
+    speedup, and mutually exclusive with ``dp_bits``. ``checkpoint_path``
     flushes a resumable JSON state when the budget is exhausted; ``resume_from``
     restores such a state and continues the identical deterministic walk.
 
@@ -223,6 +254,12 @@ def pollard_kangaroo(
         raise ValueError("require 0 <= lo <= hi < N")
     if dp_bits is not None and (type(dp_bits) is not int or not 1 <= dp_bits <= 256):
         raise ValueError("dp_bits must be an int in [1, 256]")
+    if dp_bits is not None and max_table_entries is not None:
+        raise ValueError("pass dp_bits or max_table_entries, not both")
+    if max_table_entries is not None and (
+        type(max_table_entries) is not int or max_table_entries < 1
+    ):
+        raise ValueError("max_table_entries must be a positive integer")
 
     width = hi - lo
 
@@ -244,7 +281,12 @@ def pollard_kangaroo(
         found = lo if scalar_mult(lo, G) == point else None
         return _result(found, 0, 0, 0, None, None, None)
 
-    eff_dp_bits = dp_bits if dp_bits is not None else _default_dp_bits(width)
+    if dp_bits is not None:
+        eff_dp_bits = dp_bits
+    elif max_table_entries is not None:
+        eff_dp_bits = _dp_bits_for_budget(width, max_table_entries)
+    else:
+        eff_dp_bits = _default_dp_bits(width)
     dp_mask = (1 << eff_dp_bits) - 1
     jump_distances = _jump_distances(width)
     jump_points = tuple(scalar_mult(distance, G) for distance in jump_distances)
@@ -343,11 +385,14 @@ def pollard_kangaroo(
 
 
 def recover_via_kangaroo(
-    point: Point, lo: int, hi: int, *, dp_bits: int | None = None, max_steps: int | None = None,
+    point: Point, lo: int, hi: int, *, dp_bits: int | None = None,
+    max_table_entries: int | None = None, max_steps: int | None = None,
 ) -> dict[str, object]:
     """Recover ``k`` in ``[lo, hi]`` and report timing, as a dict mirroring the backward API."""
     start = perf_counter()
-    k = pollard_kangaroo(point, lo, hi, dp_bits=dp_bits, max_steps=max_steps)
+    k = pollard_kangaroo(
+        point, lo, hi, dp_bits=dp_bits, max_table_entries=max_table_entries, max_steps=max_steps
+    )
     return {
         "k": k,
         "lo": lo,
