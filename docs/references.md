@@ -55,3 +55,134 @@ Broadcasting pushes a pre-signed transaction and handles no keys. A **mainnet**
 broadcast requires one explicit confirmation (`confirm_mainnet=True`), and signing
 real-value keys must use the audited coincurve/libsecp256k1 backend — the
 pure-Python ECC is non-constant-time (see [../SECURITY.md](../SECURITY.md)).
+
+## Reduced-round SHA-256 preimages (M15, Phase B)
+
+KeyLab's 19-step context-shaping solver
+(`keylab.research.sha256_reduced.context_shaping`) is a faithful Python port of
+the CPU solver below; the register-window identity it shares is credited the
+same way. **Reduced-round only** — no full 64-round preimage is claimed.
+
+| Project | License | What it is / why referenced |
+|---|---|---|
+| [`srw/sha256-19-and-20-step-preimages-with-padding`](https://github.com/srw/sha256-19-and-20-step-preimages-with-padding) | MIT | Source of the ported `src/pre19.c` 19-step solver (a-register window + context shaping + Q-table), the published `abc` 19/20-step witnesses verified in `keylab.research.sha256_reduced.published`, and the padding-inversion technique. Context shaping credited to K. S. Basra. |
+| [`kamb-code/sha256-r19-preimage`](https://github.com/kamb-code/sha256-r19-preimage) | see repo | Independent algebraic 19-round preimage work; cross-reference for the reduced-round approach. |
+
+Honest note: a full pure-Python run of the srw *19/20-step* search is impractical
+(the Q-inverse table covers only `2**(table_bits - 32)` of the range, leaving
+~`2**37` chains at a Python-feasible table size; measured: 5.77M chains in ~170s
+found nothing). The port is reference-correct and forward-verifying, intended for
+study and for driving the reference C/CUDA solvers.
+
+What *is* feasible in pure Python, and exercised live in the test suite:
+`register_window_preimage` solves the schedule-free 8..16-round regime
+deterministically, and `search_17_step_preimage` solves a 17-round instance (a
+single expanded schedule word, `W_16`) by a meet-in-the-middle over two independent
+register words, returning a forward-verified compression preimage in seconds. No
+full 64-round preimage is attempted or claimed.
+
+## Probabilistic & algebraic solvers (M15, Phase C)
+
+`keylab.research.sha256_prob` models the reduced-round compression as one shared
+bit circuit (`_circuit.py`, validated against the reference compression) and solves
+it two ways. **Reduced-round and truncated only** — no full 64-round preimage.
+
+| Project | License | What it is / why referenced |
+|---|---|---|
+| [`hirorylabo/preimage-attacks`](https://github.com/hirorylabo/preimage-attacks) | see repo | Factor-graph / belief-propagation preimage research; reference for the bit factor-graph and loopy BP approach in `belief_propagation.py`. |
+| [`trevphil/cryptosym`](https://github.com/trevphil/cryptosym) | see repo | Symbolic/probabilistic hash-inversion toolkit (BP, and MILP/SAT encodings); reference for the factor-graph construction and the MILP bit-model. |
+
+Honest note on BP: loopy belief propagation does **not** converge on, or invert,
+the SHA-256 circuit — the engine is *exact on trees* (pinned against brute force in
+the tests), but on the hash it is at best a weak solver for easy instances. Measured
+over 5 seeds at `n_bits=64`, `max_iters=60`: one round decodes a forward-verified
+truncated preimage 5/5 at `target_bits=8`, 2/5 at 16, 1/5 at 24; two rounds, 0/5.
+Those results are reported, never hidden, and every decode is forward-verified.
+
+Honest note on MILP: `sha256_milp.compression_milp(rounds)` emits a correct bit-level
+0/1 model (every gate linearised; the true wire assignment satisfies all constraints
+in the tests) to `.lp`/`.mps` with no solver dependency. `MILPModel.solve()` needs
+the optional `milp` extra (`pulp`, bundling CBC) and, when present, returns a
+forward-verified preimage for small reduced-round instances. It is a feasibility /
+constraint model — **not** a differential active-S-box bound model — and only small
+instances are tractable.
+
+## Length-extension expansion (M15, Phase D)
+
+`keylab.hashes.length_extension.length_extend(algorithm, ...)` forges
+`H(secret || message || glue || append)` from `H(secret || message)` and the
+original length alone, for MD5, SHA-1, SHA-256, and SHA-512. This is a property
+of every plain Merkle-Damgard hash, not a weakness unique to any one; it recovers
+no secret and inverts no hash. **Use HMAC, never `H(secret || message)` as a MAC.**
+
+| Project | License | What it is / why referenced |
+|---|---|---|
+| [`iagox86/hash_extender`](https://github.com/iagox86/hash_extender) | BSD-3-Clause | The canonical length-extension tool (MD5, SHA-1, SHA-256, SHA-512, and more). KeyLab's `length_extend` implements the same algorithm; the per-hash constants are derived from first principles (MD5 from `sin`; SHA-512 from integer cube/square roots of the first primes), not transcribed. |
+
+Honest note: this port is not cross-checked against a captured hash_extender run
+here; its correctness is pinned to the **`hashlib` oracle** — for every supported
+hash and many message lengths, the forged digest equals
+`hashlib.new(algorithm, secret || forged_message).digest()` (the same guarantee
+hash_extender gives). `sha256_length_extend` is retained as a thin, backward-
+compatible wrapper over `length_extend("sha256", ...)`.
+
+## High-performance RIPEMD-160 / HASH160 (optional accelerators)
+
+`keylab.hashes.ripemd_backend.Ripemd160Backend` defaults to KeyLab's pure-Python
+RIPEMD-160 and transparently uses a native shared library **only if one is present
+on the project path and reproduces the published RIPEMD-160 test vectors** at load
+time (a mismatched ABI is rejected, never trusted). `batch_hash160` fans a large
+pubkey list across a `ProcessPoolExecutor` to emulate SIMD batch throughput. None
+of the libraries below is a dependency or is bundled; they are strictly optional
+accelerators referenced for study.
+
+| Project | Language | What it is / why referenced |
+|---|---|---|
+| [`FrozenCryptoLibs`](https://github.com/FrozenCryptoLibs) | C / SIMD | Compiled RIPEMD-160 primitives; a candidate native library the backend will load and self-verify if its shared object is on the project path. |
+| [`vladkens/ecloop`](https://github.com/vladkens/ecloop) | C (AVX2/NEON) | SIMD HASH160 pipeline for bulk EC key scanning; a candidate native accelerator. |
+| [`gdavidbutler/rmd160`](https://github.com/gdavidbutler/rmd160) | C | Compact standalone RIPEMD-160; a readable reference for the compression function. |
+| [`rust-bitcoin/bitcoin_hashes`](https://github.com/rust-bitcoin/rust-bitcoin) | Rust | The hashing crate used across rust-bitcoin; reference for RIPEMD-160/HASH160 behaviour. |
+| [`RustCrypto/hashes` (ripemd)](https://github.com/RustCrypto/hashes) | Rust | Audited pure-Rust RIPEMD-160; a second independent reference. |
+| [`ripemd160mb`](https://github.com/ripemd160mb) | Go (SIMD) | Multi-buffer/SIMD RIPEMD-160 for bulk hashing; the throughput model `batch_hash160` emulates with a process pool. |
+
+Honest note: no native library is present in this repository, so the backend runs
+pure-Python here; the native path is exercised only by its load-time self-test
+against the RIPEMD-160 vectors, not against a specific compiled build.
+
+## Differential cryptanalysis (M15, Phase E)
+
+`keylab.research.sha256_differential` builds heuristic XOR-differential trails for
+**reduced-round** SHA-256 and a Dobbertin-style **reduced-round** collision
+scaffold. Trail probabilities are the characteristic (single-path) weights — an
+upper bound on the true cost — and are re-checked by direct sampling. No full
+64-round preimage or collision is claimed; the Dobbertin module is scaffolding,
+not a shipped collision.
+
+| Project | License | What it is / why referenced |
+|---|---|---|
+| [`nahiyan/cryptanalysis`](https://github.com/nahiyan/cryptanalysis) | see repo | SAT/differential cryptanalysis of reduced-round SHA-256/MD hashes; reference for the differential modelling and reduced-round framing. |
+| [`ChakshuGupta13/lab`](https://github.com/ChakshuGupta13/lab) | see repo | Reduced-round SHA-256 differential/collision lab work; cross-reference for the trail structure and collision harness. |
+
+The modular-addition weight uses the Lipmaa-Moriai `xdp+` result (Lipmaa &
+Moriai, *Efficient Algorithms for Computing Differential Properties of Addition*,
+FSE 2001), validated exhaustively in the tests. The reduced-round collision
+scaffold follows Hans Dobbertin's MD4/MD5 methodology, applied only to
+reduced-round instances.
+
+## SAT mod-9 encoding (M15)
+
+| Project | License | What it is / why referenced |
+|---|---|---|
+| Shelbydon Mod-9 SAT (paper + implementation) | cited | The mod-9 arithmetic SAT encoding `keylab.sat.mod9` is modelled on; cited for the technique, not vendored. |
+
+## GPU brute-force (reference only — NOT implemented, NOT a dependency)
+
+KeyLab implements **no** GPU code and takes **no** GPU/CUDA/OpenCL/Vulkan
+dependency (M15 Phase F was deliberately dropped under the pure-first/no-forced-
+dependency policy). The repositories below are cited only as external reference
+implementations a user could drive separately; nothing here runs on a GPU.
+
+| Project | What it is / why referenced (reference only) |
+|---|---|
+| [`shroudy-bit32/CUDA-BruteForce`](https://github.com/shroudy-bit32) | CUDA brute-force search — an external reference implementation, **not a dependency**. |
+| [`floflo777/open-crypto-puzzles`](https://github.com/floflo777) | GPU crypto-puzzle brute forcing — an external reference implementation, **not a dependency**. |

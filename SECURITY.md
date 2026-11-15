@@ -151,6 +151,34 @@ stops. **This is a wall, not a slowdown** — no budget, number of walkers, or
 amount of patience changes the exponent. Every candidate these tools return is
 forward-verified (`k*G == Q`) before it is reported.
 
+## The Wall: SHA-256 inversion research (M15) targets reduced instances only
+
+The `keylab.sat.*`, `keylab.hashes.*_cnf`, `keylab.research.sha256_reduced`,
+`keylab.research.sha256_prob`, and `keylab.research.sha256_differential` modules
+are **educational SHA-256 analysis for truncated, reduced-round, or
+constrained-input instances only**. **No full 64-round SHA-256 preimage or
+collision is attempted or claimed**, and full-round SHA-256 preimage and collision
+resistance is intact. Specifically:
+
+- **Preimages** (`sha256_reduced`, `*_cnf`, `sha256_prob`) solve only **reduced-round**
+  (e.g. the live 17-step compression preimage) or **truncated** targets. The full
+  19/20-step pure-Python search is impractical, and the belief-propagation and MILP
+  solvers do **not** invert SHA-256 (measured negative results, reported, not hidden).
+- **Length extension** (`keylab.hashes.length_extension`) forges a digest for a
+  chosen suffix from `H(secret || message)` and the length alone. This is a
+  structural Merkle-Damgard property, recovers **no** secret, and inverts **no**
+  hash; the mitigation is HMAC.
+- **Differential trails** (`sha256_differential`) are **heuristic, reduced-round**,
+  with stated probabilities that are characteristic (single-path) **upper bounds**
+  re-checked by sampling; the Dobbertin module is a **scaffold**, not a working
+  collision. Trail weight grows quickly with the round count — **this is the wall.**
+- **No GPU acceleration** is implemented or depended on; any cited GPU brute-force
+  repository is an external reference only.
+
+As with the ECDLP tooling, this is a wall, not a slowdown: reducing rounds or
+truncating the target is what makes these instances tractable, and no budget or
+patience extends them to full 64-round SHA-256.
+
 ## Reporting a vulnerability
 
 If you find a correctness bug (a mismatch with a BIP, RFC, or libsecp256k1),
