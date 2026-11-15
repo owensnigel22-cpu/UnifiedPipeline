@@ -42,6 +42,7 @@ CLI commands are listed by `keylab --help` and `keylab-advanced --help`;
 - [`keylab.research.ecdlp.halving_lsb`](#keylabresearchecdlphalving_lsb) — Research: LSB-leak interval-shrink halving attack (educational)
 - [`keylab.research.brainwallet`](#keylabresearchbrainwallet) — Research: offline brainwallet dictionary attack (educational)
 - [`keylab.research.weak_rng`](#keylabresearchweak_rng) — Research: weak-RNG incremental public-key range scan (educational)
+- [`keylab.research.weak_rng_milksad`](#keylabresearchweak_rng_milksad) — Research: Milk Sad faithful MT19937 and timestamp-seed key demo (educational)
 - [`keylab.research.cryptanalysis`](#keylabresearchcryptanalysis) — Small, bounded cryptanalysis demonstrations
 - [`keylab.research.cryptanalysis.mitm_ecdlp`](#keylabresearchcryptanalysismitm_ecdlp) — Research: memory-bounded meet-in-the-middle ECDLP
 - [`keylab.research.cryptanalysis.musig2_rogue_key`](#keylabresearchcryptanalysismusig2_rogue_key) — Research: MuSig2 rogue-key resistance demonstration
@@ -617,6 +618,21 @@ Weak-RNG incremental range scan — why low-entropy / sequential keys are unsafe
 | `incremental_pubkey_scan` | `incremental_pubkey_scan(target_pubkey: 'bytes \| Point', start: 'int', count: 'int', *, progress: 'Callable[[int], None] \| None' = None) -> 'WeakRNGScanResult'` | Scan ``[start, start + count)`` for the key behind ``target_pubkey``. |
 | `pubkey_sec` | `pubkey_sec(private_key: 'int', *, compressed: 'bool' = True) -> 'bytes'` | Helper: the SEC1 public key for a private scalar (for building demo targets). |
 | `WeakRNGScanResult` | `class WeakRNGScanResult(found: 'bool', private_key: 'int \| None', scanned: 'int', start: 'int', count: 'int', verified: 'bool') -> None` | Outcome of an incremental public-key range scan. |
+
+## `keylab.research.weak_rng_milksad`
+
+Research: Milk Sad faithful MT19937 and timestamp-seed key demo (educational).
+
+Milk Sad (CVE-2023-39910) — faithful MT19937 and timestamp-seeded weak keys.
+
+| Name | Signature / value | Summary |
+|---|---|---|
+| `milksad_entropy` | `milksad_entropy(seed: 'int', length: 'int' = 32) -> 'bytes'` | Reconstruct ``bx seed`` entropy: MT19937 seeded with ``seed``, ``length`` bytes. |
+| `milksad_hash160` | `milksad_hash160(seed: 'int', *, entropy_bytes: 'int' = 32, compressed: 'bool' = True) -> 'bytes'` | Return the HASH160 of the demo public key for ``seed`` (for building targets). |
+| `milksad_key_from_timestamp` | `milksad_key_from_timestamp(timestamp: 'int', *, entropy_bytes: 'int' = 32) -> 'int'` | Return the demo private scalar for a 32-bit ``timestamp`` seed. |
+| `MilksadHit` | `class MilksadHit(timestamp: 'int', entropy: 'bytes', private_key: 'int', pubkey: 'bytes', hash160: 'bytes') -> None` | A timestamp seed whose derived key matches a target HASH160 (key masked). |
+| `MT19937` | `class MT19937(seed: 'int' = 5489) -> 'None'` | Faithful 32-bit Mersenne Twister (``mt19937ar`` / C++ ``std::mt19937``). |
+| `scan_timestamp_range` | `scan_timestamp_range(start_seed: 'int', end_seed: 'int', targets: 'Iterable[bytes]', *, entropy_bytes: 'int' = 32, compressed: 'bool' = True) -> 'list[MilksadHit]'` | Scan ``[start_seed, end_seed)`` for seeds deriving any target HASH160. |
 
 ## `keylab.research.cryptanalysis`
 

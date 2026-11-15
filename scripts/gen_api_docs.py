@@ -55,6 +55,7 @@ MODULES = (
     ("keylab.research.ecdlp.halving_lsb", "Research: LSB-leak interval-shrink halving attack (educational)"),
     ("keylab.research.brainwallet", "Research: offline brainwallet dictionary attack (educational)"),
     ("keylab.research.weak_rng", "Research: weak-RNG incremental public-key range scan (educational)"),
+    ("keylab.research.weak_rng_milksad", "Research: Milk Sad faithful MT19937 and timestamp-seed key demo (educational)"),
     ("keylab.research.cryptanalysis", "Small, bounded cryptanalysis demonstrations"),
     ("keylab.research.cryptanalysis.mitm_ecdlp", "Research: memory-bounded meet-in-the-middle ECDLP"),
     ("keylab.research.cryptanalysis.musig2_rogue_key", "Research: MuSig2 rogue-key resistance demonstration"),
