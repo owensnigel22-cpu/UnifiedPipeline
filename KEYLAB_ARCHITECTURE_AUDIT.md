@@ -32,7 +32,9 @@ dependency sets:
   stopped at Ruff `EXE001` because `run-keylab.py` had a shebang but was not
   executable in Git; later lint steps did not run in that job. The launcher
   shebang has since been removed because documented use invokes it with Python.
-  CI for the remediation commit must be evaluated separately.
+- **Remediation CI at `2f4f1ef` (2026-11-16):** both lint runs, both benchmark
+  smoke runs, both fuzz smoke runs, both full-extras runs, and the Linux/Windows
+  Python 3.11–3.14 test matrix passed.
 
 ## 0. Headline finding (read this first)
 
@@ -125,6 +127,12 @@ arithmetic, or unsupported cryptographic claims in the shipped package. Specific
   and bounded-interval scope is enforced in code and tests. Negative solver results
   (belief-propagation / MILP not inverting SHA-256; 19/20-step search impractical)
   are recorded, not hidden.
+- **WIF boolean input follow-up (not changed in this remediation):**
+  `keylab.encoding.wif.encode(True)` currently accepts `True` as integer scalar 1
+  and emits its valid WIF. This is inconsistent with strict scalar validation in
+  other KeyLab APIs, and `tests/test_wif.py` has no boolean-input regression test.
+  Rejecting booleans and adding a focused test is recommended as a separate,
+  narrowly scoped change; this behavior is not a break in WIF or secp256k1.
 - **Minor, non-code:** two loose root artifacts (table in §0); an empty
   `toy_hnp_lattice_demo.py` duplicating `research/hnp_lattice.py`.
 
