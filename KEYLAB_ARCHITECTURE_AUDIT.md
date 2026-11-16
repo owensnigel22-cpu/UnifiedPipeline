@@ -35,6 +35,15 @@ dependency sets:
 - **Remediation CI at `2f4f1ef` (2026-11-16):** both lint runs, both benchmark
   smoke runs, both fuzz smoke runs, both full-extras runs, and the Linux/Windows
   Python 3.11–3.14 test matrix passed.
+- **Latest documentation commit (`b7bd9ec`):** both CI runs for the test matrix,
+  full-extras, lint, fuzz-smoke, and benchmark-smoke passed. This commit changed
+  only this audit document.
+- **Current local validation (2026-11-16, after WIF commit `f51b181`):** 2,420
+  passed, 9 deselected, 0 skipped on Windows/Python 3.14.7 with the
+  optional ECC backends installed; the default configuration excludes `slow`
+  and `live` tests. The 21 WIF cases and 25/25 math-harness groups passed.
+  Ruff passed; mypy ratchet reported 0 errors; API docs and all 12 vector
+  fixtures passed; the CLI self-test reported 25 PASS assertions.
 
 ## 0. Headline finding (read this first)
 
@@ -87,7 +96,7 @@ labelled experimental) · **MISSING**.
 | 13 SAT / symbolic pipeline | `sat/*` (`cnf.py`, `anf.py`, `backends.py`, `cryptominisat.py`, `parallel.py`, `solver.py`, `dag.py`, `diagnostics.py`) | DONE/RESEARCH | every SAT solution re-verified vs model | `test_sat_*.py`, `test_*_cnf.py` |
 | 14 Stage 3/4 (Pass A/B) | `research/sha256_reduced/context_shaping.py`, `register_window.py`, `published.py` | RESEARCH | 17-step verified live; 19/20-step impractical (documented) | `test_sha256_context_shaping.py` |
 | 15 Extended Euclid / modinv | `numtheory/core.py` | DONE | `a·x+b·y=gcd`, `a·inv≡1` | `test_numtheory*.py` |
-| 16 WIF / Base58Check | `encoding/wif.py`, `encoding/base58.py` | DONE | vectors + checksum | `test_wif.py`, `test_base58.py` |
+| 16 WIF / Base58Check | `encoding/wif.py`, `encoding/base58.py` | DONE | vectors + checksum; scalar interval and booleans validated | `test_wif.py`, `test_base58.py` |
 | 17 HASH160 / address | `encoding/address.py` | DONE | vectors | `test_address*.py` |
 | 18 Pollard rho / kangaroo | `research/ecdlp/rho.py`, `kangaroo.py`, `bsgs.py`, `negation_map.py` | RESEARCH | bounded; candidate·G==Q verified | `test_kangaroo*.py`, `test_rho.py`, `test_bsgs.py` |
 | 19 Incremental range | `research/weak_rng.py` (`(k+1)G=kG+G`) | RESEARCH | verified; bounded | `test_cli_key_weakness.py`, `test_weak_rng*.py` |
@@ -127,12 +136,11 @@ arithmetic, or unsupported cryptographic claims in the shipped package. Specific
   and bounded-interval scope is enforced in code and tests. Negative solver results
   (belief-propagation / MILP not inverting SHA-256; 19/20-step search impractical)
   are recorded, not hidden.
-- **WIF boolean input follow-up (not changed in this remediation):**
-  `keylab.encoding.wif.encode(True)` currently accepts `True` as integer scalar 1
-  and emits its valid WIF. This is inconsistent with strict scalar validation in
-  other KeyLab APIs, and `tests/test_wif.py` has no boolean-input regression test.
-  Rejecting booleans and adding a focused test is recommended as a separate,
-  narrowly scoped change; this behavior is not a break in WIF or secp256k1.
+- **WIF boolean input follow-up (fixed in this branch by `f51b181`):**
+  `bool` is a subclass of `int` in Python, so the former `isinstance(..., int)`
+  path encoded `True` as scalar 1. `encode` now rejects both booleans with
+  `TypeError`; focused tests also cover scalar range boundaries and WIF network /
+  compression round trips. Valid byte and integer key inputs remain supported.
 - **Minor, non-code:** two loose root artifacts (table in §0); an empty
   `toy_hnp_lattice_demo.py` duplicating `research/hnp_lattice.py`.
 

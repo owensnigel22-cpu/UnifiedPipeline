@@ -2,20 +2,41 @@
 
 from __future__ import annotations
 
+import csv
+import hashlib
 import random
+from importlib.util import find_spec
+from pathlib import Path
 
+from keylab.ec.rfc6979 import generate_nonce
+from keylab.ec.schnorr import schnorr_verify
 from keylab.ec.secp256k1 import (
     BETA,
     LAMBDA,
     G,
     N,
     P,
+    batch_inverse,
+    ecdsa_sign_digest,
+    ecdsa_verify_digest,
     glv_decompose,
     is_on_curve,
+    lift_x,
     multi_scalar_mult,
     point_add_affine,
+    rfc6979_nonce_from_digest,
     scalar_mult,
     wnaf_digits,
+)
+from keylab.ec.validation import (
+    assert_no_mismatches,
+    available_backends,
+    diff_batch_normalization,
+    diff_group_operations,
+    diff_msm,
+    diff_scalar_mult,
+    diff_serialization,
+    edge_points,
 )
 
 REFERENCE_P = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEFFFFFC2F
@@ -234,6 +255,92 @@ def main() -> int:
             raise AssertionError(f"Straus/Shamir result differs from reference in case {trial}")
     _check("Straus/Shamir multiplication matches affine reference (32 cases)", True)
     checks += 1
+
+    differential_checks = (
+        ("affine/Jacobian addition and doubling", diff_group_operations()),
+        ("SEC1 public-key parsing and serialization", diff_serialization()),
+        ("batch Jacobian normalization", diff_batch_normalization()),
+        ("Straus multi-scalar multiplication", diff_msm()),
+    )
+    for label, mismatches in differential_checks:
+        assert_no_mismatches(mismatches)
+        _check(f"independent differential: {label}", True)
+        checks += 1
+
+    inverse_inputs = (1, 2, P - 1, P + 1, -5)
+    if batch_inverse(inverse_inputs, P) != [pow(value, -1, P) for value in inverse_inputs]:
+        raise AssertionError("batch modular inverses differ from Python's independent pow oracle")
+    try:
+        batch_inverse((1, 0, 3), P)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("batch inversion accepted a zero residue")
+    _check("batch modular inversion matches pow and rejects zero", True)
+    checks += 1
+
+    vector_path = Path(__file__).resolve().parents[1] / "tests" / "vectors" / "bip340_test_vectors.csv"
+    with vector_path.open(encoding="utf-8", newline="") as vector_file:
+        vector = next(row for row in csv.DictReader(vector_file) if row["index"] == "0")
+    public_key = bytes.fromhex(vector["public key"])
+    message = bytes.fromhex(vector["message"])
+    signature = bytes.fromhex(vector["signature"])
+    expected_verification = vector["verification result"] == "TRUE"
+    if schnorr_verify(message, signature, public_key) is not expected_verification:
+        raise AssertionError("BIP-340 official vector 0 verification result differs")
+    lifted = lift_x(int.from_bytes(public_key, "big"))
+    if lifted[0].to_bytes(32, "big") != public_key or lifted[1] & 1:
+        raise AssertionError("BIP-340 x-only public key did not lift to its even-y point")
+    _check("BIP-340 official vector 0 and even-y public-key lifting", True)
+    checks += 1
+
+    digest = hashlib.sha256(b"KeyLab deterministic RFC 6979 validation").digest()
+    private_scalar = 0x123456789ABCDEF
+    nonce = rfc6979_nonce_from_digest(private_scalar, digest)
+    if nonce != generate_nonce(N, private_scalar, hashlib.sha256, digest):
+        raise AssertionError("KeyLab RFC 6979 nonce differs from the independent ecdsa implementation")
+    if not 1 <= nonce < N:
+        raise AssertionError("RFC 6979 nonce is outside the valid scalar range")
+    python_signature = ecdsa_sign_digest(digest, private_scalar, backend="python")
+    public_point = scalar_mult(private_scalar, G, backend="python")
+    if (
+        ecdsa_sign_digest(digest, private_scalar, backend="python") != python_signature
+        or not ecdsa_verify_digest(digest, python_signature, public_point)
+    ):
+        raise AssertionError("RFC 6979 ECDSA signature is not deterministic or does not verify")
+    _check("RFC 6979 nonce matches independent ecdsa implementation", True)
+    checks += 1
+
+    native_backends = tuple(
+        backend for backend in available_backends()
+        if backend in ("coincurve", "fastecdsa")
+    )
+    if native_backends:
+        assert_no_mismatches(
+            diff_scalar_mult(
+                scalars=(0, 1, 2, N - 1, N, N + 1),
+                points=edge_points(),
+                backends=native_backends,
+            )
+        )
+        _check(f"optional native scalar-multiplication differential: {native_backends}", True)
+        checks += 1
+    else:
+        print("SKIP optional native scalar-multiplication differential: no native backend installed")
+
+    if find_spec("coincurve") is not None:
+        from coincurve import PublicKeyXOnly
+
+        if not PublicKeyXOnly(public_key).verify(signature, message):
+            raise AssertionError("libsecp256k1 rejected BIP-340 official vector 0")
+        from keylab.ec.coincurve_backend import ecdsa_sign_digest_coincurve
+
+        if ecdsa_sign_digest_coincurve(digest, private_scalar) != python_signature:
+            raise AssertionError("libsecp256k1 ECDSA signature differs from the Python implementation")
+        _check("libsecp256k1 BIP-340 and deterministic ECDSA differential", True)
+        checks += 1
+    else:
+        print("SKIP libsecp256k1 signature differentials: coincurve is not installed")
 
     print(f"Result: {checks}/{checks} checks passed")
     return 0
