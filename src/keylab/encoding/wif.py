@@ -11,6 +11,8 @@ _NETWORKS = {version: network for network, version in _VERSIONS.items()}
 
 def encode(private_key: bytes | int, compressed: bool = True, network: str = "mainnet") -> str:
     """Encode a valid secp256k1 private scalar as WIF on mainnet or testnet."""
+    if isinstance(private_key, bool):
+        raise TypeError("private key must not be a boolean")
     if isinstance(private_key, int):
         if not 1 <= private_key < N:
             raise ValueError("private key integer must be in [1, secp256k1 order)")
