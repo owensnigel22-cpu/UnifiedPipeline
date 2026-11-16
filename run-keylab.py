@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Convenience launcher: ``python run-keylab.py ...`` runs the KeyLab CLI.
 
 The canonical entry points are the installed ``keylab`` / ``keylab-advanced``

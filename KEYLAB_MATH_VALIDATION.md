@@ -14,36 +14,40 @@ Gy = 0x483ADA7726A3C4655DA4FBFC0E1108A8FD17B448A68554199C47D08FFB10D4B8
 
 Two independent sources of truth were used:
 
-1. **From-scratch reference.** A standalone affine double-and-add
-   (`inv = pow(a,-1,p)`; textbook add/double) implemented **without importing any
-   of KeyLab's optimized arithmetic**, used as the oracle for differential checks.
+1. **Committed from-scratch reference.** [`scripts/verify_invariants.py`](scripts/verify_invariants.py)
+   implements affine addition and double-and-add using pinned secp256k1 parameters.
+   The oracle does not call KeyLab's point or scalar arithmetic.
 2. **KeyLab public API** (`keylab.ec.secp256k1`): `scalar_mult`, `glv_decompose`,
-   `wnaf_digits`, and the declared constants `P, N, G, BETA, LAMBDA`.
+   `wnaf_digits`, `point_add_affine`, and `multi_scalar_mult`.
 
-Randomized trials used a fixed seed (`20261116`) for reproducibility. The harness
-is `verify_invariants.py` (run with `python -I`); every row below is an assertion
-that must hold, not a printed label.
+Randomized trials use the fixed seed `20261116`. The harness uses fixed-base
+Miller-Rabin checks as probable-prime screens for the published `P` and `N`;
+these checks are not primality certificates. Every other row is asserted against
+the pinned constants or independent affine reference.
 
 ## Results
 
-| # | Invariant | Method | Trials | Result | Failures |
-|---|---|---|---|---|---|
-| 1 | `p, n, Gx, Gy` match KeyLab's constants | identity | 4 | **PASS** | 0 |
-| 2 | `G` on curve (`y² = x³ + 7 mod p`) | field equality | 1 | **PASS** | 0 |
-| 3 | `1·G == G` | double-and-add | 1 | **PASS** | 0 |
-| 4 | `2·G == G + G` | double-and-add | 1 | **PASS** | 0 |
-| 5 | `n·G == ∞` (both implementations) | double-and-add | 1 | **PASS** | 0 |
-| 6 | `scalar_mult(k,G) == reference(k,G)` | differential vs from-scratch | 2,000 | **PASS** | 0 |
-| 7 | `(−k mod n)·G == −(k·G)` | differential | 2,000 | **PASS** | 0 |
-| 8 | `(k1+k2)·G == k1·G + k2·G` | differential | 2,000 | **PASS** | 0 |
-| 9 | `BETA³ ≡ 1 (mod p)` | field | 1 | **PASS** | 0 |
-| 10 | `LAMBDA³ ≡ 1 (mod n)` | scalar field | 1 | **PASS** | 0 |
-| 11 | `phi(G) = (BETA·x mod p, y) == LAMBDA·G` | endomorphism | 1 | **PASS** | 0 |
-| 12 | `k ≡ k1 + LAMBDA·k2 (mod n)` | `glv_decompose` | 10,000 | **PASS** | 0 |
-| 13 | GLV components are ~half-width (≤129 bits) | `glv_decompose` | 10,000 | **PASS** | 0 |
-| 14 | `Σ wNAF(k)·2ⁱ == k` | `wnaf_digits` | 2,000 | **PASS** | 0 |
+| # | Invariant | Method | Trials | Result |
+|---|---|---|---:|---|
+| 1 | Standard `P` value and probable-prime screen | constant + 16 Miller-Rabin bases | 1 | **PASS** |
+| 2 | Standard `N` value and probable-prime screen | constant + 16 Miller-Rabin bases | 1 | **PASS** |
+| 3 | Standard `G` and `y² = x³ + 7 (mod P)` | pinned coordinates + field equation | 1 | **PASS** |
+| 4 | `G` has order `N` | independent affine `N·G` and API check | 1 | **PASS** |
+| 5 | `BETA³ ≡ 1 (mod P)` and `BETA ≠ 1` | field arithmetic | 1 | **PASS** |
+| 6 | `LAMBDA³ ≡ 1 (mod N)` and `LAMBDA ≠ 1` | scalar-field arithmetic | 1 | **PASS** |
+| 7 | `phi(G) = (BETA·x mod P, y) = LAMBDA·G` | independent affine multiplication | 1 | **PASS** |
+| 8 | `k ≡ k1 + LAMBDA·k2 (mod N)` | `glv_decompose` | 10,005 | **PASS** |
+| 9 | GLV components are at most 129 bits | `glv_decompose` | 10,005 | **PASS** |
+| 10 | Python scalar multiplication equals affine reference | differential | 2,006 | **PASS** |
+| 11 | Negative inputs reject; modular inverse points agree | API + affine reference | 2,000 | **PASS** |
+| 12 | Scalar addition equals independent point addition | differential | 256 | **PASS** |
+| 13 | Width-5 wNAF reconstructs the scalar with valid digits | reconstruction | 2,004 | **PASS** |
+| 14 | GLV scalar multiplication equals affine reference | differential | 258 | **PASS** |
+| 15 | Affine point addition equals independent reference | differential | 128 | **PASS** |
+| 16 | Straus/Shamir MSM equals independent affine sum | differential | 32 | **PASS** |
 
-**Total: 14/14 invariants pass, 0 failures.** Exit code 0.
+**Total: 16/16 check groups pass.** Individual trial counts are printed by the
+script's labels. The primality checks are probable-prime screens, not proofs.
 
 ## Interpretation
 
@@ -60,11 +64,12 @@ that must hold, not a printed label.
 ## Reproduce
 
 ```powershell
-# Independent harness (throwaway; lives in the session scratchpad):
-python -I verify_invariants.py        # prints the table above; exit 0 on all-pass
+# From a clean source checkout:
+python -m pip install -e .
+python scripts/verify_invariants.py
 
-# The committed suite that also covers these (and much more):
-python -m pytest tests/test_secp256k1*.py tests/test_reference.py -q
+# The committed tests that also cover these (and much more):
+python -m pytest -q tests/test_secp256k1.py tests/test_ec_reference.py
 ```
 
 This report records only what was measured. It makes **no** claim about recovering

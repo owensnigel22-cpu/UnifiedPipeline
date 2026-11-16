@@ -4,7 +4,35 @@
 **Scope:** full `keylab/` package (`src/keylab/`, `tests/`, `docs/`).
 **Method:** repository inventory + independent re-verification of the arithmetic
 and GLV invariants (see `KEYLAB_MATH_VALIDATION.md`), plus the existing automated
-suite (**2,383 passed, 14 skipped, 9 deselected**, ruff + mypy clean).
+suite. The original audit commit recorded **2,383 passed, 14 skipped, 9
+deselected**. The subsequent CLI commit added nine tests; the handover's reported
+2,392 passes is consistent with that addition, but its raw test output is not
+stored in Git and the count cannot be independently established from history.
+
+## Validation records
+
+Keep the following results distinct; they are from different revisions and
+dependency sets:
+
+- **Historical audit record (`e85e5ce`):** 2,383 passed, 14 skipped, 9
+  deselected, as recorded when the audit was created. Commit `63c84bc` later
+  added nine CLI tests. The handover's 2,392-pass figure is arithmetically
+  consistent with those additions, but Git does not contain its raw pytest
+  output.
+- **Copilot local run (2026-11-16):** 2,406 passed, 9 deselected, no skips,
+  using Windows/Python 3.14.7 with the `dev`, `fast`, `secp256k1`, and `ecc-alt`
+  extras. The project's default pytest configuration excludes `slow` and
+  `live` tests.
+- **Earlier local run before native ECC extras:** 2,228 passed, 177 skipped,
+  9 deselected, and one failure because `coincurve` was not installed. After
+  installing `fast`, the affected broadcast-routing test file passed 6/6; the
+  full default suite was then rerun with the native ECC test backends installed.
+- **Pre-remediation CI at `63c84bc`:** the Windows/Linux Python 3.11–3.14 test
+  matrix, full-extras, fuzz-smoke, and benchmark-smoke jobs passed. The lint job
+  stopped at Ruff `EXE001` because `run-keylab.py` had a shebang but was not
+  executable in Git; later lint steps did not run in that job. The launcher
+  shebang has since been removed because documented use invokes it with Python.
+  CI for the remediation commit must be evaluated separately.
 
 ## 0. Headline finding (read this first)
 
@@ -14,7 +42,8 @@ The integration directive assumes a pile of loose, versioned scripts
 files exist** anywhere in the repository (verified by search). The repository is
 already a mature, modular, test-covered, documented platform:
 
-- **128 source modules** under `src/keylab/`, **128 test files** under `tests/`.
+- **128 source modules** under `src/keylab/`, **129 `test_*.py` files** under
+  `tests/` (current repository inventory).
 - A `src/`-layout installable package (`pyproject.toml`), two console entry points
   (`keylab`, `keylab-advanced`), ~24 docs under `docs/`, a README and a SECURITY.md.
 - A frozen textbook reference oracle (`ec/reference.py`) plus differential
@@ -43,7 +72,7 @@ labelled experimental) · **MISSING**.
 
 | Directive part | Implementation (file) | Status | Math validation | Tests |
 |---|---|---|---|---|
-| 1 secp256k1 core / affine | `ec/secp256k1.py`, `ec/reference.py` | DONE | independent + differential (this audit) | `test_secp256k1*.py`, `test_reference.py` |
+| 1 secp256k1 core / affine | `ec/secp256k1.py`, `ec/reference.py` | DONE | independent + differential (this audit) | `test_secp256k1*.py`, `test_ec_reference.py` |
 | 2 Jacobian arithmetic | `ec/secp256k1.py` (`point_double`, `point_add`, `_point_add_mixed`, `_to_affine`) | DONE | differential vs reference | `test_secp256k1*.py` |
 | 3 wNAF | `ec/secp256k1.py` (`wnaf_digits`, configurable window) | DONE | `sum(wNAF(k))==k` ×2000 | `test_secp256k1*.py` |
 | 4 GLV endomorphism | `ec/secp256k1.py` (`BETA`,`LAMBDA`, `glv_decompose`, `_scalar_mult_glv*`) | DONE | `BETA³≡1`, `LAMBDA³≡1`, `phi(G)=LAMBDA·G`, `k≡k1+LAMBDA·k2` ×10000 | `test_secp256k1*.py` |
