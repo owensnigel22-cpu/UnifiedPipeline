@@ -53,16 +53,69 @@ native ECC backends installed (`coincurve`/libsecp256k1 and `fastecdsa`). The
 additional checks reuse KeyLab's independent differential framework for
 Jacobian addition/doubling, SEC1 parsing/serialization, batch normalization,
 Straus MSM, and optional native scalar multiplication. They also check direct
-batch inverses against Python's `pow`, BIP-340 official vector 0 and even-y
-lifting, and RFC 6979 nonce output against the separate `ecdsa` package. With
-optional packages absent, native differential checks print `SKIP`; the harness
-still runs its pure-Python checks. The fixed-base Miller-Rabin screens remain
+batch inverses against Python's `pow`, all 19 BIP-340 official vectors and
+even-y lifting, the full 19-vector BIP-340 differential against Coincurve, and
+RFC 6979 nonce output against the separate `ecdsa` package. With optional
+packages absent, native differential checks print `SKIP`; the harness still
+runs its pure-Python checks. The fixed-base Miller-Rabin screens remain
 probable-prime screens, not proofs.
 
-The accompanying full default pytest run passed **2,420 tests**, with **9
+The full default pytest run for this milestone passed **2,467 tests**, with **9
 deselected and 0 skipped**, on Windows/Python 3.14.7 with the optional ECC
 backends installed. The default configuration excludes tests marked `slow` and
 `live`. This local result is distinct from historical counts and from CI.
+
+### BIP-340/libsecp256k1 differential validation
+
+BIP-340 verification first requires `0 <= r < p`, `0 <= s < n`, and a public
+x-coordinate that lifts to the curve's even-y point `P`. It computes
+
+```
+e = tagged_hash("BIP0340/challenge", bytes32(r) || pk || m) mod n
+R = sG - eP
+```
+
+and accepts only when `R` is not infinity, `R.y` is even, and `R.x == r`.
+`tagged_hash(tag, data)` is
+`SHA256(SHA256(tag) || SHA256(tag) || data)`. These are specification
+requirements; they do not depend on a particular implementation. KeyLab's
+pure-Python verifier and Coincurve's `PublicKeyXOnly.verify` are tested against
+the expected outcomes in the pinned BIP-340 CSV.
+
+The current deterministic tests and `scripts/verify_invariants.py` examine all
+**19 official vectors**: **9 accepted and 10 rejected**, with **19/19 matching
+outcomes** between KeyLab, the official expected results, and Bitcoin Core
+libsecp256k1 via Coincurve. Coincurve's x-only public-key constructor raises
+`ValueError` for malformed public keys in vectors 5 and 14; those parser
+rejections are treated as the expected `False` result. The harness reports a
+vector index and its official comment for any disagreement. The tests also
+compare **6 deterministically generated signatures** byte-for-byte for scalars
+1 and `n-1` over three fixed 32-byte messages, exercise 9 single-bit mutations,
+and reject malformed signature/public-key lengths, out-of-field x-coordinates,
+and invalid signing scalars.
+
+The BIP-340 specification allows messages of arbitrary length. The official
+vectors include message lengths 0, 1, 17, and 100 bytes, and those vectors are
+verified by both implementations. Coincurve's current `PrivateKey.sign_schnorr`
+wrapper requires a 32-byte message, so generated-signature differential tests
+are limited to that API's supported length; KeyLab's arbitrary-length signing
+and verification is separately tested. Invalid *byte lengths* are not a
+protocol error for BIP-340 messages; invalid message types are.
+
+Reproduce the focused suite and the independent seeded harness from the project
+root:
+
+```powershell
+python -m pytest -q tests/test_bip340_vectors.py tests/test_ecc_differential.py
+python scripts/verify_invariants.py
+```
+
+Without Coincurve, native-dependent pytest cases are explicitly skipped and
+the harness prints its native-backend skip notices; a skip is not a differential
+pass. Install the optional backend with `python -m pip install -e ".[fast]"`.
+Vector agreement, deterministic mutations, and native differential tests do
+not establish constant-time behavior, formal security, or resistance to
+side-channel attacks.
 
 The test harness is a deterministic finite check, not a proof of every program
 path. Algebraic identities below are established by the cited specifications
@@ -153,8 +206,8 @@ for a collision, not practical attacks on a secret key.
   `coincurve` calls exercise libsecp256k1; `fastecdsa` is another native
   multiplication implementation. Agreement does not certify constant-time
   behavior or the whole package.
-- **Protocol vectors:** BIP-340 vector 0 is read from the repository's pinned
-  vector CSV. The complete BIP-340 vector suite remains in `tests/`.
+- **Protocol vectors:** all 19 BIP-340 vectors are read from the repository's
+  pinned CSV and checked against both implementations when Coincurve is present.
 
 Authoritative and implementation references:
 
@@ -176,7 +229,10 @@ python scripts/verify_invariants.py
 python -m pip install -e ".[fast,ecc-alt]"
 python scripts/verify_invariants.py
 
-# The committed tests that also cover these (and much more):
+# Full BIP-340 and ECC differential tests:
+python -m pytest -q tests/test_bip340_vectors.py tests/test_ecc_differential.py
+
+# Core ECC tests:
 python -m pytest -q tests/test_secp256k1.py tests/test_ec_reference.py
 ```
 

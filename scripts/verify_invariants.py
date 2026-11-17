@@ -281,17 +281,35 @@ def main() -> int:
 
     vector_path = Path(__file__).resolve().parents[1] / "tests" / "vectors" / "bip340_test_vectors.csv"
     with vector_path.open(encoding="utf-8", newline="") as vector_file:
-        vector = next(row for row in csv.DictReader(vector_file) if row["index"] == "0")
+        bip340_vectors = list(csv.DictReader(vector_file))
+    valid_count = sum(row["verification result"] == "TRUE" for row in bip340_vectors)
+    invalid_count = sum(row["verification result"] == "FALSE" for row in bip340_vectors)
+    if len(bip340_vectors) != 19 or (valid_count, invalid_count) != (9, 10):
+        raise AssertionError(
+            "BIP-340 fixture shape changed: expected 19 vectors (9 valid, 10 invalid), "
+            f"got {len(bip340_vectors)} ({valid_count} valid, {invalid_count} invalid)"
+        )
+    for vector in bip340_vectors:
+        public_key = bytes.fromhex(vector["public key"])
+        message = bytes.fromhex(vector["message"])
+        signature = bytes.fromhex(vector["signature"])
+        expected_verification = vector["verification result"] == "TRUE"
+        if schnorr_verify(message, signature, public_key) is not expected_verification:
+            raise AssertionError(
+                f"KeyLab disagrees with BIP-340 official vector {vector['index']}: "
+                f"{vector['comment']}"
+            )
+    vector = bip340_vectors[0]
     public_key = bytes.fromhex(vector["public key"])
     message = bytes.fromhex(vector["message"])
     signature = bytes.fromhex(vector["signature"])
-    expected_verification = vector["verification result"] == "TRUE"
-    if schnorr_verify(message, signature, public_key) is not expected_verification:
-        raise AssertionError("BIP-340 official vector 0 verification result differs")
     lifted = lift_x(int.from_bytes(public_key, "big"))
     if lifted[0].to_bytes(32, "big") != public_key or lifted[1] & 1:
         raise AssertionError("BIP-340 x-only public key did not lift to its even-y point")
-    _check("BIP-340 official vector 0 and even-y public-key lifting", True)
+    _check(
+        "BIP-340 official vectors (19: 9 valid, 10 invalid) and even-y public-key lifting",
+        True,
+    )
     checks += 1
 
     digest = hashlib.sha256(b"KeyLab deterministic RFC 6979 validation").digest()
@@ -331,13 +349,31 @@ def main() -> int:
     if find_spec("coincurve") is not None:
         from coincurve import PublicKeyXOnly
 
-        if not PublicKeyXOnly(public_key).verify(signature, message):
-            raise AssertionError("libsecp256k1 rejected BIP-340 official vector 0")
+        for vector in bip340_vectors:
+            public_key = bytes.fromhex(vector["public key"])
+            message = bytes.fromhex(vector["message"])
+            signature = bytes.fromhex(vector["signature"])
+            expected_verification = vector["verification result"] == "TRUE"
+            keylab_result = schnorr_verify(message, signature, public_key)
+            try:
+                native_result = PublicKeyXOnly(public_key).verify(signature, message)
+            except (TypeError, ValueError):
+                native_result = False
+            if native_result != keylab_result or native_result != expected_verification:
+                raise AssertionError(
+                    f"BIP-340 vector {vector['index']} ({vector['comment']}): "
+                    f"KeyLab={keylab_result}, libsecp256k1={native_result}, "
+                    f"expected={expected_verification}"
+                )
         from keylab.ec.coincurve_backend import ecdsa_sign_digest_coincurve
 
         if ecdsa_sign_digest_coincurve(digest, private_scalar) != python_signature:
             raise AssertionError("libsecp256k1 ECDSA signature differs from the Python implementation")
-        _check("libsecp256k1 BIP-340 and deterministic ECDSA differential", True)
+        _check(
+            "libsecp256k1 BIP-340 differential (19: 9 valid, 10 invalid) "
+            "and deterministic ECDSA",
+            True,
+        )
         checks += 1
     else:
         print("SKIP libsecp256k1 signature differentials: coincurve is not installed")
