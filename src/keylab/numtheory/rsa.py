@@ -16,7 +16,7 @@ _MILLER_RABIN_BASES_64 = (2, 325, 9375, 28178, 450775, 9780504, 1795265022)
 
 @dataclass(frozen=True)
 class WienerRecovery:
-    """RSA private exponent and prime factors recovered by Wiener's attack."""
+    """Candidate private exponent and factors under Wiener's RSA assumptions."""
 
     private_exponent: int
     p: int
@@ -357,7 +357,10 @@ def wiener_attack(modulus: int, public_exponent: int) -> WienerRecovery | None:
     """Recover RSA private data when a public key has a Wiener-vulnerable exponent.
 
     This educational check uses continued fractions and is not a general RSA
-    factoring algorithm. It returns ``None`` when it finds no validated recovery.
+    factoring algorithm. It assumes the modulus is a product of two distinct
+    primes. Candidate factors are checked for an exact product but not checked
+    for primality or distinctness on arbitrary caller-supplied moduli. It
+    returns ``None`` when it finds no algebraically validated candidate.
     """
     if modulus <= 1:
         raise ValueError("modulus must be greater than 1")

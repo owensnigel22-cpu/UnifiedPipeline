@@ -601,15 +601,17 @@ def scalar_mult(
 ) -> Point:
     """Multiply a point, preferring installed native backends and retaining Python fallback.
 
-    ``backend`` may be ``auto``, ``python``, ``python-affine-window``,
-    ``python-glv``, ``python-wnaf``, ``coincurve``, or ``fastecdsa``, or one of
+    ``scalar`` must be an exact non-negative ``int`` (booleans are rejected)
+    and is reduced modulo ``N``. ``backend`` may be ``auto``, ``python``,
+    ``python-affine-window``, ``python-glv``, ``python-wnaf``, ``coincurve``,
+    or ``fastecdsa``, or one of
     the validation-contract names: ``python-optimized`` (exactly what ``auto``
     runs when no native backend is installed) and ``python-reference`` (the
     frozen textbook oracle in :mod:`keylab.ec.reference`). For secret-key
     operations, prefer a reviewed native library such as libsecp256k1.
     """
-    if scalar < 0:
-        raise ValueError("scalar must be non-negative")
+    if type(scalar) is not int or scalar < 0:
+        raise ValueError("scalar must be a non-negative int")
     if backend not in SCALAR_MULT_BACKENDS:
         raise ValueError(f"backend must be one of: {', '.join(SCALAR_MULT_BACKENDS)}")
     if point is None or scalar == 0:

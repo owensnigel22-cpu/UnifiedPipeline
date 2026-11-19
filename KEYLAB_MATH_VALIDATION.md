@@ -60,7 +60,7 @@ packages absent, native differential checks print `SKIP`; the harness still
 runs its pure-Python checks. The fixed-base Miller-Rabin screens remain
 probable-prime screens, not proofs.
 
-The full default pytest run for this milestone passed **2,467 tests**, with **9
+The full default pytest run after the cross-module audit passed **2,470 tests**, with **9
 deselected and 0 skipped**, on Windows/Python 3.14.7 with the optional ECC
 backends installed. The default configuration excludes tests marked `slow` and
 `live`. This local result is distinct from historical counts and from CI.
@@ -175,6 +175,57 @@ ECDLP complexity enough to recover a full-size key. The current harness
 checks the identities and finite component bounds; it does not prove the
 endomorphism or the decomposition implementation for every input.
 
+### Cross-module assurance audit (Milestone 3)
+
+The audit reproduced one scalar-input defect in `scalar_mult`: `True` was
+treated as scalar 1, while floats and strings failed later with inconsistent
+exceptions. The public function now accepts only exact nonnegative Python
+integers, matching the frozen affine reference and MSM input validation.
+Regression tests reject `True`, `1.0`, and `"1"`; valid scalar multiplication
+and modulo-`n` reduction are unchanged. This check is input-contract validation,
+not a constant-time or secret-key safety guarantee.
+
+Deterministic cross-checks also compared affine/Jacobian-backed scalar
+multiplication at zero, group-order boundaries, and values above `n` against
+the independent affine oracle; reconstructed GLV and wNAF scalars; compared
+naive and Straus MSM results; checked batch inverses against modular
+exponentiation; and round-tripped compressed and uncompressed SEC1 encodings.
+The existing differential tests and invariant harness passed these checks.
+Modular inverse implementations agreed with Python's `pow(a, -1, m)` for all
+coprime pairs tested with `2 <= m <= 100` and `-100 <= a <= 100`; non-coprime
+inputs raised `ValueError`.
+
+For HASH160, KeyLab's custom RIPEMD-160 and HASH160 paths matched the separate
+standard-library SHA-256/RIPEMD-160 providers for four deterministic messages
+(0, 3, 33, and 1,020 bytes). The custom RIPEMD-160 implementation also matched
+the standard-library provider at 13 message lengths around padding and
+block-boundary transitions. Existing tests match published RIPEMD-160 vectors,
+Bitcoin's genesis public-key HASH160, and the internal SHA-256 compression
+feed-forward path against `hashlib`. Full-round `sha256_reduced` delegates to
+`hashlib`; no independent full-hash reimplementation claim is made. These are
+forward-computation checks only, not evidence of hash inversion.
+
+Two observed behaviors remain bounded by API/specification assumptions rather
+than being treated as confirmed defects:
+
+- The direct P2WPKH and P2SH-P2WPKH helpers hash uncompressed SEC1 bytes, while
+  WIF address derivation omits those witness forms for uncompressed keys.
+  BIP-141 describes compressed witness public keys as a relay/mining policy;
+  the audit did not establish a consensus-invalid output. Whether the low-level
+  helpers should enforce standardness remains an API-policy decision.
+- `wiener_attack(53361, 10445)` returns candidate `d=5`, factors `49` and
+  `1089`. The modulus is not a valid RSA semiprime; the candidate factors
+  multiply to the modulus but are composite. Wiener's attack assumes an RSA
+  modulus formed from two distinct primes. The function verifies the exact
+  quadratic/product relationship, not primality for arbitrary caller inputs.
+  Treat results as candidates unless the RSA input precondition is met.
+
+The complete default suite ran **2,470 passed, 9 deselected, 0 skipped**.
+Focused module tests ran **503 passed, 1 deselected**. Ruff, the mypy ratchet,
+the 25-check invariant harness, CLI self-tests, API-doc generation check, and
+the 12-fixture vector verifier all passed. The default test configuration
+excludes `slow` and `live` tests; no claim is made about those excluded cases.
+
 ### SHA-256, RIPEMD-160, and HASH160
 
 SHA-256 expands each 512-bit block into 64 words, with
@@ -214,9 +265,10 @@ Authoritative and implementation references:
 1. [SEC 2, Recommended Elliptic Curve Domain Parameters, v2.0](https://www.secg.org/sec2-v2.pdf), §2.4.1 (secp256k1); [SEC 1, Elliptic Curve Cryptography, v2.0](https://www.secg.org/sec1-v2.pdf) (point encodings).
 2. Gallant, Lambert, Vanstone, [“Faster Point Multiplication on Elliptic Curves with Efficient Endomorphisms”](https://doi.org/10.1007/3-540-44647-8_11), CRYPTO 2001.
 3. [BIP-340: Schnorr Signatures for secp256k1](https://github.com/bitcoin/bips/blob/master/bip-0340.mediawiki), including x-only lifting and test vectors.
-4. [RFC 6979](https://www.rfc-editor.org/rfc/rfc6979) (deterministic DSA/ECDSA nonces); [RFC 8017](https://www.rfc-editor.org/rfc/rfc8017) (RSA cryptographic schemes).
-5. [NIST FIPS 180-4, Secure Hash Standard](https://csrc.nist.gov/pubs/fips/180-4/upd1/final) (SHA-256); Dobbertin, Bosselaers, Preneel, [“RIPEMD-160: A strengthened version of RIPEMD”](https://doi.org/10.1007/3-540-60865-6_44), FSE 1996.
-6. [Bitcoin Core libsecp256k1](https://github.com/bitcoin-core/secp256k1) (independent native differential backend; not a claim that KeyLab itself is audited or constant-time).
+4. [BIP-141: Segregated Witness](https://github.com/bitcoin/bips/blob/master/bip-0141.mediawiki), including the compressed-key relay/mining policy for witness spends.
+5. [RFC 6979](https://www.rfc-editor.org/rfc/rfc6979) (deterministic DSA/ECDSA nonces); [RFC 8017](https://www.rfc-editor.org/rfc/rfc8017) (RSA cryptographic schemes).
+6. [NIST FIPS 180-4, Secure Hash Standard](https://csrc.nist.gov/pubs/fips/180-4/upd1/final) (SHA-256); Dobbertin, Bosselaers, Preneel, [“RIPEMD-160: A strengthened version of RIPEMD”](https://doi.org/10.1007/3-540-60865-6_44), FSE 1996.
+7. [Bitcoin Core libsecp256k1](https://github.com/bitcoin-core/secp256k1) (independent native differential backend; not a claim that KeyLab itself is audited or constant-time).
 
 ## Reproduce
 
