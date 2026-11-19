@@ -93,6 +93,13 @@ For any real secret key, use a reviewed implementation such as
   general curve multiplication accepts exact nonnegative Python integers
   (excluding booleans) and reduces them modulo `N`. Points must be on the
   curve, and extended keys are rejected for every BIP-32 vector-5 defect.
+- Standard P2WPKH/P2SH-P2WPKH address constructors require a valid compressed
+  SEC1 key, following BIP-143 default relay/mining policy. This is wallet
+  interoperability guidance, not Bitcoin consensus validation.
+- The educational Wiener RSA check returns only candidates that pass distinct
+  factor, product, primality-screen, and Carmichael-inverse checks. The
+  primality screen is deterministic below `2**64` and probable above it; no
+  primality certificate is claimed for larger factors.
 - BIP-340 signing re-verifies each signature before returning it, which
   catches some computation faults (it is not a complete fault-attack defence).
 - **User-supplied secrets are never displayed without an explicit flag.**

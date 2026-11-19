@@ -143,7 +143,11 @@ decoded with `address_to_target_hash`.
 `keylab.encoding.address` also derives P2PKH, nested P2WPKH, native P2WPKH,
 and key-path P2TR addresses from a WIF through `derive_addresses_from_wif`,
 without returning the private scalar. `verify_pubkey_from_address` performs
-forward candidate verification for these address types. Run
+forward candidate verification for these address types. The direct P2WPKH and
+P2SH-P2WPKH helpers accept only validated 33-byte compressed SEC1 keys, matching
+Bitcoin's default v0-witness relay/mining policy. This is a wallet-interoperable
+address-construction policy, not a claim that uncompressed witness keys violate
+consensus; BIP-143 identifies that restriction as default policy. Run
 `keylab benchmark-pubkey --backend all` to measure WIF decoding, scalar
 parsing, multiplication, compression, and hex encoding separately. It uses a
 deterministic full-width public test fixture, verifies backend output against
@@ -634,10 +638,22 @@ only; add `--show-private` to display the decoded private scalar.
 ### Modular inverses in RSA and ECC
 
 The number-theory API exposes `mod_inverse_builtin`, `mod_inverse_egcd`, and
-`mod_inverse_fermat`. The RSA key generator and RSA analysis helpers use the
-built-in inverse for the exponent modulo the RSA totient; secp256k1 affine
+`mod_inverse_fermat`. Fermat factor recovery uses the built-in inverse modulo
+Euler's totient; Wiener candidate validation checks the inverse relationship
+modulo Carmichael's `lambda(n)`. Secp256k1 affine
 conversion and the advanced point-addition trace use it for field inverses.
 Fermat's method is only appropriate when the modulus is known prime.
+
+`wiener_attack(n, e)` is a bounded educational check for RSA moduli formed from
+two distinct primes and an unusually small private exponent. It returns a
+candidate only after the factors multiply to `n`, are distinct and pass
+primality screening, and the recovered `d` is the canonical inverse of `e`
+modulo `lambda(n) = lcm(p-1, q-1)`. Factor primality is checked deterministically
+below `2**64`; larger factors receive a fixed-base Miller-Rabin probable-prime
+screen, not a primality certificate. The attack is not a general RSA factorizer
+and does not recover private exponents for arbitrary or properly generated keys.
+This module's raw RSA and attack demonstrations are educational; use the
+separately provided PKCS #1 OAEP/PSS API for applications.
 
 `keylab rsa-pollard-rho --modulus 8051 --seed 7` runs the bounded
 Pollard–Brent factor search and reports its factor pair and work counters. Use

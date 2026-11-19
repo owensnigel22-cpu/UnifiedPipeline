@@ -205,26 +205,52 @@ feed-forward path against `hashlib`. Full-round `sha256_reduced` delegates to
 `hashlib`; no independent full-hash reimplementation claim is made. These are
 forward-computation checks only, not evidence of hash inversion.
 
-Two observed behaviors remain bounded by API/specification assumptions rather
-than being treated as confirmed defects:
+### RSA candidate validation and witness-address policy (Milestone 4)
 
-- The direct P2WPKH and P2SH-P2WPKH helpers hash uncompressed SEC1 bytes, while
-  WIF address derivation omits those witness forms for uncompressed keys.
-  BIP-141 describes compressed witness public keys as a relay/mining policy;
-  the audit did not establish a consensus-invalid output. Whether the low-level
-  helpers should enforce standardness remains an API-policy decision.
-- `wiener_attack(53361, 10445)` returns candidate `d=5`, factors `49` and
-  `1089`. The modulus is not a valid RSA semiprime; the candidate factors
-  multiply to the modulus but are composite. Wiener's attack assumes an RSA
-  modulus formed from two distinct primes. The function verifies the exact
-  quadratic/product relationship, not primality for arbitrary caller inputs.
-  Treat results as candidates unless the RSA input precondition is met.
+The reported `wiener_attack(53361, 10445)` result used convergent
+`e/d = 10445/5`; the quadratic reconstruction produced `p=49`, `q=1089`.
+These multiply to `N`, but both are composite, so product-only validation
+accepted a tuple that is not an RSA semiprime. Candidate validation now requires
+exact integer values, factors greater than one and distinct, the exact product
+`p*q=N`, both factors passing the primality check, and a canonical private
+exponent satisfying
 
-The complete default suite ran **2,470 passed, 9 deselected, 0 skipped**.
-Focused module tests ran **503 passed, 1 deselected**. Ruff, the mypy ratchet,
-the 25-check invariant harness, CLI self-tests, API-doc generation check, and
-the 12-fixture vector verifier all passed. The default test configuration
-excludes `slow` and `live` tests; no claim is made about those excluded cases.
+```
+lambda(N) = lcm(p - 1, q - 1)
+gcd(e, lambda(N)) = 1
+1 <= d < lambda(N)
+e*d == 1 (mod lambda(N))
+```
+
+Consequently, a returned `WienerRecovery` is a validated candidate under these
+checks; the reported composite-factor example and repeated factors are rejected.
+The Miller-Rabin implementation is deterministic for integers below `2**64`
+using its established seven-base set. Above that bound, the code uses 32 fixed
+Miller-Rabin bases and returns a *probable-prime* assessment, not a deterministic
+primality certificate. There is no quantified error bound for this fixed-base,
+deterministic screen. `wiener_attack` remains limited to RSA semiprimes with
+small private exponents; no general RSA key recovery is implied.
+
+For version-0 witness addresses, the direct native and nested P2WPKH encoders
+now require a valid 33-byte compressed SEC1 public key. They produce standard
+wallet-interoperable addresses. BIP-143 calls compressed-only keys the default
+relay/mining policy and warns against uncompressed witness keys; this is a
+policy restriction, not a consensus validity rule. WIF derivation already
+omitted witness address forms for uncompressed WIF keys. Candidate verification
+now also declines uncompressed keys for v0-witness address matching while
+retaining P2PKH handling for compressed and uncompressed SEC1 encodings.
+Malformed encodings and invalid curve points are rejected by the constructors.
+
+Milestone 4's final default suite run passed **2,505 tests**, with **9
+deselected and 0 skipped**. An earlier full-suite attempt had one unrelated
+CryptoMiniSat `--version` probe exceed its 5-second timeout; that test passed
+when run alone, and the complete rerun passed. Focused RSA, number-theory,
+address, WIF, and downstream regression tests passed **152 tests**. Ruff passed,
+the mypy ratchet reported **0 errors**, the invariant harness passed **25/25**
+checks, the CLI self-test passed **25/25** assertions, the API-doc check passed,
+and all **12** vector fixtures matched their pinned provenance. The default
+test configuration excludes `slow` and `live` tests; no claim is made about
+those excluded cases.
 
 ### SHA-256, RIPEMD-160, and HASH160
 
@@ -265,10 +291,11 @@ Authoritative and implementation references:
 1. [SEC 2, Recommended Elliptic Curve Domain Parameters, v2.0](https://www.secg.org/sec2-v2.pdf), §2.4.1 (secp256k1); [SEC 1, Elliptic Curve Cryptography, v2.0](https://www.secg.org/sec1-v2.pdf) (point encodings).
 2. Gallant, Lambert, Vanstone, [“Faster Point Multiplication on Elliptic Curves with Efficient Endomorphisms”](https://doi.org/10.1007/3-540-44647-8_11), CRYPTO 2001.
 3. [BIP-340: Schnorr Signatures for secp256k1](https://github.com/bitcoin/bips/blob/master/bip-0340.mediawiki), including x-only lifting and test vectors.
-4. [BIP-141: Segregated Witness](https://github.com/bitcoin/bips/blob/master/bip-0141.mediawiki), including the compressed-key relay/mining policy for witness spends.
-5. [RFC 6979](https://www.rfc-editor.org/rfc/rfc6979) (deterministic DSA/ECDSA nonces); [RFC 8017](https://www.rfc-editor.org/rfc/rfc8017) (RSA cryptographic schemes).
-6. [NIST FIPS 180-4, Secure Hash Standard](https://csrc.nist.gov/pubs/fips/180-4/upd1/final) (SHA-256); Dobbertin, Bosselaers, Preneel, [“RIPEMD-160: A strengthened version of RIPEMD”](https://doi.org/10.1007/3-540-60865-6_44), FSE 1996.
-7. [Bitcoin Core libsecp256k1](https://github.com/bitcoin-core/secp256k1) (independent native differential backend; not a claim that KeyLab itself is audited or constant-time).
+4. [BIP-141: Segregated Witness](https://github.com/bitcoin/bips/blob/master/bip-0141.mediawiki), including witness-program consensus rules.
+5. [BIP-143: Transaction Signature Verification for Version 0 Witness Program](https://github.com/bitcoin/bips/blob/master/bip-0143.mediawiki), including the compressed-key relay/mining policy.
+6. [RFC 6979](https://www.rfc-editor.org/rfc/rfc6979) (deterministic DSA/ECDSA nonces); [RFC 8017](https://www.rfc-editor.org/rfc/rfc8017) (RSA cryptographic schemes).
+7. [NIST FIPS 180-4, Secure Hash Standard](https://csrc.nist.gov/pubs/fips/180-4/upd1/final) (SHA-256); Dobbertin, Bosselaers, Preneel, [“RIPEMD-160: A strengthened version of RIPEMD”](https://doi.org/10.1007/3-540-60865-6_44), FSE 1996.
+8. [Bitcoin Core libsecp256k1](https://github.com/bitcoin-core/secp256k1) (independent native differential backend; not a claim that KeyLab itself is audited or constant-time).
 
 ## Reproduce
 

@@ -158,3 +158,33 @@ arithmetic, or unsupported cryptographic claims in the shipped package. Specific
 4. PR #45 (unified `forensics` CLI) is merged.
 
 See `KEYLAB_MATH_VALIDATION.md` for the invariant evidence table.
+
+## Milestone 4 — RSA candidate validation and witness encoding
+
+At the starting revision (`30815296fbb6a57939e2e4d9f39b95c2eea16e9d`), the
+Wiener continued-fraction implementation returned the reported composite
+factors for `(N, e) = (53361, 10445)` because it verified the discriminant,
+integer roots, and factor product but did not check distinctness, primality,
+or the private exponent modulo Carmichael's lambda. It now applies these
+candidate checks before returning a result. Primality screening is deterministic
+for factors below `2**64` and fixed-base Miller-Rabin probable-prime screening
+above that limit; the latter is not a primality certificate.
+
+The native and nested P2WPKH address helpers now enforce valid compressed SEC1
+keys, aligning direct helper behavior with WIF-derived addresses and the
+compressed-key default relay/mining policy in BIP-143. This does not claim that
+uncompressed version-0 witness keys are consensus-invalid. The cross-module
+candidate verifier rejects uncompressed public keys for v0-witness matching,
+while P2PKH continues to support either SEC1 form.
+
+Milestone 4 changes are covered by deterministic tests for known small and
+large Wiener examples, malformed parameters, composite and repeated factors,
+RSA exponent relations, witness key encodings, networks, and WIF-derived
+address families. The final default pytest run passed 2,505 tests, with 9
+deselected and none skipped; the focused RSA/address/WIF regression run passed
+152 tests. The earlier full-suite run had one CryptoMiniSat version-probe
+timeout, which passed in isolation and did not recur on the full-suite rerun.
+Ruff, the zero-error mypy ratchet, API-doc check, vector provenance check, CLI
+self-test, invariant harness, and whitespace check passed. The default suite
+excludes tests marked `slow` and `live`; exact validation details are recorded
+in `KEYLAB_MATH_VALIDATION.md`.
