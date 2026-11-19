@@ -1,4 +1,5 @@
 import json
+from math import gcd, lcm
 
 import pytest
 
@@ -7,6 +8,7 @@ from keylab.numtheory.rsa import (
     RSAExponentiationResult,
     SharedFactorFinding,
     WienerRecovery,
+    _validate_wiener_candidate,
     batch_gcd,
     fermat_factor,
     hastad_broadcast,
@@ -178,6 +180,79 @@ def test_wiener_attack_recovers_small_private_exponent() -> None:
     public_exponent = pow(private_exponent, -1, phi)
 
     assert wiener_attack(modulus, public_exponent) == WienerRecovery(private_exponent, p, q)
+
+
+def test_wiener_attack_rejects_reported_composite_factor_false_positive() -> None:
+    assert wiener_attack(53_361, 10_445) is None
+    assert not _validate_wiener_candidate(53_361, 10_445, 5, 49, 1_089)
+
+
+def test_wiener_candidate_contract_checks_factors_and_carmichael_inverse() -> None:
+    p, q, d = 1009, 1013, 13
+    modulus = p * q
+    exponent = pow(d, -1, (p - 1) * (q - 1))
+
+    carmichael = lcm(p - 1, q - 1)
+    assert gcd(exponent, carmichael) == 1
+    assert exponent * d % carmichael == 1
+    assert _validate_wiener_candidate(modulus, exponent, d, p, q)
+    assert not _validate_wiener_candidate(p * p, exponent, d, p, p)
+    assert not _validate_wiener_candidate(modulus, exponent, d, 49, 1_089)
+    assert not _validate_wiener_candidate(modulus, exponent, d, p, q - 1)
+    assert not _validate_wiener_candidate(modulus, exponent + 1, d, p, q)
+    assert not _validate_wiener_candidate(modulus, exponent, d + 1, p, q)
+    assert not _validate_wiener_candidate(modulus, exponent, d, True, q)
+    assert not _validate_wiener_candidate(modulus, exponent, d, float(p), q)
+
+
+def test_wiener_attack_accepts_large_probable_prime_factor_candidates() -> None:
+    p, q, d = 2**89 - 1, 2**107 - 1, 13
+    modulus = p * q
+    exponent = pow(d, -1, (p - 1) * (q - 1))
+
+    assert wiener_attack(modulus, exponent) == WienerRecovery(d, p, q)
+
+
+@pytest.mark.parametrize(
+    ("modulus", "public_exponent"),
+    [
+        (True, 3),
+        (3233, False),
+        (3233.0, 17),
+        ("3233", 17),
+        (3233, 17.0),
+        (3233, "17"),
+        (None, 17),
+    ],
+)
+def test_wiener_attack_rejects_non_integer_parameters(
+    modulus: object,
+    public_exponent: object,
+) -> None:
+    with pytest.raises(TypeError, match="must be integers"):
+        wiener_attack(modulus, public_exponent)  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize(
+    ("modulus", "public_exponent"),
+    [
+        (-1, 3),
+        (0, 3),
+        (1, 0),
+        (1, 2),
+        (3233, -1),
+        (3233, 0),
+        (3233, 1),
+        (3233, 3233),
+        (3233, 3234),
+    ],
+)
+def test_wiener_attack_rejects_out_of_domain_parameters(
+    modulus: int,
+    public_exponent: int,
+) -> None:
+    with pytest.raises(ValueError):
+        wiener_attack(modulus, public_exponent)
 
 
 def test_wiener_attack_returns_none_for_ordinary_key_parameters() -> None:
