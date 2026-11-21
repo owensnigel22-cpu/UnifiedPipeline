@@ -318,3 +318,56 @@ python -m pytest -q tests/test_secp256k1.py tests/test_ec_reference.py
 This report records only what was measured. It makes **no** claim about recovering
 a soundly generated private key, inverting SHA-256/RIPEMD-160, or reversing a
 HASH160 into a public key — see `SECURITY.md` for the walls.
+
+## Milestone 5 — Independent differential assurance
+
+At the verified revision `dd471a81d32cb7ae4e0d15dc4246e9ab3f533346`, the
+ECC/signature audit found no mathematical defect in the secp256k1, SEC1,
+ECDSA/RFC6979, BIP-340, batch-Schnorr, or Taproot implementations reviewed.
+Independent focused results included 430 ECC/signature tests and 126
+RSA/number-theory/WIF/address tests.
+
+Two justified implementation gaps were confirmed and corrected:
+
+1. `scalar_mult(0, point)` returned infinity before validating a supplied
+   affine point. The function now rejects an invalid point first, while
+   preserving `None` for infinity and zero times valid points.
+2. `p2pkh_address()` hashed arbitrary byte strings, including the empty
+   string. It now parses and validates compressed or uncompressed SEC1
+   encodings before deriving the address.
+
+Hash/SAT differential results passed 56 standard-vector/reduced-reference
+tests and 13 bounded SAT-forward-verification tests. A 1-round, 1-byte
+SHA-256 CNF experiment produced 63 variables and 454 clauses with the
+CryptoMiniSat adapter. It reported SATISFIABLE, recovered `0x41`, and the
+candidate matched `sha256_reduced(b"A", rounds=1)` independently. Generation
+took 0.00524 s, solver time 0.97153 s, and sampled process-tree peak RSS was
+56,549,376 bytes. This is a constrained one-round result, not a full SHA-256
+experiment.
+
+The full-suite SAT reliability fix raises the external solver `--version`
+probe timeout from 5 to 30 seconds and converts timeout/executable errors
+into explicit version-unavailable metadata instead of aborting the experiment.
+
+Hypothesis 6.170.15 is available and used in ECC properties tests. Existing
+coverage includes differential affine/Jacobian arithmetic, BIP-340, ECDSA,
+SEC1, and bounded scalar properties. Standalone MSM and batch-Schnorr
+benchmarks remain missing; correctness coverage exists but performance
+characterization for those operations is not recorded.
+
+Measured small-corpus ECC/signature performance on Windows/Python 3.14.7:
+
+| Operation | KeyLab | Native |
+|---|---:|---:|
+| ECDSA sign | 297–6280 ops/s, depending on benchmark path | 7451–19148 ops/s |
+| ECDSA verify | 257–3271 ops/s | 9999–15031 ops/s |
+| Schnorr sign | 1671 ops/s | 6715 ops/s |
+| Schnorr verify | 1436 ops/s | 16267 ops/s |
+
+The benchmarks use a corpus of only 2 public inputs and 2 repetitions unless
+otherwise noted. These timings are diagnostic, not performance guarantees.
+
+The definitive Milestone 5 full-suite run passed **2522 tests**, with **9
+deselected and 0 skipped**. Ruff, mypy ratchet (0 baseline errors), invariant
+checks (25/25), CLI self-test (25/25), API documentation, all 12 pinned vector
+fixtures, backend checks, and git whitespace checks passed.

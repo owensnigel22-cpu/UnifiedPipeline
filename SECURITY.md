@@ -96,6 +96,9 @@ For any real secret key, use a reviewed implementation such as
 - Standard P2WPKH/P2SH-P2WPKH address constructors require a valid compressed
   SEC1 key, following BIP-143 default relay/mining policy. This is wallet
   interoperability guidance, not Bitcoin consensus validation.
+- P2PKH accepts valid 33-byte compressed or 65-byte uncompressed SEC1 keys only;
+  it rejects malformed, off-curve, empty, and non-byte inputs. Witness-address
+  helpers retain the stricter compressed-key policy.
 - The educational Wiener RSA check returns only candidates that pass distinct
   factor, product, primality-screen, and Carmichael-inverse checks. The
   primality screen is deterministic below `2**64` and probable above it; no

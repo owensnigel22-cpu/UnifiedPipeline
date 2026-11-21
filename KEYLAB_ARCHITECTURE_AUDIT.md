@@ -188,3 +188,32 @@ Ruff, the zero-error mypy ratchet, API-doc check, vector provenance check, CLI
 self-test, invariant harness, and whitespace check passed. The default suite
 excludes tests marked `slow` and `live`; exact validation details are recorded
 in `KEYLAB_MATH_VALIDATION.md`.
+
+## Milestone 5 — independent differential assurance
+
+Repository state was reverified at
+`dd471a81d32cb7ae4e0d15dc4246e9ab3f533346`. PR #46 remained open and the branch
+was clean and synchronized. Native differential infrastructure is available
+through Coincurve and fastecdsa; the bounded SAT path is available through
+pycryptosat/CryptoMiniSat.
+
+Milestone 5 found and fixed two confirmed gaps:
+
+- Invalid affine points supplied to `scalar_mult(..., scalar=0)` are now
+  validated instead of returning infinity before curve-membership checking.
+- P2PKH now validates compressed or uncompressed SEC1 encodings instead of
+  hashing arbitrary bytes.
+
+Focused ECC/signature tests passed 430 cases. RSA, number theory, WIF, and
+address tests passed 126 cases. Encoding and Taproot compatibility passed 214
+cases. Hash/vector and bounded SAT verification passed 56 and 13 cases,
+respectively. Small-corpus benchmark results are recorded in
+`KEYLAB_MATH_VALIDATION.md`.
+
+Remaining coverage gaps: standalone MSM and batch-Schnorr benchmarks are not
+implemented, and full-round hash/SAT/cryptanalytic impossibility experiments
+remain outside what reproducible bounded testing can establish.
+
+The definitive Milestone 5 pytest run passed 2522 tests, with 9 deselected
+and no skips. The SAT solver-version probe timeout was also corrected and
+covered by a regression test.
