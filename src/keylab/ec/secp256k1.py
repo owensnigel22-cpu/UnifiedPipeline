@@ -414,10 +414,12 @@ def _scalar_mult_generator_wnaf(scalar: int) -> Point:
 
 def _scalar_mult_python(scalar: int, point: Point) -> Point:
     """Compute scalar times an affine point using the readable Python implementation."""
-    if point is None or scalar == 0:
+    if point is None:
         return None
     if not is_on_curve(point):
         raise ValueError("point is not on secp256k1")
+    if scalar == 0:
+        return None
     if point == G:
         return _scalar_mult_generator(scalar)
     result = _INFINITY
@@ -614,10 +616,12 @@ def scalar_mult(
         raise ValueError("scalar must be a non-negative int")
     if backend not in SCALAR_MULT_BACKENDS:
         raise ValueError(f"backend must be one of: {', '.join(SCALAR_MULT_BACKENDS)}")
-    if point is None or scalar == 0:
+    if point is None:
         return None
     if not is_on_curve(point):
         raise ValueError("point is not on secp256k1")
+    if scalar == 0:
+        return None
     scalar %= N
     if scalar == 0:
         return None
