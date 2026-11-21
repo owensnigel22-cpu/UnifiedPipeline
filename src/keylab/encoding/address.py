@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 
+from keylab.ec.sec1 import parse_sec1
 from keylab.ec.secp256k1 import (
     compress_pubkey,
     decompress_pubkey,
@@ -34,6 +35,9 @@ def _require_compressed_witness_pubkey(public_key: bytes) -> None:
 
 def p2pkh_address(public_key: bytes, network: str = "mainnet") -> str:
     """Convert a serialized public key to a Base58Check P2PKH address."""
+    if not isinstance(public_key, bytes):
+        raise TypeError("public_key must be bytes")
+    parse_sec1(public_key)
     versions = {"mainnet": 0x00, "testnet": 0x6F}
     try:
         version = versions[network]
