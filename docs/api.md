@@ -396,9 +396,9 @@ Forward public-key/address conversion and address target-hash decoding only.
 | `derive_addresses_from_wif` | `derive_addresses_from_wif(wif: 'str', *, reveal_private: 'bool' = False) -> 'dict[str, object]'` | Derive addresses from WIF; include private hex only when explicitly requested. |
 | `hash160` | `hash160(data: 'bytes') -> 'bytes'` | Return RIPEMD-160(SHA-256(data)); requires a Python/OpenSSL RIPEMD-160 provider. |
 | `p2pkh_address` | `p2pkh_address(public_key: 'bytes', network: 'str' = 'mainnet') -> 'str'` | Convert a serialized public key to a Base58Check P2PKH address. |
-| `p2sh_p2wpkh_address` | `p2sh_p2wpkh_address(public_key: 'bytes', network: 'str' = 'mainnet') -> 'str'` | Convert a serialized public key to a nested SegWit P2SH-P2WPKH address. |
+| `p2sh_p2wpkh_address` | `p2sh_p2wpkh_address(public_key: 'bytes', network: 'str' = 'mainnet') -> 'str'` | Build a standard nested P2WPKH address from a valid compressed SEC1 key. |
 | `p2tr_address` | `p2tr_address(internal_key_x: 'bytes', merkle_root: 'bytes' = b'', network: 'str' = 'mainnet') -> 'str'` | Build a P2TR address from an x-only internal key and optional Taproot root. |
-| `p2wpkh_address` | `p2wpkh_address(public_key: 'bytes', network: 'str' = 'mainnet') -> 'str'` | Convert a serialized public key to a native SegWit P2WPKH address. |
+| `p2wpkh_address` | `p2wpkh_address(public_key: 'bytes', network: 'str' = 'mainnet') -> 'str'` | Build a standard native P2WPKH address from a valid compressed SEC1 key. |
 | `verify_pubkey_from_address` | `verify_pubkey_from_address(address: 'str', public_key: 'bytes') -> 'bool'` | Verify a candidate secp256k1 public key against common Bitcoin address forms. |
 
 ## `keylab.encoding.bech32`

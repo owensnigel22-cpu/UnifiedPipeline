@@ -1,11 +1,12 @@
 import csv
 import itertools
 import json
+import subprocess
 from io import StringIO
 
 import pytest
 
-from keylab.cli import main
+from keylab.cli import _solver_version, main
 from keylab.hashes.reduced import _SHA_IV, _sha_compress, sha256_reduced
 from keylab.hashes.sha256_cnf import (
     SHA256PreimageModel,
@@ -17,6 +18,15 @@ from keylab.hashes.sha256_cnf import (
 from keylab.sat.cnf import CNF
 from keylab.sat.parallel import ParallelCubeResult
 from keylab.sat.solver import find_solver, run_solver
+
+
+def test_solver_version_reports_timeout_without_raising(monkeypatch) -> None:
+    def timed_out(*args, **kwargs):
+        raise subprocess.TimeoutExpired(cmd=["test-solver", "--version"], timeout=30)
+
+    monkeypatch.setattr("keylab.cli.run", timed_out)
+
+    assert _solver_version("test-solver") == "version unavailable (timeout)"
 
 
 def test_sha256_hash_model_builds_dimacs_and_streams_identically() -> None:

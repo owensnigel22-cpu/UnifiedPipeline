@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 
+from keylab.ec.sec1 import parse_sec1
 from keylab.ec.secp256k1 import (
     compress_pubkey,
     decompress_pubkey,
@@ -24,8 +25,19 @@ def hash160(data: bytes) -> bytes:
     return ripemd.digest()
 
 
+def _require_compressed_witness_pubkey(public_key: bytes) -> None:
+    if not isinstance(public_key, bytes):
+        raise TypeError("public_key must be bytes")
+    if len(public_key) != 33 or public_key[0] not in (2, 3):
+        raise ValueError("standard witness addresses require a 33-byte compressed SEC1 public key")
+    decompress_pubkey(public_key)
+
+
 def p2pkh_address(public_key: bytes, network: str = "mainnet") -> str:
     """Convert a serialized public key to a Base58Check P2PKH address."""
+    if not isinstance(public_key, bytes):
+        raise TypeError("public_key must be bytes")
+    parse_sec1(public_key)
     versions = {"mainnet": 0x00, "testnet": 0x6F}
     try:
         version = versions[network]
@@ -35,7 +47,12 @@ def p2pkh_address(public_key: bytes, network: str = "mainnet") -> str:
 
 
 def p2wpkh_address(public_key: bytes, network: str = "mainnet") -> str:
-    """Convert a serialized public key to a native SegWit P2WPKH address."""
+    """Build a standard native P2WPKH address from a valid compressed SEC1 key.
+
+    Compressed keys are required by default Bitcoin v0-witness relay/mining
+    policy (BIP-143), not by the P2WPKH address hash construction itself.
+    """
+    _require_compressed_witness_pubkey(public_key)
     hrps = {"mainnet": "bc", "testnet": "tb"}
     try:
         hrp = hrps[network]
@@ -45,7 +62,12 @@ def p2wpkh_address(public_key: bytes, network: str = "mainnet") -> str:
 
 
 def p2sh_p2wpkh_address(public_key: bytes, network: str = "mainnet") -> str:
-    """Convert a serialized public key to a nested SegWit P2SH-P2WPKH address."""
+    """Build a standard nested P2WPKH address from a valid compressed SEC1 key.
+
+    Compressed keys are required by default Bitcoin v0-witness relay/mining
+    policy (BIP-143), not by the P2SH/witness-program hash construction itself.
+    """
+    _require_compressed_witness_pubkey(public_key)
     versions = {"mainnet": 0x05, "testnet": 0xC4}
     try:
         version = versions[network]
@@ -80,7 +102,8 @@ def verify_pubkey_from_address(address: str, public_key: bytes) -> bool:
     """Verify a candidate secp256k1 public key against common Bitcoin address forms.
 
     This checks candidate->address consistency. It does not derive a public key
-    from an address hash or recover a private key.
+    from an address hash or recover a private key. Version-0 witness matches
+    follow the default compressed-key policy and are not consensus validation.
     """
     if not isinstance(public_key, bytes):
         raise TypeError("public_key must be bytes")
@@ -101,7 +124,7 @@ def verify_pubkey_from_address(address: str, public_key: bytes) -> bool:
         if network is None:
             return False
         if version == 0 and len(program) == 20:
-            return program == hash160(public_key)
+            return len(public_key) == 33 and program == hash160(public_key)
         if version == 1 and len(program) == 32:
             from keylab.encoding.taproot import taproot_output_from_point
 
@@ -116,6 +139,8 @@ def verify_pubkey_from_address(address: str, public_key: bytes) -> bool:
     if version in (0x00, 0x6F):
         return payload[1:] == hash160(public_key)
     if version in (0x05, 0xC4):
+        if len(public_key) != 33:
+            return False
         redeem_script = b"\x00\x14" + hash160(compressed)
         return payload[1:] == hash160(redeem_script)
     return False

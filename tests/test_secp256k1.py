@@ -50,6 +50,12 @@ def test_generator_and_double_generator_vectors() -> None:
     assert scalar_mult(2) == expected_double
 
 
+@pytest.mark.parametrize("scalar", [True, 1.0, "1"])
+def test_scalar_mult_rejects_non_integer_scalars(scalar: object) -> None:
+    with pytest.raises(ValueError, match="non-negative int"):
+        scalar_mult(scalar, backend="python")  # type: ignore[arg-type]
+
+
 def test_compressed_public_key_round_trip() -> None:
     for scalar in (1, 2, 7):
         point = scalar_mult(scalar)

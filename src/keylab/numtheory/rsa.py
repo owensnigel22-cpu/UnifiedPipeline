@@ -12,11 +12,15 @@ from keylab.numtheory.core import mod_inverse_builtin
 
 _UINT64_LIMIT = 1 << 64
 _MILLER_RABIN_BASES_64 = (2, 325, 9375, 28178, 450775, 9780504, 1795265022)
+_MILLER_RABIN_BASES_LARGE = (
+    2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 53,
+    59, 61, 67, 71, 73, 79, 83, 89, 97, 101, 103, 107, 109, 113, 127, 131,
+)
 
 
 @dataclass(frozen=True)
 class WienerRecovery:
-    """RSA private exponent and prime factors recovered by Wiener's attack."""
+    """Candidate private exponent and factors under Wiener's RSA assumptions."""
 
     private_exponent: int
     p: int
@@ -312,6 +316,62 @@ def _is_prime_u64(value: int) -> bool:
     return True
 
 
+def _is_probable_prime(value: int) -> bool:
+    """Check primality exactly below 2**64 and by fixed-base Miller-Rabin above."""
+    if type(value) is not int or value < 2:
+        return False
+    if value < _UINT64_LIMIT:
+        return _is_prime_u64(value)
+
+    for prime in (2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37):
+        if value % prime == 0:
+            return False
+
+    odd_part = value - 1
+    twos = 0
+    while odd_part % 2 == 0:
+        odd_part //= 2
+        twos += 1
+
+    for base in _MILLER_RABIN_BASES_LARGE:
+        witness = pow(base, odd_part, value)
+        if witness in (1, value - 1):
+            continue
+        for _ in range(twos - 1):
+            witness = pow(witness, 2, value)
+            if witness == value - 1:
+                break
+        else:
+            return False
+    return True
+
+
+def _validate_wiener_candidate(
+    modulus: int,
+    public_exponent: int,
+    private_exponent: int,
+    p: int,
+    q: int,
+) -> bool:
+    """Accept only distinct probable-prime factors and a canonical RSA inverse."""
+    values = (modulus, public_exponent, private_exponent, p, q)
+    if any(type(value) is not int for value in values):
+        return False
+    if modulus <= 1 or not 1 < public_exponent < modulus:
+        return False
+    if p <= 1 or q <= 1 or p == q or p * q != modulus:
+        return False
+    if not _is_probable_prime(p) or not _is_probable_prime(q):
+        return False
+
+    carmichael = ((p - 1) // gcd(p - 1, q - 1)) * (q - 1)
+    return (
+        1 <= private_exponent < carmichael
+        and gcd(public_exponent, carmichael) == 1
+        and public_exponent * private_exponent % carmichael == 1
+    )
+
+
 def recover_rsa_private_key(
     modulus: int,
     public_exponent: int = 65537,
@@ -354,11 +414,17 @@ def _convergents(numerator: int, denominator: int) -> Iterator[tuple[int, int]]:
 
 
 def wiener_attack(modulus: int, public_exponent: int) -> WienerRecovery | None:
-    """Recover RSA private data when a public key has a Wiener-vulnerable exponent.
+    """Return a validated candidate for a two-distinct-prime Wiener-vulnerable RSA key.
 
     This educational check uses continued fractions and is not a general RSA
-    factoring algorithm. It returns ``None`` when it finds no validated recovery.
+    factoring algorithm. Returned factors must be distinct, multiply to the
+    modulus, pass the primality checks, and yield a private exponent inverse
+    modulo Carmichael's lambda. Primality is deterministic below 2**64 and a
+    fixed-base Miller-Rabin probable-prime check above that limit. The latter
+    is not a primality certificate. Returns ``None`` when no candidate passes.
     """
+    if type(modulus) is not int or type(public_exponent) is not int:
+        raise TypeError("modulus and public_exponent must be integers")
     if modulus <= 1:
         raise ValueError("modulus must be greater than 1")
     if not 1 < public_exponent < modulus:
@@ -380,7 +446,7 @@ def wiener_attack(modulus: int, public_exponent: int) -> WienerRecovery | None:
             continue
         p = (prime_sum + root) // 2
         q = (prime_sum - root) // 2
-        if p > 1 and q > 1 and p * q == modulus:
+        if _validate_wiener_candidate(modulus, public_exponent, private_exponent, p, q):
             p, q = sorted((p, q))
             return WienerRecovery(private_exponent, p, q)
     return None
