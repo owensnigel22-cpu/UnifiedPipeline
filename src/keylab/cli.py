@@ -12,7 +12,7 @@ import sys
 import time
 from collections.abc import Callable
 from pathlib import Path
-from subprocess import run
+from subprocess import TimeoutExpired, run
 from typing import Any, TextIO, cast
 
 import httpx
@@ -457,7 +457,18 @@ def _fixed_bit(value: str) -> tuple[int, int]:
 
 
 def _solver_version(executable: str) -> str:
-    version = run([executable, "--version"], capture_output=True, text=True, timeout=5, check=False)
+    try:
+        version = run(
+            [executable, "--version"],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
+        )
+    except TimeoutExpired:
+        return "version unavailable (timeout)"
+    except OSError as exc:
+        return f"version unavailable ({exc.__class__.__name__})"
     output = version.stdout.strip() or version.stderr.strip()
     return output.splitlines()[0] if output else f"version unavailable (exit {version.returncode})"
 
