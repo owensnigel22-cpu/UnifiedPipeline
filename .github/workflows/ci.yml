@@ -156,7 +156,7 @@ jobs:
           echo "installed wheel reports version: ${installed}"
           test "${installed}" = "0.3.0" || { echo "::error::installed wheel version ${installed} != 0.3.0"; exit 1; }
       - name: Upload distribution artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: keylab-dist-0.3.0-${{ github.run_id }}
           path: dist/*
