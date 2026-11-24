@@ -1,0 +1,92 @@
+KeyLab 0.3.0.dev0; Python 3.14.7 (tags/v3.14.7:823f032, Aug  5 2026, 10:51:32) [MSC v.1944 64 bit (AMD64)]; Windows-10-10.0.19045-SP0
+seed=20261122 repetitions=5 iterations=1 auto_scalar_backend=coincurve
+
+MSM: random scalar / random point distribution
+   n method                      median ms      ns/pair   speedup
+   1 naive-python                    1.494      1493500     1.00x
+   1 naive-python-glv                2.049      2048600     0.73x
+   1 straus-glv-wnaf                 1.409      1409500     1.06x
+   1 pippenger-python                3.535      3534900     0.42x
+   1 auto-python                     1.378      1377600     1.08x
+   1 naive-coincurve                 0.087        86700    17.23x
+   2 naive-python                    3.151      1575300     1.00x
+   2 naive-python-glv                4.244      2122000     0.74x
+   2 straus-glv-wnaf                 2.132      1065850     1.48x
+   2 pippenger-python                6.086      3043000     0.52x
+   2 auto-python                     2.136      1067850     1.48x
+   2 naive-coincurve                 0.175        87450    18.01x
+   4 naive-python                    6.322      1580475     1.00x
+   4 naive-python-glv                8.725      2181250     0.72x
+   4 straus-glv-wnaf                 3.379       844725     1.87x
+   4 pippenger-python                8.010      2002525     0.79x
+   4 auto-python                     3.340       835050     1.89x
+   4 naive-coincurve                 0.374        93400    16.92x
+   8 naive-python                   11.814      1476788     1.00x
+   8 naive-python-glv               16.299      2037325     0.72x
+   8 straus-glv-wnaf                 5.932       741525     1.99x
+   8 pippenger-python               11.663      1457838     1.01x
+   8 auto-python                     6.905       863088     1.71x
+   8 naive-coincurve                 0.789        98575    14.98x
+  16 naive-python                   26.155      1634662     1.00x
+  16 naive-python-glv               34.165      2135288     0.77x
+  16 straus-glv-wnaf                11.909       744312     2.20x
+  16 pippenger-python               18.725      1170331     1.40x
+  16 auto-python                    17.172      1073225     1.52x
+  16 naive-coincurve                 1.806       112875    14.48x
+  32 naive-python                   49.642      1551319     1.00x
+  32 naive-python-glv               67.012      2094116     0.74x
+  32 straus-glv-wnaf                24.333       760406     2.04x
+  32 pippenger-python               30.722       960075     1.62x
+  32 auto-python                    22.426       700812     2.21x
+  32 naive-coincurve                 3.285       102669    15.11x
+  64 naive-python                  103.193      1612397     1.00x
+  64 naive-python-glv              133.735      2089616     0.77x
+  64 straus-glv-wnaf                45.990       718602     2.24x
+  64 pippenger-python               49.144       767872     2.10x
+  64 auto-python                    46.193       721769     2.23x
+  64 naive-coincurve                 7.136       111492    14.46x
+ 128 naive-python                  206.819      1615771     1.00x
+ 128 naive-python-glv              272.929      2132255     0.76x
+ 128 straus-glv-wnaf                91.898       717952     2.25x
+ 128 pippenger-python               83.800       654686     2.47x
+ 128 auto-python                    81.813       639165     2.53x
+ 128 naive-coincurve                14.328       111934    14.44x
+ 256 naive-python                  427.612      1670359     1.00x
+ 256 naive-python-glv              552.868      2159640     0.77x
+ 256 straus-glv-wnaf               183.752       717780     2.33x
+ 256 pippenger-python              136.328       532533     3.14x
+ 256 auto-python                   139.138       543507     3.07x
+ 256 naive-coincurve                27.293       106614    15.67x
+
+BIP-340: valid distinct-key batches
+   n  individual ms     batch ms    native ms   ns/signature   Python batch/ind
+   1          0.388        0.620        0.052         620400               0.63x
+   2          0.781        1.224        0.104         611900               0.64x
+   4          1.538        2.601        0.203         650325               0.59x
+   8          3.142        4.787        0.864         598362               0.66x
+  16          8.082       10.526        1.005         657894               0.77x
+  32         13.457       20.052        1.681         626609               0.67x
+  64         25.827       40.460        3.407         632191               0.64x
+ 128         62.078       79.544        6.974         621435               0.78x
+ 256        106.932      160.821       14.592         628208               0.66x
+
+Independent Coincurve checks: {"available": true, "batch_api_available": false, "batch_api_evidence": "Coincurve/PublicKeyXOnly exposes only individual verify; no native batch API was found.", "checked": 3057, "unsupported": {"malformed_signature_length": 18}}
+
+Component profile at largest configured batch:
+component                                 median ms
+batch-csprng-end-to-end                     153.312
+batch-fixed-coefficients-end-to-end         143.138
+challenge-computation                         0.615
+coefficient-generation                        0.386
+full-signature-and-point-parsing            125.285
+individual-end-to-end                       100.405
+native-individual-verification               15.550
+native-public-key-parsing                     1.984
+nonce-msm                                    27.503
+public-key-msm                               28.603
+public-key-parsing                           48.265
+scalar-and-term-aggregation                   1.041
+signature-parsing                             0.162
+
+JSON report: benchmarks\milestone8_schnorr_msm.json
+CSV measurements: benchmarks\milestone8_schnorr_msm.csv
