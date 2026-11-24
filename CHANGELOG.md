@@ -5,6 +5,8 @@ All notable changes to Keylab are recorded here. The format follows
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-11-24
+
 ### Added
 - `keylab.psbt`: BIP-174 **Combiner** role -- `combine` and `PsbtCombineError`.
   Merges two or more PSBTs that share a byte-identical unsigned transaction into
@@ -90,10 +92,14 @@ All notable changes to Keylab are recorded here. The format follows
 - `keylab.ec.schnorr_verify_batch(items)`: BIP-340 batch verification, re-exported
   from `keylab.ec`. It checks many signatures as one multi-scalar multiplication
   with cryptographically random coefficients (first = 1, rest from `secrets`), and
-  returns the same verdict as verifying each signature individually. In pure
-  Python it is faster than one-by-one verification from ~4 signatures up (~1.8x
-  for large batches). Explicit coefficients may be supplied for reproducible
-  testing only; production always uses `secrets`.
+  returns the same verdict as verifying each signature individually. Milestone 8
+  benchmarking found that the current Python batch implementation was 1.3-1.7x
+  slower than individual verification across tested batch sizes, with no
+  performance crossover observed; native Coincurve batch verification is not
+  available and was not simulated. Its value is the single multi-scalar
+  all-or-nothing check (mathematical independence), not throughput. Explicit
+  coefficients may be supplied for reproducible testing only; production always
+  uses `secrets`.
 - `keylab.ec.multi_scalar_mult(pairs, *, method="auto")`: a multi-scalar
   multiplication engine returning `sum(k_i * P_i)`, re-exported from
   `keylab.ec`. The foundation method (`naive`) sums one optimized `k*P` per

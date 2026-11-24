@@ -116,6 +116,52 @@ jobs:
       - run: python scripts/bench_smoke.py
       - run: keylab benchmark-ec --count 2 --repetitions 1
 
+  dist-build:
+    name: dist-build (sdist + wheel + twine)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      # Build/validation tooling only -- pinned, and deliberately NOT added to the
+      # package's runtime or dev dependencies in pyproject.toml.
+      # twine >= 6.1.0 understands core Metadata-Version 2.4 emitted by current
+      # setuptools; older twine rejects 2.4 with "Metadata is missing required
+      # fields". Pinned, and not added to package runtime/dev dependencies.
+      - name: Install pinned build and validation tools
+        run: python -m pip install build==1.2.2.post1 twine==6.1.0
+      # Uses the project's existing packaging config; the version is the dynamic
+      # single source keylab.__version__ (no second version is hardcoded).
+      - name: Build sdist and wheel
+        run: python -m build
+      - name: Twine metadata validation
+        run: python -m twine check dist/*
+      - name: Verify built artifact names carry version 0.3.0
+        run: |
+          ls -l dist/
+          test -f dist/keylab-0.3.0.tar.gz || { echo "::error::sdist keylab-0.3.0.tar.gz not found"; exit 1; }
+          test -n "$(ls dist/keylab-0.3.0-*.whl 2>/dev/null)" || { echo "::error::wheel keylab-0.3.0-*.whl not found"; exit 1; }
+      - name: List sdist contents
+        run: python -c "import glob,tarfile; t=tarfile.open(glob.glob('dist/*.tar.gz')[0]); print('\n'.join(sorted(t.getnames())))"
+      - name: Install the built wheel in a clean venv and verify reported version
+        run: |
+          python -m venv "${RUNNER_TEMP}/rc-venv"
+          "${RUNNER_TEMP}/rc-venv/bin/python" -m pip install --upgrade pip
+          "${RUNNER_TEMP}/rc-venv/bin/python" -m pip install dist/keylab-0.3.0-*.whl
+          installed="$("${RUNNER_TEMP}/rc-venv/bin/python" -c 'import keylab; print(keylab.__version__)')"
+          echo "installed wheel reports version: ${installed}"
+          test "${installed}" = "0.3.0" || { echo "::error::installed wheel version ${installed} != 0.3.0"; exit 1; }
+      - name: Upload distribution artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: keylab-dist-0.3.0-${{ github.run_id }}
+          path: dist/*
+          if-no-files-found: error
+
   fuzz-smoke:
     name: fuzz-smoke (atheris, ubuntu)
     runs-on: ubuntu-latest
