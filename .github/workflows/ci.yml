@@ -129,8 +129,11 @@ jobs:
           cache-dependency-path: pyproject.toml
       # Build/validation tooling only -- pinned, and deliberately NOT added to the
       # package's runtime or dev dependencies in pyproject.toml.
+      # twine >= 6.1.0 understands core Metadata-Version 2.4 emitted by current
+      # setuptools; older twine rejects 2.4 with "Metadata is missing required
+      # fields". Pinned, and not added to package runtime/dev dependencies.
       - name: Install pinned build and validation tools
-        run: python -m pip install build==1.2.2.post1 twine==5.1.1
+        run: python -m pip install build==1.2.2.post1 twine==6.1.0
       # Uses the project's existing packaging config; the version is the dynamic
       # single source keylab.__version__ (no second version is hardcoded).
       - name: Build sdist and wheel
