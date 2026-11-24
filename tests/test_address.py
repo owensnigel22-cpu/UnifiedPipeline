@@ -6,7 +6,8 @@ import secrets
 import pytest
 
 from keylab.cli import main
-from keylab.ec.secp256k1 import N, compress_pubkey, scalar_mult
+from keylab.ec.sec1 import serialize_sec1
+from keylab.ec.secp256k1 import G, N, compress_pubkey, scalar_mult
 from keylab.encoding.address import (
     address_belongs_to_wif,
     address_to_target_hash,
@@ -18,6 +19,8 @@ from keylab.encoding.address import (
     p2wpkh_address,
     verify_pubkey_from_address,
 )
+from keylab.encoding.base58 import check_decode
+from keylab.encoding.bech32 import decode_segwit_address
 from keylab.encoding.wif import decode, encode
 
 KNOWN_WIF = "KwHV8WDsBUuXPymuan5TQN82tPyRWZ68vb14ww8p9FFCw6a17xkR"
@@ -95,6 +98,73 @@ def test_p2wpkh_testnet_round_trip() -> None:
     assert len(address_to_target_hash(address)) == 20
 
 
+@pytest.mark.parametrize("helper", [p2wpkh_address, p2sh_p2wpkh_address])
+def test_witness_address_helpers_reject_uncompressed_sec1_keys(helper) -> None:
+    uncompressed = serialize_sec1(G, compressed=False)
+
+    with pytest.raises(ValueError, match="compressed SEC1"):
+        helper(uncompressed)
+
+
+@pytest.mark.parametrize("helper", [p2wpkh_address, p2sh_p2wpkh_address])
+def test_witness_address_helpers_require_bytes(helper) -> None:
+    with pytest.raises(TypeError, match="public_key must be bytes"):
+        helper("not bytes")  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize(
+    "public_key",
+    [
+        b"not a public key",
+        b"\x04" + bytes(64),
+        b"\x02" + (0).to_bytes(32, "big"),
+        b"\x02" + (0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEFFFFFC2F).to_bytes(
+            32, "big"
+        ),
+    ],
+)
+@pytest.mark.parametrize("helper", [p2wpkh_address, p2sh_p2wpkh_address])
+def test_witness_address_helpers_reject_malformed_or_invalid_keys(helper, public_key: bytes) -> None:
+    with pytest.raises(ValueError):
+        helper(public_key)
+
+
+@pytest.mark.parametrize(
+    ("helper", "mainnet_prefix", "testnet_prefix"),
+    [
+        (p2wpkh_address, "bc1q", "tb1q"),
+        (p2sh_p2wpkh_address, "3", "2"),
+    ],
+)
+def test_witness_address_helpers_preserve_network_encodings(
+    helper,
+    mainnet_prefix: str,
+    testnet_prefix: str,
+) -> None:
+    public_key = serialize_sec1(G)
+    mainnet = helper(public_key, "mainnet")
+    testnet = helper(public_key, "testnet")
+    assert mainnet.startswith(mainnet_prefix)
+    assert testnet.startswith(testnet_prefix)
+    if helper is p2wpkh_address:
+        assert decode_segwit_address(mainnet)[0] == "bc"
+        assert decode_segwit_address(testnet)[0] == "tb"
+    else:
+        assert check_decode(mainnet)[0] == 0x05
+        assert check_decode(testnet)[0] == 0xC4
+    with pytest.raises(ValueError, match="network"):
+        helper(public_key, "regtest")
+
+
+def test_uncompressed_wif_derivation_omits_standard_witness_addresses() -> None:
+    result = derive_addresses_from_wif(encode(1, compressed=False))
+
+    assert result["compressed"] is False
+    assert result["p2pkh"] == "1EHNa6Q4Jz2uvNExL497mE43ikXhwF6kZm"
+    assert result["p2sh_p2wpkh"] is None
+    assert result["p2wpkh"] is None
+
+
 def test_candidate_public_key_verification_covers_common_address_types() -> None:
     public_key = compress_pubkey(scalar_mult(7))
     addresses = (
@@ -105,6 +175,16 @@ def test_candidate_public_key_verification_covers_common_address_types() -> None
     )
     assert all(verify_pubkey_from_address(address, public_key) for address in addresses)
     assert not verify_pubkey_from_address(p2pkh_address(compress_pubkey(scalar_mult(8))), public_key)
+
+
+def test_witness_address_verification_rejects_uncompressed_candidate_keys() -> None:
+    point = scalar_mult(7)
+    uncompressed = serialize_sec1(point, compressed=False)
+    compressed = serialize_sec1(point)
+
+    assert not verify_pubkey_from_address(p2wpkh_address(compressed), uncompressed)
+    assert not verify_pubkey_from_address(p2sh_p2wpkh_address(compressed), uncompressed)
+    assert verify_pubkey_from_address(p2pkh_address(uncompressed), uncompressed)
 
 
 def test_wif_public_derivation_returns_all_address_families_without_private_scalar() -> None:

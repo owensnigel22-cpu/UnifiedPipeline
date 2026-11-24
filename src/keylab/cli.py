@@ -7,10 +7,12 @@ import csv
 import getpass
 import hashlib
 import json
+import shlex
 import sys
 import time
+from collections.abc import Callable
 from pathlib import Path
-from subprocess import run
+from subprocess import TimeoutExpired, run
 from typing import Any, TextIO, cast
 
 import httpx
@@ -320,6 +322,76 @@ def _selftest() -> int:
             == hashlib.sha256(secret + extension.forged_message).digest(),
         )
     )
+    # --- secp256k1 arithmetic, GLV, wNAF, SEC1, signatures, hashing ---
+    from keylab.ec.schnorr import schnorr_sign, schnorr_verify
+    from keylab.ec.sec1 import parse_sec1, serialize_sec1
+    from keylab.ec.secp256k1 import (
+        BETA,
+        LAMBDA,
+        ecdsa_sign_digest,
+        ecdsa_verify_digest,
+        glv_decompose,
+        is_on_curve,
+        point_add_affine,
+        scalar_mult,
+        wnaf_digits,
+    )
+    from keylab.ec.secp256k1 import G as _G
+    from keylab.ec.secp256k1 import N as _N
+    from keylab.ec.secp256k1 import P as _P
+    from keylab.encoding.address import hash160 as _hash160
+    from keylab.hashes.mac import hmac_sha256
+    from keylab.research.ecdlp.kangaroo import pollard_kangaroo
+    from keylab.research.ecdlp.rho import pollard_rho_dlog
+
+    checks.append(("modular inverse", (17 * pow(17, -1, _N)) % _N == 1))
+    checks.append(("secp256k1 generator on curve", is_on_curve(_G)))
+    checks.append(("affine point addition (2G = G+G)", scalar_mult(2, _G) == point_add_affine(_G, _G)))
+    five_g = point_add_affine(point_add_affine(point_add_affine(point_add_affine(_G, _G), _G), _G), _G)
+    checks.append(("scalar multiplication (5G)", scalar_mult(5, _G) == five_g))
+    checks.append(("n*G = infinity", scalar_mult(_N, _G) is None))
+    k_demo = 0xABCDEF1234567890
+    checks.append((
+        "wNAF reconstruction",
+        sum(d << i for i, d in enumerate(wnaf_digits(k_demo))) == k_demo,
+    ))
+    k1, k2 = glv_decompose(k_demo)
+    checks.append(("GLV decomposition (k = k1 + lambda*k2 mod n)", (k1 + LAMBDA * k2 - k_demo) % _N == 0))
+    checks.append(("GLV endomorphism (phi(G) = lambda*G)", (BETA * _G[0] % _P, _G[1]) == scalar_mult(LAMBDA, _G)))
+    sk = 0xC0FFEE
+    pub_point = scalar_mult(sk, _G)
+    assert pub_point is not None  # sk is a valid scalar in [1, N-1]
+    checks.append(("SEC1 parse/serialize round-trip", parse_sec1(serialize_sec1(pub_point, compressed=True)) == pub_point))
+    digest = hashlib.sha256(b"keylab-selftest").digest()
+    signature = ecdsa_sign_digest(digest, sk)
+    checks.append(("ECDSA sign/verify (RFC6979)", ecdsa_verify_digest(digest, signature, pub_point)))
+    checks.append((
+        "ECDSA rejects a wrong digest",
+        not ecdsa_verify_digest(hashlib.sha256(b"other").digest(), signature, pub_point),
+    ))
+    message = b"bip340-selftest"
+    schnorr_signature = schnorr_sign(message, sk, aux_rand=bytes(32))
+    checks.append(("BIP-340 Schnorr sign/verify", schnorr_verify(message, schnorr_signature, pub_point[0].to_bytes(32, "big"))))
+    import hmac as _stdlib_hmac
+    checks.append((
+        "HMAC-SHA256 vs stdlib",
+        hmac_sha256(b"key", b"msg") == _stdlib_hmac.new(b"key", b"msg", hashlib.sha256).digest(),
+    ))
+    pub_sec = serialize_sec1(pub_point, compressed=True)
+    expected_h160 = hashlib.new("ripemd160", hashlib.sha256(pub_sec).digest()).digest()
+    checks.append(("HASH160 = RIPEMD160(SHA256(pubkey))", _hash160(pub_sec) == expected_h160))
+    k_small = 123_456
+    target_point = scalar_mult(k_small, _G)
+    checks.append((
+        "toy bounded kangaroo (candidate*G == Q)",
+        pollard_kangaroo(target_point, k_small - 500, k_small + 500) == k_small,
+    ))
+    def _z101_add(a: object, b: object) -> object:
+        return (cast(int, a) + cast(int, b)) % 101
+
+    rho_k = pollard_rho_dlog(_z101_add, 1, 42, 101, hasher=lambda value: cast(int, value))
+    checks.append(("toy Pollard rho (Z_101)", rho_k is not None and rho_k % 101 == 42))
+
     for name, passed in checks:
         print(f"{'PASS' if passed else 'FAIL'} {name}")
     return 0 if all(passed for _, passed in checks) else 1
@@ -385,7 +457,18 @@ def _fixed_bit(value: str) -> tuple[int, int]:
 
 
 def _solver_version(executable: str) -> str:
-    version = run([executable, "--version"], capture_output=True, text=True, timeout=5, check=False)
+    try:
+        version = run(
+            [executable, "--version"],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
+        )
+    except TimeoutExpired:
+        return "version unavailable (timeout)"
+    except OSError as exc:
+        return f"version unavailable ({exc.__class__.__name__})"
     output = version.stdout.strip() or version.stderr.strip()
     return output.splitlines()[0] if output else f"version unavailable (exit {version.returncode})"
 
@@ -2009,11 +2092,138 @@ def _forensics(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int
     return dispatch[args.forensics_command](args, parser)
 
 
+_MENU_BANNER = """\
+=========================================================
+ KEYLAB - CRYPTOGRAPHIC MATHEMATICS & RESEARCH PLATFORM
+=========================================================
+
+ 1. Public Key Tools
+ 2. secp256k1 Mathematics
+ 3. Signature Tools
+ 4. Hash / HASH160 Research
+ 5. WIF / Address Tools
+ 6. Discrete Log Demonstrations
+ 7. SAT / Symbolic Research
+ 8. Run Self-Tests
+ 9. Run Benchmarks
+10. Show Architecture / Module Status
+ 0. Exit"""
+
+# Each category lists existing `keylab` subcommands; the menu dispatches through
+# the normal parser, so all argument validation is reused (no duplicate logic).
+_MENU_CATEGORIES: dict[str, tuple[str, tuple[str, ...]]] = {
+    "1": ("Public Key Tools", ("address-hash", "wif-derive")),
+    "2": ("secp256k1 Mathematics", ("benchmark-pubkey", "benchmark-ec", "backward-traverse", "number-theory")),
+    "3": ("Signature Tools", ("benchmark-signatures", "forensics", "sha256-length-extension")),
+    "4": ("Hash / HASH160 Research", ("address-hash", "sha256-cnf", "ripemd160-cnf", "sha256-stream", "benchmark-hash160")),
+    "5": ("WIF / Address Tools", ("wif-derive", "address-hash", "benchmark-wifs")),
+    "6": ("Discrete Log Demonstrations", ("backward-traverse", "weak-rng-scan", "halving-lsb")),
+    "7": ("SAT / Symbolic Research", ("sat-solve", "mq-cnf", "sha256-cnf", "sha256-cnf-benchmark", "sat-throughput-benchmark")),
+}
+_MENU_BENCHMARKS = ("benchmark-pubkey", "benchmark-ec", "benchmark-signatures", "benchmark-wifs", "benchmark-hash160")
+
+MenuInput = Callable[[], str]
+MenuOutput = Callable[[str], object]
+
+
+def _menu_read(input_fn: MenuInput) -> str:
+    try:
+        return input_fn().strip()
+    except (EOFError, OSError):  # closed/unavailable stdin -> exit cleanly, no crash
+        return "0"
+
+
+def _menu_run_command(name: str, input_fn: MenuInput, output_fn: MenuOutput) -> None:
+    output_fn(f"\nRunning: keylab {name}")
+    output_fn("Enter arguments (e.g. --help), or leave blank to run as-is:")
+    raw = _menu_read(input_fn)
+    try:
+        argv = [name, *shlex.split(raw)]
+    except ValueError as exc:
+        output_fn(f"[could not parse arguments: {exc}]")
+        return
+    try:
+        code = main(argv)
+        output_fn(f"[exit code {code}]")
+    except SystemExit as exc:  # argparse errors / --help exit here; keep the menu alive
+        output_fn(f"[command exited: {exc.code}]")
+    except Exception as exc:  # noqa: BLE001 - a menu must never show a raw traceback
+        output_fn(f"[error: {exc}]")
+
+
+def _menu_category(title: str, commands: tuple[str, ...], input_fn: MenuInput, output_fn: MenuOutput) -> None:
+    while True:
+        output_fn(f"\n== {title} ==")
+        for index, command in enumerate(commands, 1):
+            output_fn(f" {index}. keylab {command}")
+        output_fn(" 0. Back")
+        choice = _menu_read(input_fn)
+        if choice in ("0", ""):
+            return
+        if choice.isdigit() and 1 <= int(choice) <= len(commands):
+            _menu_run_command(commands[int(choice) - 1], input_fn, output_fn)
+        else:
+            output_fn("Invalid selection.")
+
+
+def _menu_status(output_fn: MenuOutput) -> None:
+    from keylab.feature_audit import FEATURE_STATUS
+
+    implemented = sum(
+        1 for entry in FEATURE_STATUS.values() if cast("dict[str, object]", entry).get("implemented")
+    )
+    output_fn(f"\nKeyLab {__version__}")
+    output_fn(f"Tracked features: {len(FEATURE_STATUS)} ({implemented} implemented)")
+    output_fn("Subsystems: ecc, signatures, hashing, sat, numtheory, ecdlp, keys/address,")
+    output_fn("            forensics, verify, wallet, psbt")
+    output_fn("Full map: KEYLAB_ARCHITECTURE_AUDIT.md, KEYLAB_MATH_VALIDATION.md, docs/")
+
+
+def interactive_menu(*, input_fn: MenuInput | None = None, output_fn: MenuOutput | None = None) -> int:
+    """Drive the numbered-menu CLI. IO is injectable so it can be tested offline.
+
+    ``input_fn`` / ``output_fn`` default to the builtins ``input`` / ``print``,
+    resolved at call time (so tests can patch ``builtins.input``). Every tool runs
+    through the normal ``main()`` dispatch, so argument validation is reused and
+    malformed input yields a clean message, never a traceback. This is an
+    interactive-terminal feature: a dispatched command that prompts for its own input
+    (e.g. ``wif-derive`` reading a WIF via a hidden prompt) reads the shared stdin, so
+    pass such a command its arguments on the argument line instead.
+    """
+    read: MenuInput = input if input_fn is None else input_fn
+    write: MenuOutput = print if output_fn is None else output_fn
+    input_fn, output_fn = read, write
+    while True:
+        output_fn(_MENU_BANNER)
+        choice = _menu_read(input_fn)
+        if choice == "0":
+            output_fn("Goodbye.")
+            return 0
+        if choice in _MENU_CATEGORIES:
+            title, commands = _MENU_CATEGORIES[choice]
+            _menu_category(title, commands, input_fn, output_fn)
+        elif choice == "8":
+            _selftest()
+        elif choice == "9":
+            _menu_category("Benchmarks", _MENU_BENCHMARKS, input_fn, output_fn)
+        elif choice == "10":
+            _menu_status(output_fn)
+        elif choice == "":
+            continue
+        else:
+            output_fn("Invalid selection.")
+
+
+def _interactive(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
+    return interactive_menu()
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="keylab", description=__doc__)
     parser.add_argument("--version", action="version", version=f"keylab {__version__}")
     commands = parser.add_subparsers(dest="command", required=True)
     commands.add_parser("backends", help="list installed optional crypto, math, and SAT backends")
+    commands.add_parser("interactive", help="launch the interactive numbered-menu CLI")
     backward = commands.add_parser(
         "backward-traverse",
         help="educational: reverse double-and-add to recover a small scalar from its public key",
@@ -2826,6 +3036,8 @@ def main(argv: list[str] | None = None) -> int:
         return _halving_lsb(args, parser)
     if args.command == "forensics":
         return _forensics(args, parser)
+    if args.command == "interactive":
+        return _interactive(args, parser)
     print(f"{args.command}: not yet implemented", file=sys.stderr)
     return 2
 

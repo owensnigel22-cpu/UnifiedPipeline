@@ -82,6 +82,12 @@ implement; Keylab adds none of its own and proves none of them.
 - **Group structure**: secp256k1 has prime order N and cofactor 1, so there is
   no small-subgroup confinement; invalid-curve inputs are rejected at entry
   points instead.
+- **RSA demonstrations**: the Wiener check assumes a modulus formed by two
+  distinct primes and a sufficiently small private exponent. It validates the
+  returned factor product and the exponent inverse modulo Carmichael's
+  `lambda(n)`; factor primality is deterministic only below `2**64`, with a
+  fixed-base probable-prime screen above that range. It is not a general
+  factorization method or a production RSA implementation.
 
 Out-of-scope assumptions (see [SECURITY.md](../SECURITY.md)): constant-time
 execution, side-channel resistance, secure memory, and fault resistance.
@@ -92,8 +98,9 @@ execution, side-channel resistance, secure memory, and fault resistance.
   API boundaries; Jacobian `(X, Y, Z)` internally, with `_INFINITY = (0, 1, 0)`.
   `point_add` handles doubling and inverse inputs; `_point_add_mixed` adds an
   affine point to a Jacobian accumulator.
-- **Scalar multiplication.** `scalar_mult` reduces the scalar mod N, rejects
-  negative scalars, validates the point, and dispatches: native backends for
+- **Scalar multiplication.** `scalar_mult` accepts exact nonnegative Python
+  integers (excluding booleans), reduces the scalar mod N, validates the point,
+  and dispatches: native backends for
   `auto` when installed; otherwise a 4-bit fixed-base table for G and
   double-and-add for other points. GLV (`python-glv`), width-5 fixed-base
   wNAF, and an affine-window table are selectable for study and benchmarking.
